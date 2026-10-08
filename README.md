@@ -21,6 +21,9 @@ cargo test -p nullnet-core
 # Se 3 bot-crews spille 3.000 dage (--verbose viser alt, hvad der bygges og flyttes)
 cargo run -p nullnet-sim -- --seed 7 --crews 3 --days 3000
 
+# Lav en afspilning, hvor du kan bladre gennem turene i browseren
+cargo run --release -p nullnet-sim -- --crews 2 --days 1000 --json | python3 tools/replay.py > replay.html
+
 # Web-klienten (første build tager et stykke tid)
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.129   # skal matche Cargo.lock

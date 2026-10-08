@@ -4,6 +4,11 @@
 //! ```text
 //! cargo run -p nullnet-sim -- --seed 7 --crews 3 --days 3000
 //! ```
+//!
+//! With `--json` it writes the whole game turn by turn instead: every
+//! crew's orders, the events and each crew's state after each turn.
+
+mod replay;
 
 use std::process::ExitCode;
 
@@ -20,6 +25,7 @@ struct Options {
     days: u32,
     turn: u32,
     verbose: bool,
+    json: bool,
 }
 
 fn parse(mut args: impl Iterator<Item = String>) -> Result<Options, String> {
@@ -29,10 +35,15 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Options, String> {
         days: 3000,
         turn: 10,
         verbose: false,
+        json: false,
     };
     while let Some(arg) = args.next() {
         if arg == "--verbose" {
             options.verbose = true;
+            continue;
+        }
+        if arg == "--json" {
+            options.json = true;
             continue;
         }
         let mut value = || args.next().ok_or(format!("{arg} needs a value"));
@@ -60,7 +71,7 @@ fn main() -> ExitCode {
         Err(error) => {
             eprintln!("{error}");
             eprintln!(
-                "usage: nullnet-sim [--seed N] [--crews 1-4] [--days N] [--turn N] [--verbose]"
+                "usage: nullnet-sim [--seed N] [--crews 1-4] [--days N] [--turn N] [--verbose] [--json]"
             );
             return ExitCode::FAILURE;
         }
@@ -74,6 +85,9 @@ fn main() -> ExitCode {
     let name = |id: PlayerId| NAMES[usize::from(id.0)];
     let host = |id: nullnet_core::HostId| data.host(id).classic.as_str();
 
+    let mut replay = options
+        .json
+        .then(|| replay::Replay::new(&data, options.seed, options.turn, &crews));
     let mut rejected = 0;
     while world.day < options.days {
         let orders: Orders = crews
@@ -89,21 +103,28 @@ fn main() -> ExitCode {
                 // Two crews installing on the same free host in one turn:
                 // the first applied claims it. Part of the game, not a bot bug.
                 (Command::Deploy { .. }, &CommandError::HostTaken(h)) => {
-                    if r.index == 0
-                        || !matches!(orders[&r.player][r.index - 1], Command::Deploy { .. })
+                    if !options.json
+                        && (r.index == 0
+                            || !matches!(orders[&r.player][r.index - 1], Command::Deploy { .. }))
                     {
                         println!("{day}  {:<10}  lost {} to a rival", name(r.player), host(h));
                     }
                 }
                 _ => {
                     rejected += 1;
-                    println!(
-                        "{day}  {:<10}  REJECTED {command:?}: {}",
-                        name(r.player),
-                        r.error
-                    );
+                    if !options.json {
+                        println!(
+                            "{day}  {:<10}  REJECTED {command:?}: {}",
+                            name(r.player),
+                            r.error
+                        );
+                    }
                 }
             }
+        }
+        if let Some(replay) = &mut replay {
+            replay.record(&world, &orders, &report);
+            continue;
         }
         for event in &report.events {
             let line = match *event {
@@ -177,6 +198,15 @@ fn main() -> ExitCode {
                 println!("{}  {:<10}  {text}", date(day), name(player));
             }
         }
+    }
+
+    if let Some(replay) = &replay {
+        println!("{}", serde_json::to_string(replay).expect("serializable"));
+        return if rejected > 0 {
+            ExitCode::FAILURE
+        } else {
+            ExitCode::SUCCESS
+        };
     }
 
     println!();

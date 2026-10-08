@@ -3341,6 +3341,8 @@ name = "nullnet-sim"
 version = "0.1.0"
 dependencies = [
  "nullnet-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -230,6 +230,8 @@ Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellern
 
 Botten bruger endnu ikke de erobrede værters citadeller, krypterede links eller tunnelskibe. Bagdørssæt og build-bots kræver ressourcer, der ikke findes i hjemmenettet (certifikater, krypto og firmware). De kommer med caches i M4.
 
+`nullnet-sim --json` skriver hele spillet tur for tur (ordrer, hændelser og hver crews status), og `tools/replay.py` laver en side af det, hvor man kan bladre gennem turene.
+
 `tests/bot_game.rs` spiller 1-4 bots i op til 4.000 dage i ture på 10 dage. Efter hver tur tjekkes, at ingen ordrer afvises (bortset fra tabte kapløb om en vært), at lagre, taps, moduler, hold og brændstof holder sig inden for grænserne, at ejede værter forbliver ejet, at forskning og milepæle aldrig går tabt, og at intet fartøj går tabt. Spillet skal være deterministisk og give samme resultat efter gem og genindlæsning. CI kører desuden `cargo run -p nullnet-sim -- --crews 4 --days 5000`, som fejler, hvis en bot får en ordre afvist.
 
 **Tidslinje** for 2 crews (`cargo run -p nullnet-sim -- --crews 2 --days 4000`):

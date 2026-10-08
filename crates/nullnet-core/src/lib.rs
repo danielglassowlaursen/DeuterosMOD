@@ -42,5 +42,5 @@ pub use transport::{
 };
 pub use turn::{Event, Orders, TurnReport, resolve_turn};
 pub use unlocks::Milestone;
-pub use workshop::{AutoMode, SiteRef, WorkshopRef};
+pub use workshop::{AutoMode, Job, SiteRef, Workshop, WorkshopRef};
 pub use world::{Controller, HostState, Player, World};

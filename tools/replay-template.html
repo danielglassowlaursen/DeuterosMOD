@@ -1,0 +1,516 @@
+<title>NullNet-afspilning</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+  /* Layout: a sticky console bar with the turn control and a 100-tick timeline,
+     then one column per crew: orders, events and status after the turn. */
+  :root {
+    --bg: #f2f4f7;
+    --panel: #ffffff;
+    --line: #d6dce4;
+    --fg: #1a222c;
+    --muted: #5d6a78;
+    --accent: #2f5fd0;
+    --warn: #b4461c;
+    --crew0: #0e7f8b;
+    --crew1: #b65420;
+    --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f141a; --panel: #171d25; --line: #2a3441; --fg: #e4e9ef; --muted: #94a1af;
+      --accent: #7ea3ff; --warn: #f08b5a; --crew0: #3fc3cf; --crew1: #f09357;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f141a; --panel: #171d25; --line: #2a3441; --fg: #e4e9ef; --muted: #94a1af;
+    --accent: #7ea3ff; --warn: #f08b5a; --crew0: #3fc3cf; --crew1: #f09357;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--font-body);
+    font-size: 15px; line-height: 1.45; padding-inline: 16px; padding-block: 0 40px;
+  }
+  .wrap { max-width: 1180px; margin-inline: auto; min-width: 0; }
+  .top {
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+    background: var(--bg); border-bottom: 1px solid var(--line);
+    padding-block: 10px 8px; display: grid; gap: 8px;
+  }
+  .brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .brand h1 { font-family: var(--font-mono); font-size: 1.05rem; font-weight: 600; margin: 0; letter-spacing: .04em; }
+  .brand .sub { color: var(--muted); font-size: .85rem; }
+  .nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  button {
+    font-family: var(--font-mono); font-size: .82rem; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+    padding: 6px 10px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button[disabled] { opacity: .45; cursor: default; }
+  input[type="range"] { flex: 1 1 160px; min-width: 0; accent-color: var(--accent); margin: 0; }
+  .turn-label { font-family: var(--font-mono); font-size: .9rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .turn-label b { font-weight: 600; }
+  .timeline { display: flex; gap: 1px; height: 14px; }
+  .tick { flex: 1 1 0; min-width: 0; padding: 0; border: 0; border-radius: 1px; background: var(--line); }
+  .tick.n0 { background: var(--crew0); }
+  .tick.n1 { background: var(--crew1); }
+  .tick.n2 { background: var(--accent); }
+  .tick.current { outline: 2px solid var(--fg); outline-offset: 1px; z-index: 1; }
+  .tick:hover { opacity: .7; }
+
+  .intro { margin-top: 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); padding: 10px 14px; }
+  .intro summary { cursor: pointer; font-weight: 600; }
+  .intro p { max-width: 68ch; margin: 10px 0 0; }
+  .intro ol { max-width: 68ch; margin: 8px 0 0; padding-left: 1.3rem; }
+  .intro li { margin-top: 4px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: .88rem; color: var(--muted); }
+  .legend b { color: var(--fg); font-weight: 600; }
+  .keypoints { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .keypoints button { font-size: .78rem; }
+  .keypoints button span { color: var(--muted); }
+
+  .crews { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; margin-top: 16px; }
+  .crew {
+    min-width: 0; background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--c);
+    border-radius: 6px; padding: 14px; display: grid; gap: 14px; align-content: start;
+  }
+  .crew h2 { font-family: var(--font-mono); font-size: 1.15rem; color: var(--c); margin: 0; letter-spacing: .03em; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .crew h2 small { font-size: .78rem; color: var(--muted); font-weight: 400; letter-spacing: 0; }
+  .sec { font-size: .72rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 0 0 6px; font-weight: 600; }
+  .sec span { text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .empty { color: var(--muted); font-size: .9rem; }
+  ol.orders { margin: 0; padding-left: 1.4rem; display: grid; gap: 4px; font-size: .93rem; }
+  ol.orders li::marker { font-family: var(--font-mono); color: var(--muted); font-size: .8rem; }
+  .rej { color: var(--warn); font-size: .85rem; }
+  ul.events { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: .93rem; }
+  ul.events li { display: grid; grid-template-columns: 5.5ch 1fr; gap: 8px; min-width: 0; }
+  ul.events .day { font-family: var(--font-mono); font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 2px; }
+  ul.events li.big { font-weight: 600; }
+  ul.events li.big .txt { border-left: 3px solid var(--c); padding-left: 8px; }
+  ul.events li.bad .txt { border-left: 3px solid var(--warn); padding-left: 8px; }
+
+  .facets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+  @media (min-width: 1100px) { .facets { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .facet { min-width: 0; display: grid; gap: 6px; align-content: start; font-size: .9rem; }
+  .facet.wide { grid-column: span 2; }
+  .facet h4 { font-size: .72rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 0; font-weight: 600; }
+  .row { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .row .v { font-family: var(--font-mono); font-size: .85rem; font-variant-numeric: tabular-nums; }
+  .cells { display: flex; gap: 2px; }
+  .cell { flex: 1; height: 8px; border-radius: 1px; background: var(--line); }
+  .cell.on { background: var(--c); }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { font-family: var(--font-mono); font-size: .76rem; padding: 2px 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg); }
+  .chip.c { border-color: var(--c); }
+  .team { display: grid; gap: 1px; }
+  .team b { font-family: var(--font-mono); font-weight: 600; font-size: .85rem; }
+  .team span { color: var(--muted); font-size: .84rem; }
+  .tablewrap { overflow-x: auto; }
+  table.store { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: .8rem; font-variant-numeric: tabular-nums; }
+  table.store th { text-align: left; color: var(--muted); font-weight: 400; padding: 2px 4px; border-bottom: 1px solid var(--line); }
+  table.store th.num, table.store td.num { text-align: right; }
+  table.store td { padding: 2px 4px; }
+  .vessels { display: grid; gap: 8px; }
+  .vessel { border: 1px solid var(--line); border-left: 3px solid var(--c); border-radius: 4px; padding: 8px 10px; display: grid; gap: 2px; font-size: .88rem; }
+  .vessel b { font-family: var(--font-mono); font-size: .88rem; }
+  .vessel .m { color: var(--muted); }
+  @media (prefers-reduced-motion: no-preference) {
+    .tick { transition: opacity .12s; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>NULLNET · AFSPILNING</h1>
+      <span class="sub" id="sub"></span>
+    </div>
+    <div class="nav">
+      <button id="prev" type="button" aria-label="Forrige tur">◀</button>
+      <input type="range" id="turn" min="0" max="0" value="0" step="1" aria-label="Tur">
+      <button id="next" type="button" aria-label="Næste tur">▶</button>
+      <span class="turn-label" id="label"></span>
+      <button id="nextEvent" type="button" title="Spring til næste tur med en vigtig hændelse">Næste begivenhed ▶▶</button>
+    </div>
+    <div class="timeline" id="timeline" aria-label="Tidslinje over turene"></div>
+  </header>
+
+  <details class="intro" id="intro" open>
+    <summary>Sådan læser du afspilningen</summary>
+    <p>To bots, <b>Ghostline</b> og <b>Blackice</b>, spiller mod hinanden på det klassiske kort. Hver tur giver begge crews deres ordrer samtidig uden at kende modpartens. Derefter kører spillet 10 dage, og alt, hvad der sker, logges. Botterne husker intet mellem turene: de ser kun verdens tilstand og giver de ordrer, der flytter deres plan ét skridt videre.</p>
+    <p>For hver tur ser du tre ting pr. crew: <b>ordrerne</b> ved turens start, <b>hændelserne</b> i turens 10 dage og <b>status</b>, når turen er slut. Botternes plan har tre faser:</p>
+    <ol>
+      <li>Rekruttér folk, forsk, byg taps og en dropper, og bær citadel-moduler ud, til citadellet over skjulestedet er færdigt (8 moduler).</li>
+      <li>Flyt kodere og operatører op i citadellet, forsyn det med ressourcer, og byg en orm der.</li>
+      <li>Send ormen ud med citadel-moduler og indtag frie værter i hjemmenettet. Den første, der installerer et modul på en fri vært, ejer den.</li>
+    </ol>
+    <div class="legend">
+      <span><b>Plantet</b>: inde i værten gennem bagdøren</span>
+      <span><b>Koblet</b>: til citadellet over værten</span>
+      <span><b>Lurende</b>: ude på nettet, hvor moduler installeres</span>
+      <span><b>Proxykæder</b>: anonymisering, brændstoffet for droppere og orme</span>
+    </div>
+    <div class="keypoints" id="keypoints"></div>
+  </details>
+
+  <main class="crews" id="crews"></main>
+</div>
+
+<script id="game" type="application/json">__GAME_JSON__</script>
+<script>
+(function () {
+  const G = JSON.parse(document.getElementById('game').textContent);
+  const T = G.turns;
+  const N = T.length;
+  const HOME = G.home;
+
+  const ITEMS = {
+    Compute: 'regnekraft', Storage: 'lagerplads', Memory: 'hukommelse', Code: 'kildekode',
+    Credentials: 'adgangskoder', Bandwidth: 'båndbredde', ExitNodes: 'exit-noder', Proxies: 'proxyer',
+    Keys: 'krypteringsnøgler', ZeroDays: 'zero-day-fragmenter', Crypto: 'kryptovaluta',
+    Certificates: 'certifikater', SigningKeys: 'signeringsnøgler', Firmware: 'firmware',
+    ProxyChains: 'proxykæder', OnionRoutes: 'onion-ruter',
+    Tap: 'tap', DropperCore: 'dropper-kerne', DropperEngine: 'dropper-motor',
+    WormCore: 'orme-kerne', WormEngine: 'orme-motor', TunnelCore: 'tunnel-kerne', TunnelEngine: 'tunnel-motor',
+    CitadelModule: 'citadel-modul', BackdoorKit: 'bagdørssæt', DataContainer: 'datacontainer',
+    ToolModule: 'værktøjsmodul', SessionPod: 'session-pod', ExfilScript: 'exfil-script', BuildBot: 'build-bot',
+    EncryptedLink: 'krypteret link', Patch: 'patch', KillSwitch: 'kill switch', Sniffer: 'sniffer',
+    Crawler: 'crawler', C2Controller: 'C2-controller', Daemon: 'daemon', HunterDaemon: 'jæger-daemon',
+    LogicBomb: 'logikbombe', ExploitLauncher: 'exploit-launcher', QuantumLink: 'kvantelink',
+    Amplifier: 'forstærker', ProtocolAdapter: 'protokol-adapter', Honeypot: 'honeypot', Jammer: 'jammer',
+    LegacyExploit: 'Legacy-exploit', SourceFragment: 'kildekode-fragment'
+  };
+  const RESOURCES = ['Compute', 'Storage', 'Memory', 'Code', 'Credentials', 'Bandwidth', 'ExitNodes', 'Proxies', 'ProxyChains'];
+  const KIND = { Analyst: ['analytiker', 'analytikere'], Coder: ['koder', 'kodere'], Operator: ['operatør', 'operatører'] };
+  const RANK = { Analyst: ['Script kiddie', 'Hacker', 'Elite'], Coder: ['Junior', 'Udvikler', 'Arkitekt'], Operator: ['Runner', 'Ghost', 'Phantom'] };
+  const VESSEL = { Dropper: 'dropper', Worm: 'orm', Tunneler: 'tunnelskib' };
+  const BERTH = { Planted: 'plantet', Connected: 'koblet', Lurking: 'lurende' };
+  const MODULE = { ToolModule: 'værktøjsmodul', DataContainer: 'datacontainer', SessionPod: 'session-pod' };
+  const MILESTONE = {
+    FirstCitadelModule: ['Første citadel-modul over skjulestedet', ['WormCore', 'WormEngine', 'ExfilScript']],
+    HideoutCitadel: ['Citadellet over skjulestedet er færdigt', []],
+    WormEquipment: ['Første orme-kerne bygget', ['Crawler', 'BuildBot', 'Patch', 'Sniffer', 'BackdoorKit']],
+    Daemons: ['Legacy-exploit forsket', ['C2Controller', 'Daemon']],
+    EncryptedLinks: ['Ejer et citadel med krypteret link', ['EncryptedLink']],
+    KillSwitches: ['Ejer et citadel med kill switch', ['KillSwitch']],
+    Tunnelers: ['Hjemmenettet er fri for The Legacy Net', ['TunnelCore', 'TunnelEngine', 'OnionRoutes']]
+  };
+  const ABORT = { NoAnonymisation: 'ingen anonymisering tilbage', NoPilot: 'ingen pilot', NoCitadel: 'intet færdigt citadel at koble til' };
+
+  const errorText = e => /held by someone else/.test(e) ? 'værten blev taget af rivalen først i denne tur' : e;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const item = k => ITEMS[k] || k;
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  const num = n => n.toLocaleString('da-DK');
+  function hostName(id) {
+    if (id === HOME) return 'skjulestedet';
+    const h = G.hosts[id];
+    return h ? cap(h.name.replace(/_/g, ' ')) : 'vært ' + id;
+  }
+  function date(day) { return (3100 + Math.floor(day / 1000)) + '.' + String(day % 1000).padStart(3, '0'); }
+  function kindPl(k, n) { return (KIND[k] || [k, k])[n === 1 ? 0 : 1]; }
+  function rank(team) { return (RANK[team.kind] || [])[team.level - 1] || ('niveau ' + team.level); }
+  function teamText(t) { return esc(t.leader) + ' · ' + t.count + ' ' + kindPl(t.kind, t.count) + ' · ' + rank(t); }
+
+  // What a crew's vessels and teams were when it gave this turn's orders.
+  function context(i, c) {
+    const prev = i > 0 ? T[i - 1].crews[c] : null;
+    const now = T[i].crews[c];
+    const vessels = {};
+    [now, prev].forEach(s => s && s.vessels.forEach(v => { vessels[v.id] = vessels[v.id] || v; }));
+    if (prev) prev.vessels.forEach(v => { vessels[v.id] = v; });
+    return { prev, now, vessels };
+  }
+  function vesselName(ctx, id) {
+    const v = ctx.vessels[id];
+    return (v ? VESSEL[v.kind] : 'fartøj') + ' ' + id;
+  }
+  function teamName(ctx, vesselId, team) {
+    const v = ctx.prev && ctx.vessels[vesselId];
+    const staff = !v || !ctx.prev ? null
+      : v.state.At === 'Planted' ? ctx.prev.hideout_staff
+      : v.state.At === 'Connected' ? ctx.prev.citadel_staff : null;
+    const t = staff && staff[team];
+    return t ? 'holdet ' + esc(t.leader) + ' (' + t.count + ' ' + kindPl(t.kind, t.count) + ')' : 'hold ' + (team + 1);
+  }
+  function destText(to) {
+    if (to.host === HOME) {
+      return { Planted: 'ind i skjulestedet', Connected: 'op til citadellet over skjulestedet', Lurking: 'ud på nettet' }[to.berth];
+    }
+    return 'til ' + hostName(to.host) + ' (' + BERTH[to.berth] + ')';
+  }
+
+  function orderText(cmd, ctx) {
+    const k = Object.keys(cmd)[0];
+    const a = cmd[k];
+    switch (k) {
+      case 'Recruit': return 'Rekrutterer ' + a.count + ' ' + kindPl(a.kind, a.count);
+      case 'SetResearch': return 'Forsker nu i ' + item(a.item);
+      case 'Build': return 'Bygger ' + item(a.item) + (a.at === 'Hideout' ? ' i skjulestedets værksted' : ' i citadellets værksted');
+      case 'InstallTaps': return 'Installerer ' + a.count + ' tap i skjulestedet';
+      case 'Automate': return 'Sætter build-botten til at bygge ' + item(a.item) + ' (' + a.mode + ')';
+      case 'AssignCoders': {
+        const t = ctx.prev && ctx.prev.citadel_staff[a.team];
+        return 'Sætter ' + (t ? 'koderholdet ' + esc(t.leader) : 'et koderhold') + ' til at køre citadellets værksted';
+      }
+      case 'ReleaseCoders': return 'Frigiver koderne fra ' + (a.at === 'Hideout' ? 'skjulestedets' : 'citadellets') + ' værksted, så de kan flytte';
+      case 'Assemble': return 'Samler en ' + VESSEL[a.kind] + (a.berth === 'Planted' ? ' inde i skjulestedet' : ' i citadellet');
+      case 'Refuel': return 'Tanker ' + vesselName(ctx, a.vessel) + ' med ' + a.amount + ' proxykæder';
+      case 'Fit': return a.module
+        ? 'Monterer ' + MODULE[a.module] + ' i plads ' + (a.slot + 1) + ' på ' + vesselName(ctx, a.vessel)
+        : 'Fjerner modulet i plads ' + (a.slot + 1) + ' på ' + vesselName(ctx, a.vessel);
+      case 'Load': return 'Laster ' + a.count + ' × ' + item(a.item) + ' i ' + vesselName(ctx, a.vessel);
+      case 'Unload': return 'Losser ' + vesselName(ctx, a.vessel);
+      case 'Board': return cap(teamName(ctx, a.vessel, a.team)) + ' går om bord i ' + vesselName(ctx, a.vessel)
+        + (a.seat === 'Pilot' ? ' som pilot' : ' i session-podden');
+      case 'Disembark': return (a.seat === 'Pilot' ? 'Piloten' : 'Holdet i session-podden') + ' forlader ' + vesselName(ctx, a.vessel);
+      case 'Dispatch': return 'Sender ' + vesselName(ctx, a.vessel) + ' ' + destText(a.to);
+      case 'Deploy': {
+        const v = ctx.vessels[a.vessel];
+        const m = v && v.modules[a.slot];
+        const cargo = m && m.ToolModule ? item(m.ToolModule.item) : 'lasten';
+        return 'Installerer ' + cargo + ' fra ' + vesselName(ctx, a.vessel) + ' ved ' + (v ? hostName(v.host) : 'værten');
+      }
+      case 'InstallScript': return 'Installerer exfil-script i ' + vesselName(ctx, a.vessel);
+      case 'ConfigureScript': return a.route
+        ? 'Sætter ' + vesselName(ctx, a.vessel) + ' i fast rute ' + destText(a.route.from) + ' → ' + destText(a.route.to) + ' med ' + a.route.outbound.map(item).join(', ')
+        : 'Stopper ruten for ' + vesselName(ctx, a.vessel);
+      case 'InstallLink': return 'Installerer krypteret link ved ' + hostName(a.host);
+      case 'ConfigureLink': return 'Indstiller det krypterede link ved ' + hostName(a.host);
+      default: return k;
+    }
+  }
+
+  function eventText(ev, ctx) {
+    const k = Object.keys(ev)[0];
+    const a = ev[k];
+    const vn = id => vesselName(ctx, id);
+    switch (k) {
+      case 'ResearchCompleted': return ['big', 'Forskning færdig: ' + item(a.item)];
+      case 'StaffPromoted': return ['', cap(kindPl(a.kind, 2)) + ' rykker op til ' + (RANK[a.kind] || [])[a.level - 1]];
+      case 'RecruitsGraduated': return ['', a.count + ' ' + kindPl(a.kind, a.count) + ' er færdiguddannede'];
+      case 'ItemBuilt': return ['', cap(item(a.item)) + ' bygget' + (a.at === 'Hideout' ? '' : ' i citadellet')];
+      case 'HostClaimed': return ['big', 'Indtager ' + hostName(a.host)];
+      case 'Installed': {
+        const total = a.item === 'CitadelModule' ? 8 : 2;
+        const txt = cap(item(a.item)) + ' ' + a.installed + '/' + total + ' installeret ved ' + hostName(a.host);
+        return [a.installed === total ? 'big' : '', txt + (a.installed === total ? ' · citadellet er færdigt' : '')];
+      }
+      case 'VesselArrived': return ['', cap(vn(a.vessel)) + ' er nu ' + BERTH[a.berth] + ' ved ' + hostName(a.host)];
+      case 'VesselStopped': return ['bad', cap(vn(a.vessel)) + ' stoppede: ' + (ABORT[a.reason] || a.reason)];
+      case 'VesselBurned': return ['bad', cap(vn(a.vessel)) + ' blev sporet og brændt ved ' + hostName(a.host)];
+      case 'Unlocked': {
+        const m = MILESTONE[a.milestone] || [a.milestone, []];
+        return ['big', 'Milepæl: ' + m[0] + (m[1].length ? '. Åbner forskning i ' + m[1].map(item).join(', ') : '')];
+      }
+      default: return ['', k];
+    }
+  }
+  const notable = ev => {
+    const k = Object.keys(ev)[0];
+    return k === 'HostClaimed' || k === 'Unlocked' || k === 'ResearchCompleted' || k === 'VesselBurned' || k === 'VesselStopped'
+      || (k === 'Installed' && ev[k].installed === 8);
+  };
+  const playerOf = ev => ev[Object.keys(ev)[0]].player;
+  const dayOf = ev => ev[Object.keys(ev)[0]].day;
+
+  function cells(on, total) {
+    let s = '<div class="cells">';
+    for (let i = 0; i < total; i++) s += '<span class="cell' + (i < on ? ' on' : '') + '"></span>';
+    return s + '</div>';
+  }
+  function moduleText(m) {
+    if (m === 'Empty') return 'tom plads';
+    const k = Object.keys(m)[0];
+    const v = m[k];
+    if (!v) return MODULE[k] + ' (tom)';
+    if (k === 'SessionPod') return 'session-pod: ' + esc(v.leader) + ', ' + v.count + ' ' + kindPl(v.kind, v.count);
+    return MODULE[k] + ': ' + v.count + ' × ' + item(v.item);
+  }
+  function vesselCard(v, ctx) {
+    const state = v.state.At ? BERTH[v.state.At] + ' ved ' + hostName(v.host)
+      : v.state.Routing ? 'på vej til ' + hostName(v.state.Routing.to) + ' (dag ' + v.state.Routing.until + ')'
+      : v.state.Exfiltrating ? 'exfiltrerer ud af ' + hostName(v.host)
+      : v.state.Injecting ? 'injicerer ind i ' + hostName(v.host)
+      : v.state.Disconnecting ? 'kobler fra citadellet ved ' + hostName(v.host)
+      : v.state === 'Connecting' ? 'kobler til citadellet ved ' + hostName(v.host) : JSON.stringify(v.state);
+    const dest = v.destination ? '<div class="m">Destination: ' + destText(v.destination) + '</div>' : '';
+    const script = v.script === null ? '' : '<div class="m">Exfil-script: ' + (v.script ? 'kører fast rute' : 'installeret, ingen rute') + '</div>';
+    return '<div class="vessel"><b>' + cap(VESSEL[v.kind]) + ' ' + v.id + '</b>'
+      + '<div>' + cap(state) + ' · ' + v.fuel + ' proxykæder</div>'
+      + '<div class="m">Pilot: ' + (v.pilot ? esc(v.pilot.leader) + ' (' + rank(v.pilot) + ')' : 'ingen') + '</div>'
+      + '<div class="m">' + v.modules.map(moduleText).join(' · ') + '</div>' + dest + script + '</div>';
+  }
+  function storeTable(s) {
+    const rows = RESOURCES.filter(r => (s.hideout_store[r] || 0) + (s.citadel_store[r] || 0) > 0);
+    if (!rows.length) return '<div class="empty">Tomt. Udvindingen starter, når de første årer er fundet.</div>';
+    let h = '<div class="tablewrap"><table class="store"><tr><th>Ressource</th><th class="num">Skjulested</th><th class="num">Citadel</th></tr>';
+    rows.forEach(r => {
+      h += '<tr><td>' + item(r) + '</td><td class="num">' + num(s.hideout_store[r] || 0) + '</td><td class="num">' + num(s.citadel_store[r] || 0) + '</td></tr>';
+    });
+    return h + '</table></div>';
+  }
+  function itemChips(s) {
+    const out = [];
+    [['hideout_store', ''], ['citadel_store', ' ↑']].forEach(([key, mark]) => {
+      Object.keys(s[key]).filter(k => !RESOURCES.includes(k)).forEach(k => {
+        out.push('<span class="chip">' + s[key][k] + ' × ' + item(k) + mark + '</span>');
+      });
+    });
+    return out.length ? '<div class="chips">' + out.join('') + '</div>' : '<div class="empty">Ingen genstande på lager.</div>';
+  }
+
+  function statusHtml(s, ctx) {
+    const people = [];
+    if (s.analysts) people.push('<div class="team"><b>Forskning</b><span>' + teamText(s.analysts) + '</span></div>');
+    if (s.coders) people.push('<div class="team"><b>Skjulestedets værksted</b><span>' + teamText(s.coders) + '</span></div>');
+    if (s.citadel_coders) people.push('<div class="team"><b>Citadellets værksted</b><span>' + teamText(s.citadel_coders) + '</span></div>');
+    s.hideout_staff.forEach(t => people.push('<div class="team"><b>Venter i skjulestedet</b><span>' + teamText(t) + '</span></div>'));
+    s.citadel_staff.forEach(t => people.push('<div class="team"><b>Venter i citadellet</b><span>' + teamText(t) + '</span></div>'));
+    s.courses.forEach(c => people.push('<div class="team"><b>Uddanner</b><span>' + c.enrolled + ' ' + kindPl(c.kind, c.enrolled) + (c.running ? ' · kurset kører' : ' · starter i morgen') + '</span></div>'));
+    const research = s.research
+      ? '<div class="row"><span>' + cap(item(s.research.item)) + '</span><span class="v">' + s.research.percent + '%</span></div><div class="bar"><i style="width:' + s.research.percent + '%"></i></div>'
+      : '<div class="empty">' + (s.analysts ? 'Alt tilgængeligt er forsket.' : 'Ingen analytikere endnu.') + '</div>';
+    const jobs = [];
+    if (s.hideout_job) jobs.push('<div class="row"><span>Skjulested: ' + item(s.hideout_job.item) + '</span><span class="v">trin ' + s.hideout_job.stage + '/4</span></div>');
+    if (s.citadel_job) jobs.push('<div class="row"><span>Citadel: ' + item(s.citadel_job.item) + '</span><span class="v">trin ' + s.citadel_job.stage + '/4</span></div>');
+    const hosts = s.hosts.length
+      ? '<div class="chips">' + s.hosts.map(h => '<span class="chip c">' + hostName(h.host) + ' ' + h.citadel_modules + '/8</span>').join('') + '</div>'
+      : '<div class="empty">Ingen endnu.</div>';
+    const milestones = s.milestones.length
+      ? '<div class="chips">' + s.milestones.map(m => '<span class="chip">' + (MILESTONE[m] || [m])[0] + '</span>').join('') + '</div>'
+      : '<div class="empty">Ingen endnu.</div>';
+    return '<div class="facets">'
+      + '<div class="facet"><h4>Skjulested</h4>'
+      + '<div class="row"><span>Taps</span><span class="v">' + s.taps + '/8</span></div>' + cells(s.taps, 8)
+      + '<div class="row"><span>Citadel-moduler</span><span class="v">' + s.citadel_modules + '/8</span></div>' + cells(s.citadel_modules, 8)
+      + '<div class="row"><span>Rekrutter tilbage</span><span class="v">' + num(s.recruits_available) + '</span></div></div>'
+      + '<div class="facet"><h4>Forskning</h4>' + research
+      + '<div class="m" style="color:var(--muted);font-size:.84rem">Forsket: ' + (s.researched.length ? s.researched.map(item).join(', ') : 'intet endnu') + '</div></div>'
+      + '<div class="facet"><h4>Værksteder</h4>' + (jobs.length ? jobs.join('') : '<div class="empty">Ingen job i gang.</div>') + '</div>'
+      + '<div class="facet"><h4>Folk</h4>' + (people.length ? people.join('') : '<div class="empty">Ingen endnu. De første rekrutter er under uddannelse.</div>') + '</div>'
+      + '<div class="facet wide"><h4>Lager</h4>' + storeTable(s) + itemChips(s) + '</div>'
+      + '<div class="facet wide"><h4>Fartøjer</h4>' + (s.vessels.length ? '<div class="vessels">' + s.vessels.map(v => vesselCard(v, ctx)).join('') + '</div>' : '<div class="empty">Ingen endnu.</div>') + '</div>'
+      + '<div class="facet"><h4>Værter</h4>' + hosts + '</div>'
+      + '<div class="facet wide"><h4>Milepæle</h4>' + milestones + '</div>'
+      + '</div>';
+  }
+
+  function crewHtml(i, c) {
+    const t = T[i];
+    const ctx = context(i, c);
+    const rejected = {};
+    t.rejected.filter(r => r.crew === c).forEach(r => { rejected[r.index] = r.error; });
+    const orders = t.orders[c].length
+      ? '<ol class="orders">' + t.orders[c].map((cmd, k) =>
+        '<li>' + orderText(cmd, ctx) + (rejected[k] !== undefined ? ' <span class="rej">· afvist: ' + esc(errorText(rejected[k])) + '</span>' : '') + '</li>').join('') + '</ol>'
+      : '<div class="empty">Ingen ordrer. Planen kører af sig selv i denne tur.</div>';
+    const evs = t.events.filter(ev => playerOf(ev) === c);
+    const events = evs.length
+      ? '<ul class="events">' + evs.map(ev => {
+        const [cls, txt] = eventText(ev, ctx);
+        return '<li class="' + cls + '"><span class="day">' + dayOf(ev) + '</span><span class="txt">' + txt + '</span></li>';
+      }).join('') + '</ul>'
+      : '<div class="empty">Ingen hændelser i turens 10 dage.</div>';
+    return '<section class="crew" style="--c: var(--crew' + c + ')">'
+      + '<h2>' + esc(G.crews[c]) + ' <small>crew ' + (c + 1) + '</small></h2>'
+      + '<div><h3 class="sec">Ordrer ved turens start <span>· dag ' + (t.first_day - 1) + '</span></h3>' + orders + '</div>'
+      + '<div><h3 class="sec">Hændelser <span>· dag ' + t.first_day + '–' + t.last_day + '</span></h3>' + events + '</div>'
+      + '<div><h3 class="sec">Status efter turen <span>· dag ' + t.last_day + '</span></h3>' + statusHtml(t.crews[c], ctx) + '</div>'
+      + '</section>';
+  }
+
+  // ---- timeline, key points, navigation
+  const slider = document.getElementById('turn');
+  const label = document.getElementById('label');
+  const crews = document.getElementById('crews');
+  const timeline = document.getElementById('timeline');
+  const prev = document.getElementById('prev');
+  const next = document.getElementById('next');
+  const nextEvent = document.getElementById('nextEvent');
+  slider.max = N - 1;
+  document.getElementById('sub').textContent = G.crews.length + ' crews · ' + G.turn_days + ' dage pr. tur · ' + N + ' ture · seed ' + G.seed;
+
+  const notableTurns = T.map(t => {
+    const who = new Set(t.events.filter(notable).map(playerOf));
+    return { who, text: t.events.filter(notable).map(ev => G.crews[playerOf(ev)] + ': ' + eventText(ev, context(t.turn, playerOf(ev)))[1]).join('\n') };
+  });
+  const ticks = [];
+  T.forEach((t, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    const n = notableTurns[i];
+    b.className = 'tick' + (n.who.size === 0 ? '' : n.who.size > 1 ? ' n2' : ' n' + [...n.who][0]);
+    b.title = 'Tur ' + (i + 1) + ' · dag ' + t.first_day + '–' + t.last_day + (n.text ? '\n' + n.text : '');
+    b.setAttribute('aria-label', b.title);
+    b.addEventListener('click', () => go(i));
+    timeline.appendChild(b);
+    ticks.push(b);
+  });
+
+  const keypoints = [];
+  const seen = new Set();
+  T.forEach((t, i) => {
+    t.events.forEach(ev => {
+      const k = Object.keys(ev)[0];
+      let key = null, text = null;
+      if (k === 'RecruitsGraduated') { key = 'grad'; text = 'Første rekrutter uddannet'; }
+      if (k === 'ItemBuilt' && ev[k].item === 'DropperEngine') { key = 'dropper'; text = 'Dropperen kan samles'; }
+      if (k === 'Unlocked') { key = ev[k].milestone; text = (MILESTONE[key] || [key])[0]; }
+      if (k === 'ItemBuilt' && ev[k].item === 'WormEngine') { key = 'worm'; text = 'Ormen kan samles'; }
+      if (k === 'HostClaimed') { key = 'claim'; text = 'Første vært indtaget'; }
+      if (key && !seen.has(key)) { seen.add(key); keypoints.push([i, text]); }
+    });
+  });
+  const kp = document.getElementById('keypoints');
+  keypoints.forEach(([i, text]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = '<span>Tur ' + (i + 1) + '</span> ' + esc(text);
+    b.addEventListener('click', () => go(i));
+    kp.appendChild(b);
+  });
+
+  let current = 0;
+  function render() {
+    const t = T[current];
+    slider.value = current;
+    label.innerHTML = '<b>Tur ' + (current + 1) + '</b> / ' + N + ' · dag ' + t.first_day + '–' + t.last_day + ' · ' + date(t.last_day);
+    prev.disabled = current === 0;
+    next.disabled = current === N - 1;
+    nextEvent.disabled = !notableTurns.slice(current + 1).some(n => n.who.size > 0);
+    ticks.forEach((b, i) => b.classList.toggle('current', i === current));
+    crews.innerHTML = G.crews.map((_, c) => crewHtml(current, c)).join('');
+    try { localStorage.setItem('nullnet-replay-turn', String(current)); } catch (e) { /* storage may be unavailable */ }
+  }
+  function go(i) {
+    current = Math.max(0, Math.min(N - 1, i));
+    render();
+  }
+  slider.addEventListener('input', () => go(Number(slider.value)));
+  prev.addEventListener('click', () => go(current - 1));
+  next.addEventListener('click', () => go(current + 1));
+  nextEvent.addEventListener('click', () => {
+    const i = notableTurns.findIndex((n, k) => k > current && n.who.size > 0);
+    if (i >= 0) go(i);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'ArrowRight') { go(current + 1); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { go(current - 1); e.preventDefault(); }
+  });
+
+  let start = 0;
+  try {
+    const saved = Number(localStorage.getItem('nullnet-replay-turn'));
+    if (Number.isFinite(saved) && saved > 0 && saved < N) start = saved;
+  } catch (e) { /* fine without it */ }
+  go(start);
+})();
+</script>
