@@ -3,10 +3,12 @@ use serde::{Deserialize, Serialize};
 /// Game day. Day 0 is the start of the game.
 pub type Day = u32;
 
-/// Calendar date as the original shows it: year 3100 + day / 1000, and the
-/// day within that year (0-999).
-pub fn calendar_date(day: Day) -> (u32, u32) {
-    (3100 + day / 1000, day % 1000)
+/// The day the first internet went down and NullNet began: day 0.
+pub const EPOCH: &str = "ResetN00L";
+
+/// A day as the game shows it: days since ResetN00L, written `RN+0350`.
+pub fn date(day: Day) -> String {
+    format!("RN+{day:04}")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -30,10 +32,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn calendar_matches_the_original() {
-        assert_eq!(calendar_date(0), (3100, 0));
-        assert_eq!(calendar_date(999), (3100, 999));
-        assert_eq!(calendar_date(1000), (3101, 0));
-        assert_eq!(calendar_date(2345), (3102, 345));
+    fn dates_count_days_since_the_reset() {
+        assert_eq!(date(0), "RN+0000");
+        assert_eq!(date(350), "RN+0350");
+        assert_eq!(date(2345), "RN+2345");
+        assert_eq!(date(12345), "RN+12345");
     }
 }

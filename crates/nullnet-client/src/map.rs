@@ -9,7 +9,7 @@ use bevy::camera::ScalingMode;
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
 use bevy::window::PrimaryWindow;
-use nullnet_core::{GameData, HostDef, HostId, NetworkDef, calendar_date};
+use nullnet_core::{EPOCH, GameData, HostDef, HostId, NetworkDef, date};
 
 use crate::materials::{
     BackgroundMaterial, BackgroundParams, LinkMaterial, LinkParams, NodeKind, NodeMaterial,
@@ -373,9 +373,9 @@ fn spawn_scene(
 fn spawn_hud(mut commands: Commands) {
     let data = GameData::classic();
     let network = home_network(&data).name.to_uppercase();
-    let (year, day) = calendar_date(0);
     let bright = TextColor(Color::srgb(0.88, 0.95, 1.0));
     let dim = TextColor(Color::srgba(0.72, 0.84, 0.95, 0.65));
+    let faint = TextColor(Color::srgba(0.72, 0.84, 0.95, 0.4));
 
     commands.spawn((
         Node {
@@ -389,9 +389,14 @@ fn spawn_hud(mut commands: Commands) {
         children![
             (Text::new("NULLNET"), TextFont::from_font_size(34.0), bright),
             (
-                Text::new(format!("{network}   {year}.{day:03}")),
+                Text::new(format!("{network}   {}", date(0))),
                 TextFont::from_font_size(15.0),
                 dim,
+            ),
+            (
+                Text::new(format!("days since {}", EPOCH.to_uppercase())),
+                TextFont::from_font_size(11.0),
+                faint,
             ),
         ],
     ));

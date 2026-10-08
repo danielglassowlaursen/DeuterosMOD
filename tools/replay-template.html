@@ -155,6 +155,7 @@
       <span><b>Koblet</b>: til citadellet over værten</span>
       <span><b>Lurende</b>: ude på nettet, hvor moduler installeres</span>
       <span><b>Proxykæder</b>: anonymisering, brændstoffet for droppere og orme</span>
+      <span><b>RN+0820</b>: dag 820 siden ResetN00L, crashet der tog det første internet ned</span>
     </div>
     <div class="keypoints" id="keypoints"></div>
   </details>
@@ -212,7 +213,7 @@
     const h = G.hosts[id];
     return h ? h.name : 'vært ' + id;
   }
-  function date(day) { return (3100 + Math.floor(day / 1000)) + '.' + String(day % 1000).padStart(3, '0'); }
+  function date(day) { return 'RN+' + String(day).padStart(4, '0'); }
   function kindPl(k, n) { return (KIND[k] || [k, k])[n === 1 ? 0 : 1]; }
   function rank(team) { return (RANK[team.kind] || [])[team.level - 1] || ('niveau ' + team.level); }
   function teamText(t) { return esc(t.leader) + ' · ' + t.count + ' ' + kindPl(t.kind, t.count) + ' · ' + rank(t); }

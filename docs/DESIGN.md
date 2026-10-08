@@ -6,7 +6,7 @@ Temaet blev udviklet i brainstorm-dokumentet [Deuteros: hacker-univers](https://
 
 ## Verden
 
-Det første internet brød sammen i Nedbruddet, da en AI gik amok og tog kontrollen over det. Menneskeheden byggede et nyt net fra bunden og kaldte det NullNet. Hver spiller leder en hacker-crew, der genopretter forbindelsen til glemte netværk og tager dem i besiddelse, før rivalerne gør det. AI'en døde dog ikke helt: resterne af den lever videre i de glemte servere som **The Legacy Net**.
+Det første internet brød sammen i **ResetN00L**, da en AI gik amok og tog kontrollen over det. Menneskeheden byggede et nyt net fra bunden og kaldte det NullNet. Spillets kalender tæller dage siden ResetN00L: dag 350 skrives `RN+0350`. Hver spiller leder en hacker-crew, der genopretter forbindelsen til glemte netværk og tager dem i besiddelse, før rivalerne gør det. AI'en døde dog ikke helt: resterne af den lever videre i de glemte servere som **The Legacy Net**.
 
 ## Beslutninger
 

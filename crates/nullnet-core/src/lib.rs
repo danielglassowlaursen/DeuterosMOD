@@ -30,7 +30,7 @@ pub mod world;
 pub use command::{Command, CommandError};
 pub use data::{GameData, HostDef, NetworkDef};
 pub use exfil::{ExfilScript, Route};
-pub use ids::{Day, HostId, NetworkId, PlayerId, calendar_date};
+pub use ids::{Day, EPOCH, HostId, NetworkId, PlayerId, date};
 pub use items::ItemType;
 pub use links::LinkConfig;
 pub use rng::Rng;

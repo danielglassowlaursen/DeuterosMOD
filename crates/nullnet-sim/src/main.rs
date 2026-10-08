@@ -14,7 +14,7 @@ use std::process::ExitCode;
 
 use nullnet_core::{
     Command, CommandError, Controller, Event, GameData, Orders, PlayerId, VesselKind, World, bot,
-    calendar_date, resolve_turn,
+    date, resolve_turn,
 };
 
 const NAMES: [&str; 4] = ["Ghostline", "Blackice", "Nullsector", "Redshift"];
@@ -261,9 +261,4 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
-}
-
-fn date(day: u32) -> String {
-    let (year, day) = calendar_date(day);
-    format!("{year}.{day:03}")
 }
