@@ -143,12 +143,12 @@
 
   <details class="intro" id="intro" open>
     <summary>Sådan læser du afspilningen</summary>
-    <p>To bots, <b>Ghostline</b> og <b>Blackice</b>, spiller mod hinanden på det klassiske kort. Hver tur giver begge crews deres ordrer samtidig uden at kende modpartens. Derefter kører spillet 10 dage, og alt, hvad der sker, logges. Botterne husker intet mellem turene: de ser kun verdens tilstand og giver de ordrer, der flytter deres plan ét skridt videre.</p>
+    <p>To bots, <b>Ghostline</b> og <b>Blackice</b>, spiller mod hinanden i <b>Metro</b>, byens net, hvor begge crews har deres skjulested på værten <b>Exchange</b>. Hver tur giver begge crews deres ordrer samtidig uden at kende modpartens. Derefter kører spillet 10 dage, og alt, hvad der sker, logges. Botterne husker intet mellem turene: de ser kun verdens tilstand og giver de ordrer, der flytter deres plan ét skridt videre.</p>
     <p>For hver tur ser du tre ting pr. crew: <b>ordrerne</b> ved turens start, <b>hændelserne</b> i turens 10 dage og <b>status</b>, når turen er slut. Botternes plan har tre faser:</p>
     <ol>
       <li>Rekruttér folk, forsk, byg taps og en dropper, og bær citadel-moduler ud, til citadellet over skjulestedet er færdigt (8 moduler).</li>
       <li>Flyt kodere og operatører op i citadellet, forsyn det med ressourcer, og byg en orm der.</li>
-      <li>Send ormen ud med citadel-moduler og indtag frie værter i hjemmenettet. Den første, der installerer et modul på en fri vært, ejer den.</li>
+      <li>Send ormen ud med citadel-moduler og indtag frie værter i Metro: servere som Transit og Waterworks og deres undersystemer. Den første, der installerer et modul på en fri vært, ejer den.</li>
     </ol>
     <div class="legend">
       <span><b>Plantet</b>: inde i værten gennem bagdøren</span>
@@ -209,9 +209,8 @@
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   const num = n => n.toLocaleString('da-DK');
   function hostName(id) {
-    if (id === HOME) return 'skjulestedet';
     const h = G.hosts[id];
-    return h ? cap(h.name.replace(/_/g, ' ')) : 'vært ' + id;
+    return h ? h.name : 'vært ' + id;
   }
   function date(day) { return (3100 + Math.floor(day / 1000)) + '.' + String(day % 1000).padStart(3, '0'); }
   function kindPl(k, n) { return (KIND[k] || [k, k])[n === 1 ? 0 : 1]; }

@@ -5,7 +5,7 @@ Et strategispil i et hacker-univers med asynkron, turbaseret online-multiplayer,
 | Mappe | Indhold |
 |---|---|
 | `crates/nullnet-core` | Spillets regler: ren, deterministisk Rust uden motor eller I/O |
-| `crates/nullnet-client` | Web-klienten (Bevy → WebAssembly) med procedurel grafik |
+| `crates/nullnet-client` | Web-klienten (Bevy → WebAssembly): netværkskortet, tegnet i shaders |
 | `crates/nullnet-sim` | Lader bot-crews spille mod hinanden og udskriver tidslinjen |
 | `web/`, `scripts/` | HTML-side og build-script til browseren |
 | `Godot/` | Godot-remaken [DeuterosOrg/Deuteros-Resurrected](https://github.com/DeuterosOrg/Deuteros-Resurrected), brugt som opslagsværk for regler og data |

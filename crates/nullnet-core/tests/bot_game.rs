@@ -126,7 +126,7 @@ fn check_world(data: &GameData, before: &World, world: &World, report: &TurnRepo
 
     // Without combat, a held host stays with its holder.
     for (index, (old, new)) in before.hosts.iter().zip(&world.hosts).enumerate() {
-        let what = format!("{} on day {}", data.hosts[index].classic, world.day);
+        let what = format!("{} on day {}", data.hosts[index].name, world.day);
         check_site(&new.site, &what);
         if old.controller.is_some() {
             assert_eq!(old.controller, new.controller, "{what}");
@@ -220,7 +220,7 @@ fn rival_crews_race_for_the_home_network_without_breaking_the_rules() {
                 def.network == home
                     && !def.cache_field
                     && state.controller.is_none()
-                    && def.classic != data.host(data.hideout.host).classic
+                    && def.name != data.host(data.hideout.host).name
             })
             .count();
         let total: usize = world

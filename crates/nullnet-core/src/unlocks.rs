@@ -253,12 +253,12 @@ mod tests {
     #[test]
     fn holding_a_freed_legacy_citadel_reveals_its_technology() {
         let (data, mut world) = new_game();
-        let jupiter = data
+        let colossus = data
             .hosts
             .iter()
-            .position(|h| h.classic == "jupiter")
+            .position(|h| h.name == "Colossus")
             .unwrap();
-        world.hosts[jupiter].controller = Some(Controller::Crew(CREW));
+        world.hosts[colossus].controller = Some(Controller::Crew(CREW));
         let granted = check(&data, &mut world, &[]);
         assert_eq!(
             unlocked(&granted),

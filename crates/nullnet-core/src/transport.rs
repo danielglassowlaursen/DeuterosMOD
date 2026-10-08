@@ -893,13 +893,8 @@ mod tests {
     const CREW: PlayerId = PlayerId(0);
     const RIVAL: PlayerId = PlayerId(1);
 
-    fn host(data: &GameData, classic: &str) -> HostId {
-        HostId(
-            data.hosts
-                .iter()
-                .position(|h| h.classic == classic)
-                .unwrap() as u16,
-        )
+    fn host(data: &GameData, name: &str) -> HostId {
+        HostId(data.hosts.iter().position(|h| h.name == name).unwrap() as u16)
     }
 
     /// A new game where the crew's hideout already has a citadel, operator
@@ -990,17 +985,17 @@ mod tests {
     #[test]
     fn latency_follows_the_original_within_a_network() {
         let data = GameData::classic();
-        let earth = host(&data, "earth");
-        assert_eq!(latency(&data, earth, host(&data, "the_moon")), 2);
-        assert_eq!(latency(&data, earth, host(&data, "mars")), 4);
-        assert_eq!(latency(&data, earth, host(&data, "jupiter")), 12);
-        assert_eq!(latency(&data, host(&data, "mars"), earth), 4);
+        let exchange = host(&data, "Exchange");
+        assert_eq!(latency(&data, exchange, host(&data, "Mirror")), 2);
+        assert_eq!(latency(&data, exchange, host(&data, "Transit")), 4);
+        assert_eq!(latency(&data, exchange, host(&data, "Colossus")), 12);
+        assert_eq!(latency(&data, host(&data, "Transit"), exchange), 4);
 
         let elsewhere = data.hosts.iter().position(|h| h.network.0 == 1).unwrap();
         let elsewhere = HostId(elsewhere as u16);
         let order = data.host(elsewhere).order;
         assert_eq!(
-            latency(&data, earth, elsewhere),
+            latency(&data, exchange, elsewhere),
             3 * 4 + (order + 1) * 4 + NETWORK_HOP_DAYS
         );
     }
@@ -1137,9 +1132,9 @@ mod tests {
     }
 
     #[test]
-    fn a_worm_routes_to_mars_and_claims_it() {
+    fn a_worm_routes_to_transit_and_claims_it() {
         let (data, mut world) = setup();
-        let mars = host(&data, "mars");
+        let transit = host(&data, "Transit");
         let worm = ready_worm(&data, &mut world);
         orders(
             &data,
@@ -1147,7 +1142,7 @@ mod tests {
             vec![Command::Dispatch {
                 vessel: worm,
                 to: Destination {
-                    host: mars,
+                    host: transit,
                     berth: Berth::Lurking,
                 },
             }],
@@ -1177,8 +1172,8 @@ mod tests {
                 Event::Installed { installed: 1, .. }
             ]
         ));
-        assert_eq!(world.host(mars).controller, Some(Controller::Crew(CREW)));
-        assert_eq!(world.host(mars).site.citadel.modules, 1);
+        assert_eq!(world.host(transit).controller, Some(Controller::Crew(CREW)));
+        assert_eq!(world.host(transit).site.citadel.modules, 1);
     }
 
     #[test]
@@ -1191,7 +1186,7 @@ mod tests {
         };
         let other_network =
             HostId(data.hosts.iter().position(|h| h.network.0 == 1).unwrap() as u16);
-        let jupiter = host(&data, "jupiter");
+        let colossus = host(&data, "Colossus");
         let report = resolve_turn(
             &data,
             &mut world,
@@ -1199,8 +1194,8 @@ mod tests {
                 CREW,
                 vec![
                     dispatch(other_network, Berth::Lurking),
-                    dispatch(jupiter, Berth::Connected),
-                    dispatch(jupiter, Berth::Planted),
+                    dispatch(colossus, Berth::Connected),
+                    dispatch(colossus, Berth::Planted),
                 ],
             )]),
             0,
@@ -1210,19 +1205,19 @@ mod tests {
             errors,
             [
                 CommandError::OutOfRange(other_network),
-                CommandError::HostTaken(jupiter),
+                CommandError::HostTaken(colossus),
                 CommandError::WrongBerth,
             ]
         );
         // Lurking outside the Legacy Net's host is allowed.
-        orders(&data, &mut world, vec![dispatch(jupiter, Berth::Lurking)]);
+        orders(&data, &mut world, vec![dispatch(colossus, Berth::Lurking)]);
     }
 
     #[test]
     fn a_vessel_without_anonymisation_stops_and_is_burned_while_lurking() {
         let (data, mut world) = setup();
         let worm = ready_worm(&data, &mut world);
-        let mars = host(&data, "mars");
+        let transit = host(&data, "Transit");
         // Exactly enough for the trip: 1 to disconnect, 4 to route.
         world.vessels.get_mut(&worm).unwrap().fuel = 5;
         orders(
@@ -1231,7 +1226,7 @@ mod tests {
             vec![Command::Dispatch {
                 vessel: worm,
                 to: Destination {
-                    host: mars,
+                    host: transit,
                     berth: Berth::Lurking,
                 },
             }],
@@ -1423,7 +1418,7 @@ mod tests {
             vec![Command::Dispatch {
                 vessel: worm,
                 to: Destination {
-                    host: host(&data, "saturn"),
+                    host: host(&data, "Waterworks"),
                     berth: Berth::Lurking,
                 },
             }],

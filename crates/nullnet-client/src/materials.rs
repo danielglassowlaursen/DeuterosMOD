@@ -1,5 +1,5 @@
 //! Shader-driven materials. Every visual is generated on the GPU, so the
-//! client ships no image assets for planets, stars or the backdrop.
+//! client ships no image assets for nodes, lines or the backdrop.
 
 use bevy::asset::{AssetPath, embedded_asset, embedded_path};
 use bevy::prelude::*;
@@ -12,10 +12,12 @@ pub struct MaterialsPlugin;
 impl Plugin for MaterialsPlugin {
     fn build(&self, app: &mut App) {
         load_shader_library!(app, "shaders/noise.wgsl");
-        embedded_asset!(app, "shaders/planet.wgsl");
+        embedded_asset!(app, "shaders/node.wgsl");
+        embedded_asset!(app, "shaders/link.wgsl");
         embedded_asset!(app, "shaders/background.wgsl");
         app.add_plugins((
-            Material2dPlugin::<PlanetMaterial>::default(),
+            Material2dPlugin::<NodeMaterial>::default(),
+            Material2dPlugin::<LinkMaterial>::default(),
             Material2dPlugin::<BackgroundMaterial>::default(),
         ));
     }
@@ -25,51 +27,77 @@ fn embedded_shader(path: AssetPath<'static>) -> ShaderRef {
     ShaderRef::Path(path.with_source("embedded"))
 }
 
+/// What a node on the map stands for; the shader draws each differently.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Surface {
-    Rocky,
-    Gas,
-    Earth,
-    Ice,
-    Star,
+pub enum NodeKind {
+    /// A server, mainframe or facility: a hexagonal node.
+    Host,
+    /// A service on a host: a small round node.
+    Subsystem,
+    /// The trunk every network hangs off: a vertical beam.
+    Backbone,
+    /// A field of abandoned data caches: scattered fragments.
+    CacheField,
 }
 
 #[derive(Clone, Copy, Debug, Default, ShaderType)]
-pub struct PlanetParams {
-    pub color_a: Vec4,
-    pub color_b: Vec4,
-    pub color_c: Vec4,
-    /// rgb: atmosphere colour, a: strength.
-    pub atmosphere: Vec4,
-    /// x: surface kind, y: noise scale, z: spin speed, w: seed.
+pub struct NodeParams {
+    /// The node's own colour.
+    pub fill: Vec4,
+    /// rgb: the firewall glow in its holder's colour, a: strength.
+    pub ring: Vec4,
+    /// x: kind, y: seed, z: hover highlight (0-1), w: pulse rate.
     pub shape: Vec4,
-    /// x: ring inner radius, y: ring outer radius (0 = none), z: ring tilt,
-    /// w: hover highlight (0-1).
-    pub extra: Vec4,
-    /// x: quad half extent in planet radii.
+    /// x: quad half extent in node radii, y: height over width.
     pub quad: Vec4,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
-pub struct PlanetMaterial {
+pub struct NodeMaterial {
     #[uniform(0)]
-    pub params: PlanetParams,
+    pub params: NodeParams,
 }
 
-impl PlanetMaterial {
+impl NodeMaterial {
     pub fn highlight(&self) -> f32 {
-        self.params.extra.w
+        self.params.shape.z
     }
 
     pub fn set_highlight(&mut self, value: f32) {
-        self.params.extra.w = value;
+        self.params.shape.z = value;
     }
 }
 
-impl Material2d for PlanetMaterial {
+impl Material2d for NodeMaterial {
     fn fragment_shader() -> ShaderRef {
         embedded_shader(AssetPath::from_path_buf(embedded_path!(
-            "shaders/planet.wgsl"
+            "shaders/node.wgsl"
+        )))
+    }
+
+    fn alpha_mode(&self) -> AlphaMode2d {
+        AlphaMode2d::Blend
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, ShaderType)]
+pub struct LinkParams {
+    pub color: Vec4,
+    /// x: length in world units, y: thickness in world units, z: packet
+    /// speed in world units per second, w: seed.
+    pub shape: Vec4,
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
+pub struct LinkMaterial {
+    #[uniform(0)]
+    pub params: LinkParams,
+}
+
+impl Material2d for LinkMaterial {
+    fn fragment_shader() -> ShaderRef {
+        embedded_shader(AssetPath::from_path_buf(embedded_path!(
+            "shaders/link.wgsl"
         )))
     }
 
@@ -82,8 +110,9 @@ impl Material2d for PlanetMaterial {
 pub struct BackgroundParams {
     /// xy: parallax offset in world units.
     pub offset: Vec4,
-    pub nebula_a: Vec4,
-    pub nebula_b: Vec4,
+    pub grid: Vec4,
+    pub fog_a: Vec4,
+    pub fog_b: Vec4,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]

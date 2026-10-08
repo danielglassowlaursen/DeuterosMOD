@@ -1,5 +1,5 @@
+mod map;
 mod materials;
-mod sol;
 
 use bevy::prelude::*;
 
@@ -18,6 +18,6 @@ fn main() {
             }),
             ..default()
         }))
-        .add_plugins((materials::MaterialsPlugin, sol::SolPlugin))
+        .add_plugins((materials::MaterialsPlugin, map::MapPlugin))
         .run();
 }

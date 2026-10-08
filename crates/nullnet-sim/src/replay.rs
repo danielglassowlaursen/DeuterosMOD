@@ -139,7 +139,7 @@ impl Replay {
                 .hosts
                 .iter()
                 .map(|def| HostInfo {
-                    name: def.classic.clone(),
+                    name: def.name.clone(),
                     network: def.network.0,
                     order: def.order,
                     parent: def.parent.map(|p| p.0),

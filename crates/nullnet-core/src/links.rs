@@ -211,11 +211,11 @@ mod tests {
         let data = GameData::classic();
         let mut world = World::new_game(&data, 4, &[(CREW, "Crew")]);
         let home = data.hideout.host;
-        let mars = HostId(data.hosts.iter().position(|h| h.classic == "mars").unwrap() as u16);
+        let transit = HostId(data.hosts.iter().position(|h| h.name == "Transit").unwrap() as u16);
         let hideout = &mut world.players.get_mut(&CREW).unwrap().hideout.citadel;
         hideout.modules = 8;
         hideout.store.add(ItemType::EncryptedLink, 1);
-        let host = &mut world.hosts[usize::from(mars.0)];
+        let host = &mut world.hosts[usize::from(transit.0)];
         host.controller = Some(Controller::Crew(CREW));
         host.site.citadel.modules = 8;
         host.site.citadel.store.add(ItemType::EncryptedLink, 1);
@@ -224,21 +224,21 @@ mod tests {
             &mut world,
             vec![
                 Command::InstallLink { host: home },
-                Command::InstallLink { host: mars },
+                Command::InstallLink { host: transit },
             ],
         );
         assert!(report.rejected.is_empty(), "{:?}", report.rejected);
-        (data, world, home, mars)
+        (data, world, home, transit)
     }
 
     fn count(data: &GameData, world: &World, host: HostId, item: ItemType) -> u32 {
         citadel(data, world, CREW, host).unwrap().store.get(item)
     }
 
-    fn link(home: HostId, mars: HostId, send: Vec<ItemType>, balance: Vec<ItemType>) -> Command {
+    fn link(home: HostId, transit: HostId, send: Vec<ItemType>, balance: Vec<ItemType>) -> Command {
         Command::ConfigureLink {
             host: home,
-            target: Some(mars),
+            target: Some(transit),
             send,
             balance,
         }
@@ -246,7 +246,7 @@ mod tests {
 
     #[test]
     fn a_link_sends_one_item_a_day_in_turn() {
-        let (data, mut world, home, mars) = setup();
+        let (data, mut world, home, transit) = setup();
         let citadel = &mut world.players.get_mut(&CREW).unwrap().hideout.citadel;
         citadel.store.add(ItemType::Compute, 700);
         citadel.store.add(ItemType::Code, 30);
@@ -255,7 +255,7 @@ mod tests {
             &mut world,
             vec![link(
                 home,
-                mars,
+                transit,
                 vec![ItemType::Compute, ItemType::Code],
                 vec![],
             )],
@@ -263,16 +263,16 @@ mod tests {
         assert!(report.rejected.is_empty(), "{:?}", report.rejected);
 
         resolve_turn(&data, &mut world, &Orders::new(), 1);
-        assert_eq!(count(&data, &world, mars, ItemType::Compute), 700);
-        assert_eq!(count(&data, &world, mars, ItemType::Code), 0);
+        assert_eq!(count(&data, &world, transit, ItemType::Compute), 700);
+        assert_eq!(count(&data, &world, transit, ItemType::Code), 0);
         resolve_turn(&data, &mut world, &Orders::new(), 1);
-        assert_eq!(count(&data, &world, mars, ItemType::Code), 30);
+        assert_eq!(count(&data, &world, transit, ItemType::Code), 30);
         assert_eq!(count(&data, &world, home, ItemType::Compute), 0);
     }
 
     #[test]
     fn balancing_evens_the_stores_without_creating_units() {
-        let (data, mut world, home, mars) = setup();
+        let (data, mut world, home, transit) = setup();
         world
             .players
             .get_mut(&CREW)
@@ -281,7 +281,7 @@ mod tests {
             .citadel
             .store
             .add(ItemType::Crypto, 1001);
-        world.hosts[usize::from(mars.0)]
+        world.hosts[usize::from(transit.0)]
             .site
             .citadel
             .store
@@ -289,30 +289,33 @@ mod tests {
         orders(
             &data,
             &mut world,
-            vec![link(home, mars, vec![], vec![ItemType::Crypto])],
+            vec![link(home, transit, vec![], vec![ItemType::Crypto])],
         );
         resolve_turn(&data, &mut world, &Orders::new(), 1);
         assert_eq!(count(&data, &world, home, ItemType::Crypto), 501);
-        assert_eq!(count(&data, &world, mars, ItemType::Crypto), 500);
+        assert_eq!(count(&data, &world, transit, ItemType::Crypto), 500);
     }
 
     #[test]
     fn links_need_linked_citadels_on_both_ends() {
-        let (data, mut world, home, mars) = setup();
-        let jupiter = HostId(
+        let (data, mut world, home, transit) = setup();
+        let colossus = HostId(
             data.hosts
                 .iter()
-                .position(|h| h.classic == "jupiter")
+                .position(|h| h.name == "Colossus")
                 .unwrap() as u16,
         );
-        world.hosts[usize::from(mars.0)].site.citadel.encrypted_link = false;
+        world.hosts[usize::from(transit.0)]
+            .site
+            .citadel
+            .encrypted_link = false;
         let report = orders(
             &data,
             &mut world,
             vec![
-                link(home, mars, vec![ItemType::Compute], vec![]),
+                link(home, transit, vec![ItemType::Compute], vec![]),
                 link(home, home, vec![ItemType::Compute], vec![]),
-                link(jupiter, home, vec![], vec![]),
+                link(colossus, home, vec![], vec![]),
                 Command::InstallLink { host: home },
             ],
         );
@@ -320,9 +323,9 @@ mod tests {
         assert_eq!(
             errors,
             [
-                CommandError::NoLink(mars),
+                CommandError::NoLink(transit),
                 CommandError::NoLink(home),
-                CommandError::NoLink(jupiter),
+                CommandError::NoLink(colossus),
                 CommandError::AlreadyComplete,
             ]
         );

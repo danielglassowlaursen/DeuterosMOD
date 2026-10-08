@@ -396,7 +396,7 @@ mod tests {
     #[test]
     fn routes_must_fit_the_vessel() {
         let (data, mut world, dropper) = setup();
-        let mars = HostId(data.hosts.iter().position(|h| h.classic == "mars").unwrap() as u16);
+        let transit = HostId(data.hosts.iter().position(|h| h.name == "Transit").unwrap() as u16);
         let with = |change: &dyn Fn(&mut Route)| {
             let mut route = up_and_down(&data);
             change(&mut route);
@@ -412,7 +412,7 @@ mod tests {
                 with(&|r| r.to.berth = Berth::Lurking),
                 with(&|r| r.to = r.from),
                 with(&|r| r.outbound.push(ItemType::Tap)),
-                with(&|r| r.to.host = mars),
+                with(&|r| r.to.host = transit),
             ],
         );
         let errors: Vec<_> = report.rejected.iter().map(|r| r.error.clone()).collect();
@@ -422,7 +422,7 @@ mod tests {
                 CommandError::WrongBerth,
                 CommandError::WrongBerth,
                 CommandError::WrongModule(ItemType::Tap),
-                CommandError::NotYourHost(mars),
+                CommandError::NotYourHost(transit),
             ]
         );
 

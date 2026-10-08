@@ -58,8 +58,10 @@ pub struct ItemDef {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NetworkDef {
-    /// The star this network was in Deuteros.
+    /// The star this network was in Deuteros; a porting key, never shown.
     pub classic: String,
+    /// The network's name in NullNet.
+    pub name: String,
     /// How many hosts the Legacy Net holds here at random from the start;
     /// `None` for the home network, whose Legacy hosts are fixed.
     pub random_legacy_hosts: Option<u32>,
@@ -69,8 +71,12 @@ pub struct NetworkDef {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostDef {
-    /// The planet or moon this host was in Deuteros.
+    /// The planet or moon this host was in Deuteros; a porting key, never
+    /// shown.
     pub classic: String,
+    /// The host's name in NullNet: a server, a mainframe, a facility, or
+    /// for a subsystem the service it runs on its parent.
+    pub name: String,
     pub network: NetworkId,
     /// Position in the network, which sets travel time.
     pub order: u32,
@@ -147,7 +153,11 @@ impl GameData {
 
     fn validate(&self) -> Result<(), DataError> {
         let fail = |message: String| Err(DataError(message));
+        let mut names = std::collections::BTreeSet::new();
         for (index, host) in self.hosts.iter().enumerate() {
+            if host.name.is_empty() || !names.insert(host.name.as_str()) {
+                return fail(format!("host {index} needs a name of its own"));
+            }
             if usize::from(host.network.0) >= self.networks.len() {
                 return fail(format!(
                     "host {index} is in unknown network {}",

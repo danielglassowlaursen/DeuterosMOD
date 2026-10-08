@@ -228,7 +228,7 @@ mod tests {
                 held,
                 network.random_legacy_hosts.unwrap_or(0) + fixed,
                 "{}",
-                network.classic
+                network.name
             );
         }
         let legacy = world.hosts.iter().filter(|h| h.controller.is_some());

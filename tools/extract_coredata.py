@@ -18,6 +18,194 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SOURCE = ROOT / "Godot/Code/CoreData.cs"
 DEFAULT_OUTPUT = ROOT / "crates/nullnet-core/data/classic.json"
 
+# Deuteros star -> NullNet network. Each network is one corner of the net
+# with its own naming theme, as each of Deuteros's star systems had.
+NETWORKS = {
+    "the_sun": "Metro",  # the city's net: exchange, utilities, transit, clinic
+    "proxima": "Orbital",  # a satellite constellation and its ground stations
+    "centauri": "Bankwire",  # financial mainframes
+    "barnard": "Campus",  # a university's net
+    "lalande": "Ministry",  # the state's net
+    "sirius": "Nimbus",  # a pair of cloud regions
+    "cygni": "Foundry",  # industrial control systems
+    "procyon": "Helix",  # biotech laboratories
+    "tau_ceti": "Lattice",  # the AI compute net where the Legacy Net was born
+}
+
+# Deuteros planet or moon -> NullNet host. Top-level hosts are servers,
+# mainframes and facilities; their subsystems are the services on them.
+HOSTS = {
+    # Metro
+    "mercury": "Beacon",
+    "venus": "Switchboard",
+    "earth": "Exchange",
+    "the_moon": "Mirror",
+    "mars": "Transit",
+    "phobos": "Dispatch",
+    "deimos": "Ticketing",
+    "asteroids": "Scrapyard",
+    "jupiter": "Colossus",
+    "amalthea": "Payroll",
+    "io": "Census",
+    "europa": "Registry",
+    "ganymede": "Permits",
+    "callisto": "Courts",
+    "leda": "Tax",
+    "himalia": "Elections",
+    "elara": "Records",
+    "pasiphae": "Console",
+    "saturn": "Waterworks",
+    "mimas": "Pumps",
+    "encaladus": "Valves",
+    "tethys": "Filtration",
+    "dione": "Reservoir",
+    "rhea": "Telemetry",
+    "titan": "Metering",
+    "hyperion": "Sewer",
+    "iapetus": "Floodgate",
+    "phoebe": "Sampling",
+    "uranus": "Powergrid",
+    "miranda": "Switchgear",
+    "ariel": "Turbine",
+    "umbriel": "Breaker",
+    "titania": "Substation",
+    "oberon": "Control",
+    "neptune": "Clinic",
+    "triton": "Imaging",
+    "neried": "Pharmacy",
+    "nthree": "Triage",
+    "nfour": "Bloodwork",
+    "pluto": "Outpost",
+    "charon": "Repeater",
+    "decuria": "Lighthouse",
+    # Orbital
+    "atlantic": "Uplink",
+    "pacific": "Constellation",
+    "barent": "Polar",
+    "baltic": "Relay",
+    # Bankwire
+    "chiron": "Clearinghouse",
+    "cercops": "Vault",
+    "circe": "Teller",
+    "chimaera": "Escrow",
+    "cerberus": "Ledger",
+    "cronus": "Audit",
+    "chloe": "Settlement",
+    "calchas": "Forex",
+    "cadmus": "Custody",
+    "creon": "Mint",
+    "cybele": "Press",
+    "cupid": "Assay",
+    # Campus
+    "mycenae": "Registrar",
+    "tyre": "Observatory",
+    "ur": "Telescope",
+    "thebes": "Library",
+    "tanis": "Stacks",
+    "memphis": "Catalogue",
+    "karnak": "Manuscripts",
+    "gizeh": "Microfilm",
+    "calah": "Periodicals",
+    "noria": "Maps",
+    "abydos": "Theses",
+    "saqqara": "Reading room",
+    "pompeii": "Laboratory",
+    "petra": "Centrifuge",
+    "palmyra": "Cleanroom",
+    "jericho": "Faculty",
+    "babylon": "Physics",
+    "troy": "Chemistry",
+    "carthage": "Linguistics",
+    "crete": "Supercomputer",
+    "knossos": "Scheduler",
+    "delphi": "Scratch",
+    "ephesus": "Compiler",
+    "corinth": "Solver",
+    "athens": "Simulator",
+    "olympia": "Visualiser",
+    "mari": "Admissions",
+    "cuzco": "Scholarships",
+    # Ministry
+    "nero": "Cabinet",
+    "julius": "Intelligence",
+    "septimus": "Wiretap",
+    "augustus": "Dossiers",
+    "claudius": "Ciphers",
+    "hadrian": "Watchlist",
+    # Nimbus
+    "romulus": "Primary",
+    "remus": "Replica",
+    # Foundry
+    "helios": "Solar",
+    "lithos": "Quarry",
+    "burah": "Kiln",
+    "alumen": "Furnace",
+    "silex": "Crucible",
+    "sulfurum": "Refinery",
+    "chloros": "Cracker",
+    "argos": "Pipeline",
+    "calx": "Scrubber",
+    "titanes": "Smelter",
+    "vanadis": "Blast",
+    "chronos": "Ladle",
+    "selene": "Caster",
+    "bromos": "Mill",
+    "kryptos": "Coke",
+    "rubidos": "Slag",
+    "zargun": "Assembly",
+    "niobe": "Robotics",
+    "kadmeia": "Welding",
+    "tellus": "Paint",
+    "iodes": "Conveyor",
+    "xenos": "Inspection",
+    "caesius": "Packaging",
+    "rhenus": "Inventory",
+    "osme": "Chemworks",
+    "iris": "Mixer",
+    "platina": "Distiller",
+    "aurum": "Catalyst",
+    "thallos": "Tankfarm",
+    "astatos": "Flare",
+    "radius": "Reactor",
+    "aktis": "Core",
+    "protos": "Coolant",
+    "prasios": "Containment",
+    # Helix
+    "cambrian": "Genebank",
+    "cainozoic": "Sequencer",
+    "tertiary": "Primer",
+    "paleocene": "Assembler",
+    "eocene": "Aligner",
+    "oligocene": "Annotator",
+    "miocene": "Variant",
+    "pliocene": "Phenotype",
+    "paleozoic": "Cryostore",
+    "silurian": "Freezer",
+    # Lattice
+    "alpha": "Cortex",
+    "beta": "Tensor",
+    "delta": "Shard",
+    "gamma": "Oracle",
+    "theta": "Inference",
+    "iota": "Weights",
+    "kappa": "Tokenizer",
+    "epsilon": "Trainer",
+    "lambda": "Epoch",
+    "mu": "Gradient",
+    "nu": "Batch",
+    "xi": "Checkpoint",
+    "omicron": "Optimizer",
+    "pi": "Sampler",
+    "zeta": "Hive",
+    "rho": "Worker",
+    "sigma": "Queue",
+    "upsilon": "Broker",
+    "phi": "Monitor",
+    "chi": "Logger",
+    "psi": "Replayer",
+    "omega": "Sandbox",
+}
+
 # Deuteros item type -> NullNet ItemType (crates/nullnet-core/src/items.rs).
 ITEMS = {
     "iron": "Compute",
@@ -151,6 +339,7 @@ def extract_networks(src):
     return [
         {
             "classic": star,
+            "name": NETWORKS[star],
             # Sol's Legacy hosts are fixed in the host table; elsewhere this many are picked at random.
             "random_legacy_hosts": int(legacy_counts[star]) if star in legacy_counts else None,
             "legacy_attack_trigger": triggers[star],
@@ -179,6 +368,7 @@ def extract_hosts(src, networks):
         raw.append(
             {
                 "classic": match.group(1),
+                "name": HOSTS[match.group(1)],
                 "order": int(match.group(2)),
                 "network": network_index[field("ParentStar", r"Enums\.StellarBodies\.(\w+)")],
                 "parent": field("MoonParentPlanetId", r"Enums\.StellarBodies\.(\w+)"),
@@ -196,6 +386,9 @@ def extract_hosts(src, networks):
     index = {host["classic"]: i for i, host in enumerate(raw)}
     for host in raw:
         host["parent"] = index[host["parent"]] if host["parent"] else None
+    names = [host["name"] for host in raw]
+    assert len(set(names)) == len(names), "host names must be unique"
+    assert set(HOSTS) == set(index), "every host has a name and every name a host"
     return raw
 
 

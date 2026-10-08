@@ -83,7 +83,7 @@ fn main() -> ExitCode {
         .collect();
     let mut world = World::new_game(&data, options.seed, &crews);
     let name = |id: PlayerId| NAMES[usize::from(id.0)];
-    let host = |id: nullnet_core::HostId| data.host(id).classic.as_str();
+    let host = |id: nullnet_core::HostId| data.host(id).name.as_str();
 
     let mut replay = options
         .json

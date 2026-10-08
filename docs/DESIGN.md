@@ -28,12 +28,12 @@ Reglerne er Deuteros', men alle navne i spillet og i koden er hacker-navne. Kolo
 
 | Deuteros | NullNet | Kode |
 |---|---|---|
-| Stjernesystem (9) | Netværk | `Network` |
+| Stjernesystem (9) | Netværk: en del af nettet med eget tema, se "Kortet" | `Network` |
 | Solen | Backbone | |
-| Planet (44) | Vært | `Host` |
-| Måne (116) | Undersystem | `Host` med en forælder |
-| Asteroide | Forladt datacache | `Cache` |
-| Jorden | Skjulestedet (én pr. crew) | `Hideout` |
+| Planet (44) | Vært: en server, mainframe eller facilitet | `Host` |
+| Måne (116) | Undersystem: en tjeneste på værten | `Host` med en forælder |
+| Asteroide | Forladt datacache (Scrapyard i Metro) | `cache_field` |
+| Jorden | Exchange, værten hvor alle crews har deres skjulested | `Hideout` |
 | Jordbase (2 dele) | Bagdør (2 dele) | `backdoor` |
 | Rumstation (8 sektioner) | Citadel (8 moduler) | `Citadel` |
 | Methanoids | The Legacy Net | `Legacy` |
@@ -96,6 +96,24 @@ Reglerne er Deuteros', men alle navne i spillet og i koden er hacker-navne. Kolo
 | Pulse blaster laser | Legacy-exploit | `LegacyExploit` |
 | Alien artifact | Kildekode-fragment | `SourceFragment` |
 
+## Kortet
+
+Deuteros gav hvert stjernesystem sit eget navnetema (græske bogstaver, grundstoffer, oldtidsbyer). NullNet gør det samme: hvert netværk er et hjørne af nettet med sit eget tema, og værterne er de servere, mainframes og anlæg, der ligger der. Undersystemerne er tjenesterne på dem. Alle 160 navne står i `tools/extract_coredata.py` og ender i datafilen som `name`; Deuteros-navnet gemmes som `classic`, men vises aldrig.
+
+| Deuteros | Netværk | Hvad det er | Værter (eksempler) |
+|---|---|---|---|
+| Sol | **Metro** | Byens net. Hjemmenettet, hvor alle crews starter | Exchange (skjulestederne), Beacon, Switchboard, Transit, Scrapyard (cache-felt), Colossus, Waterworks, Powergrid, Clinic, Outpost, Lighthouse |
+| Proxima | **Orbital** | En satellitkonstellation og dens jordstationer | Uplink, Constellation (Polar, Relay) |
+| Centauri | **Bankwire** | Finansielle mainframes | Clearinghouse, Vault, Ledger, Mint |
+| Barnard | **Campus** | Et universitets net | Registrar, Observatory, Library, Laboratory, Faculty, Supercomputer, Admissions |
+| Lalande | **Ministry** | Statens net | Cabinet, Intelligence (Wiretap, Dossiers, Ciphers, Watchlist) |
+| Sirius | **Nimbus** | Et par cloud-regioner | Primary, Replica |
+| Cygni | **Foundry** | Industriens styresystemer | Solar, Quarry, Kiln, Refinery, Smelter, Assembly, Chemworks, Reactor |
+| Procyon | **Helix** | Biotek-laboratorier | Genebank, Sequencer, Cryostore |
+| Tau Ceti | **Lattice** | AI-regnenettet, hvor The Legacy Net blev født | Cortex, Tensor, Oracle, Trainer, Hive |
+
+The Legacy Net holder fra start Colossus, Powergrid, Clinic og Outpost i Metro (Jupiter, Uranus, Neptun og Pluto i Deuteros) samt et tilfældigt antal værter i hvert andet netværk, flest i Lattice.
+
 ## Arkitektur
 
 ```
@@ -128,7 +146,7 @@ Godot/              Godot-remaken: opslagsværk for regler og data.
 ### nullnet-client
 
 - Bevy 0.19 i browseren via WebGL2. Bygges med `scripts/build-web.sh`.
-- Al grafik genereres i WGSL-shaders, så klienten ikke har billedfiler. Den nuværende oversigt er stadig rum-udgaven og skal have hacker-looket: værter som glødende noder, firewall-glød i ejerens farve, krypteringslag i stedet for ringe og datalinjer i stedet for baner.
+- Al grafik genereres i WGSL-shaders, så klienten ikke har billedfiler. Oversigten er et netværkskort bygget af spillets egne data: backbonen som en lysende stamme til venstre, Metros værter som sekskantede noder langs en trunk-linje i rækkefølge efter position (latens), undersystemerne som små noder under deres vært, datalinjer med pakker imellem, og firewall-glød i ejerens farve (rød for The Legacy Net, gul for Exchange). Scrapyard tegnes som spredte, blinkende fragmenter.
 - Brugerfladen bliver terminalpaneler i Bevy UI.
 
 ## Turstruktur
@@ -272,6 +290,5 @@ Godot-remakens kode er udgivet under CC0, så den må frit bruges. Dens grafik, 
 - Standard for turlængde (spildage) og frist (timer)?
 - Kapløb om en fri vært: skal den crew, hvis ordrer udføres først, vinde (som nu), eller den, hvis orm har luret der længst?
 - Sejrsbetingelse og pointtabel.
-- Navne på de 9 netværk og 160 værter.
 - Skal man kunne logge ind på tværs af enheder (e-mail-login), eller er et invitationslink pr. spil nok?
 - Hosting: Fly.io, en VPS eller noget tredje?
