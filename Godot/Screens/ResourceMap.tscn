@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3 uid="uid://jydroeh7c62e"]
+
+[ext_resource type="PackedScene" uid="uid://dmltsahr8lu51" path="res://PreFabs/StarMap.tscn" id="1_pp8a7"]
+[ext_resource type="Script" path="res://Code/Platform/Base/BaseSubScene.cs" id="1_rda03"]
+
+[node name="ResourceMap" type="Node2D"]
+script = ExtResource("1_rda03")
+
+[node name="StarMap" parent="." instance=ExtResource("1_pp8a7")]
+position = Vector2(64, 28)
+ShowResources = true

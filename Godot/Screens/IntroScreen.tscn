@@ -1,0 +1,20 @@
+[gd_scene load_steps=4 format=3 uid="uid://bft2xg0nk8uuj"]
+
+[ext_resource type="Texture2D" uid="uid://dfgijix7bywcb" path="res://Sprites/Scenes/IntroScreen.png" id="1_cmpej"]
+[ext_resource type="Script" path="res://Code/Platform/Screens/NoScript.cs" id="1_hkffy"]
+[ext_resource type="PackedScene" uid="uid://bbgh6fbx8hoja" path="res://PreFabs/Buttons/ChangeScene.tscn" id="2_dynyq"]
+
+[node name="StartScene" type="Node2D"]
+script = ExtResource("1_hkffy")
+
+[node name="IntroScreen" type="TextureRect" parent="."]
+offset_right = 320.0
+offset_bottom = 200.0
+mouse_filter = 2
+texture = ExtResource("1_cmpej")
+expand_mode = 1
+
+[node name="Button" parent="." instance=ExtResource("2_dynyq")]
+offset_right = 320.0
+offset_bottom = 200.0
+SceneVariables = [100]

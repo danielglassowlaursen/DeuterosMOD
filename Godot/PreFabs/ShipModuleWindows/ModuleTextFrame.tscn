@@ -1,0 +1,26 @@
+[gd_scene load_steps=5 format=3 uid="uid://bsb6dm4ck0qvk"]
+
+[ext_resource type="Script" path="res://Code/Platform/Screens/ModuleScenes/ModuleTextFrame.cs" id="1_3ulg8"]
+[ext_resource type="AudioStream" uid="uid://c5vjyvse1fcx1" path="res://Sounds/Typing.wav" id="2_orkdq"]
+[ext_resource type="PackedScene" uid="uid://dfxcpnk8y4m45" path="res://PreFabs/UI/Window.tscn" id="3_capk4"]
+[ext_resource type="Theme" uid="uid://ca7skhjpl6nn5" path="res://Themes/WhiteFont5.tres" id="4_yp02o"]
+
+[node name="ModuleTextFrame" type="Node2D" node_paths=PackedStringArray("TypeSound")]
+script = ExtResource("1_3ulg8")
+TypeSound = NodePath("AudioStreamPlayer")
+
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="."]
+bus = &"Interface"
+stream = ExtResource("2_orkdq")
+
+[node name="Window" parent="." instance=ExtResource("3_capk4")]
+
+[node name="Text" type="RichTextLabel" parent="Window"]
+offset_left = 74.0
+offset_top = 36.0
+offset_right = 295.0
+offset_bottom = 135.0
+theme = ExtResource("4_yp02o")
+bbcode_enabled = true
+text = "
+"

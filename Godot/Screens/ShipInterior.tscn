@@ -1,0 +1,495 @@
+[gd_scene load_steps=12 format=3 uid="uid://dcsu0xl0k6uem"]
+
+[ext_resource type="Script" path="res://Code/Platform/Screens/ShipInterior.cs" id="1_3756g"]
+[ext_resource type="Texture2D" uid="uid://dauluvspfe65j" path="res://Sprites/SceneSprites/Ships/Interior/BigLocation_StormDoors.png" id="2_3r03j"]
+[ext_resource type="Texture2D" uid="uid://bm3474tr7j814" path="res://Sprites/Scenes/ShipInterior.png" id="2_x7crv"]
+[ext_resource type="Texture2D" uid="uid://bl07lx7r61qv6" path="res://Sprites/SceneSprites/Ships/Interior/SmallLocation_Docked.png" id="3_s0kkf"]
+[ext_resource type="Texture2D" uid="uid://cf46fkuydtkbo" path="res://Sprites/SceneSprites/Ships/Interior/Ship_Component_ACC.png" id="4_ux0vr"]
+[ext_resource type="Texture2D" uid="uid://b25ok105tkwn4" path="res://Sprites/SceneSprites/Ships/Interior/Ship_Component_EngineControls.png" id="5_e4hgs"]
+[ext_resource type="Texture2D" uid="uid://2uavijelv31e" path="res://Sprites/SceneSprites/Ships/Interior/Ship_Component_SetCourse.png" id="6_m6blu"]
+[ext_resource type="Texture2D" uid="uid://beysy5efcla4x" path="res://Sprites/SceneSprites/Ships/Interior/Ship_Component_LandingBlank.png" id="8_876ve"]
+[ext_resource type="Texture2D" uid="uid://cej0smu7vqqbm" path="res://Sprites/SceneSprites/Ships/Interior/Ship_Module_Supply.png" id="11_fwf6c"]
+[ext_resource type="Texture2D" uid="uid://bccmxv25gq5qw" path="res://Sprites/SceneSprites/Ships/Interior/Ship_Module_Tool.png" id="12_mgp52"]
+[ext_resource type="Texture2D" uid="uid://d1qfjcnikdibn" path="res://Sprites/SceneSprites/Ships/Interior/Ship_Module_Cryo.png" id="13_nk72e"]
+
+[node name="ShipInterior" type="Node2D"]
+script = ExtResource("1_3756g")
+
+[node name="Location" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 49.0
+offset_top = 16.0
+offset_right = 185.0
+offset_bottom = 99.0
+mouse_filter = 2
+metadata/_edit_use_anchors_ = true
+
+[node name="BigLocation" type="TextureRect" parent="Location"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.345588
+anchor_top = 0.0843373
+anchor_right = 0.345588
+anchor_bottom = 0.0843373
+offset_right = 192.0
+offset_bottom = 112.0
+mouse_filter = 2
+texture = ExtResource("2_3r03j")
+metadata/_edit_use_anchors_ = true
+
+[node name="SmallLocation" type="TextureButton" parent="Location"]
+layout_mode = 0
+offset_left = 7.0
+offset_top = 138.0
+offset_right = 67.0
+offset_bottom = 168.0
+texture_normal = ExtResource("3_s0kkf")
+metadata/_edit_use_anchors_ = true
+
+[node name="TextLayout" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 81.0
+offset_top = 21.0
+offset_right = 304.0
+offset_bottom = 151.0
+mouse_filter = 2
+metadata/_edit_use_anchors_ = true
+
+[node name="ShipName" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = -0.00448431
+anchor_bottom = 0.00769231
+offset_top = 9.0
+offset_right = 107.0
+offset_bottom = 18.0
+theme_override_colors/font_color = Color(1, 1, 0, 1)
+text = "Shuttle Craft
+"
+metadata/_edit_use_anchors_ = true
+
+[node name="Status" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = -0.00448431
+anchor_bottom = 0.00769231
+offset_top = 17.0
+offset_right = 104.0
+offset_bottom = 34.0
+text = "In Ground Bay
+Earth"
+metadata/_edit_use_anchors_ = true
+
+[node name="FuelName" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = -0.00448431
+anchor_bottom = 0.00769231
+offset_top = 37.0
+offset_right = 82.0
+offset_bottom = 47.0
+theme_override_colors/font_color = Color(1, 1, 0, 1)
+text = "Fuel:    T"
+metadata/_edit_use_anchors_ = true
+
+[node name="FuelValue" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = -0.00448431
+anchor_bottom = 0.00769231
+offset_left = 40.0
+offset_top = 37.0
+offset_right = 67.0
+offset_bottom = 47.0
+theme_override_colors/font_color = Color(1, 1, 0, 1)
+text = "93"
+horizontal_alignment = 2
+metadata/_edit_use_anchors_ = true
+
+[node name="PilotName" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = -0.00448431
+anchor_bottom = 0.00769231
+offset_top = 48.0
+offset_right = 56.0
+offset_bottom = 65.0
+theme_override_colors/font_color = Color(0.6, 0.666667, 0.466667, 1)
+text = "Admiral
+Raines"
+metadata/_edit_use_anchors_ = true
+
+[node name="PilotCountLabel" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.295964
+anchor_top = 0.0230769
+anchor_right = -0.295964
+anchor_bottom = 0.0230769
+offset_left = 65.0
+offset_top = 64.0
+offset_right = 131.0
+offset_bottom = 74.0
+theme_override_colors/font_color = Color(0.6, 0.666667, 0.466667, 1)
+text = "Crew:"
+metadata/_edit_use_anchors_ = true
+
+[node name="PilotCount" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.0134529
+anchor_top = 0.0230769
+anchor_right = -0.0134529
+anchor_bottom = 0.0230769
+offset_top = 64.0
+offset_right = 66.0
+offset_bottom = 74.0
+theme_override_colors/font_color = Color(0.6, 0.666667, 0.466667, 1)
+text = "100"
+horizontal_alignment = 2
+metadata/_edit_use_anchors_ = true
+
+[node name="EngineStatusText" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = -0.00448431
+anchor_bottom = 0.00769231
+offset_top = 77.0
+offset_right = 80.0
+offset_bottom = 94.0
+theme_override_colors/font_color = Color(0, 0.533333, 0, 1)
+text = "Engine is"
+metadata/_edit_use_anchors_ = true
+
+[node name="EngineStatusValue" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = -0.00448431
+anchor_bottom = 0.0615385
+offset_top = 86.0
+offset_right = 80.0
+offset_bottom = 95.0
+theme_override_colors/font_color = Color(0, 0.533333, 0, 1)
+text = "
+Disengaged
+"
+metadata/_edit_use_anchors_ = true
+
+[node name="ACCStatus" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = -0.00448431
+anchor_bottom = 0.00769231
+offset_top = 97.0
+offset_right = 104.0
+offset_bottom = 114.0
+theme_override_colors/font_color = Color(1, 0, 0, 1)
+text = "A.C.C.
+Is Disengaged"
+metadata/_edit_use_anchors_ = true
+
+[node name="CargoText" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = 0.0224215
+anchor_bottom = 0.00769231
+offset_left = 112.0
+offset_top = 9.0
+offset_right = 154.0
+offset_bottom = 19.0
+text = "Cargo:"
+metadata/_edit_use_anchors_ = true
+
+[node name="CargoValue1" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = -0.00448431
+anchor_bottom = 0.00769231
+offset_left = 112.0
+offset_top = 17.0
+offset_right = 208.0
+offset_bottom = 26.0
+text = "250 Titanium"
+metadata/_edit_use_anchors_ = true
+
+[node name="CargoValue2" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = -0.00448431
+anchor_bottom = 0.00769231
+offset_left = 112.0
+offset_top = 25.0
+offset_right = 208.0
+offset_bottom = 34.0
+text = "250 Titanium"
+metadata/_edit_use_anchors_ = true
+
+[node name="CargoValue3" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = -0.00448431
+anchor_bottom = 0.00769231
+offset_left = 112.0
+offset_top = 33.0
+offset_right = 208.0
+offset_bottom = 42.0
+text = "250 Titanium"
+metadata/_edit_use_anchors_ = true
+
+[node name="CourseText" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = 0.0224215
+anchor_bottom = 0.00769231
+offset_left = 112.0
+offset_top = 65.0
+offset_right = 194.0
+offset_bottom = 75.0
+theme_override_colors/font_color = Color(0.333333, 0.4, 0.2, 1)
+text = "Course Set:"
+metadata/_edit_use_anchors_ = true
+
+[node name="CourseValue" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = -0.00448431
+anchor_bottom = 0.00769231
+offset_left = 112.0
+offset_top = 73.0
+offset_right = 184.0
+offset_bottom = 90.0
+text = "Uranus To
+Titania"
+metadata/_edit_use_anchors_ = true
+
+[node name="ETA" type="Label" parent="TextLayout"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = -0.00448431
+anchor_top = 0.00769231
+anchor_right = -0.00448431
+anchor_bottom = 0.00769231
+offset_left = 112.0
+offset_top = 89.0
+offset_right = 200.0
+offset_bottom = 107.0
+theme_override_colors/font_color = Color(0.333333, 0.4, 0.2, 1)
+text = "ETA:
+3193 696.49"
+metadata/_edit_use_anchors_ = true
+
+[node name="Background" type="TextureRect" parent="."]
+offset_left = 48.0
+offset_top = 16.0
+offset_right = 320.0
+offset_bottom = 184.0
+mouse_filter = 2
+texture = ExtResource("2_x7crv")
+metadata/_edit_use_anchors_ = true
+
+[node name="EngineControls" type="TextureRect" parent="."]
+offset_left = 280.0
+offset_top = 112.0
+offset_right = 320.0
+offset_bottom = 152.0
+mouse_filter = 2
+texture = ExtResource("5_e4hgs")
+metadata/_edit_use_anchors_ = true
+
+[node name="EngageEngine" type="Button" parent="EngineControls"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 6.0
+offset_right = 39.0
+offset_bottom = 21.0
+flat = true
+metadata/_edit_use_anchors_ = true
+
+[node name="DisengageEngine" type="Button" parent="EngineControls"]
+layout_mode = 0
+offset_left = 7.0
+offset_top = 21.0
+offset_right = 26.0
+offset_bottom = 37.0
+flat = true
+metadata/_edit_use_anchors_ = true
+
+[node name="OpenACC" type="TextureButton" parent="."]
+offset_left = 72.0
+offset_top = 16.0
+offset_right = 88.0
+offset_bottom = 40.0
+texture_normal = ExtResource("4_ux0vr")
+metadata/_edit_use_anchors_ = true
+
+[node name="SetCourse" type="TextureButton" parent="."]
+offset_left = 128.0
+offset_top = 168.0
+offset_right = 160.0
+offset_bottom = 184.535
+texture_normal = ExtResource("6_m6blu")
+metadata/_edit_use_anchors_ = true
+
+[node name="LandingBlank" type="TextureRect" parent="."]
+offset_left = 160.0
+offset_top = 152.0
+offset_right = 179.0
+offset_bottom = 162.0
+texture = ExtResource("8_876ve")
+metadata/_edit_use_anchors_ = true
+
+[node name="Dock" type="Button" parent="."]
+offset_left = 141.0
+offset_top = 152.0
+offset_right = 160.0
+offset_bottom = 163.0
+flat = true
+metadata/_edit_use_anchors_ = true
+
+[node name="TakeOff" type="Button" parent="."]
+offset_left = 179.0
+offset_top = 152.0
+offset_right = 198.0
+offset_bottom = 163.0
+flat = true
+metadata/_edit_use_anchors_ = true
+
+[node name="Land" type="Button" parent="."]
+offset_left = 160.0
+offset_top = 152.0
+offset_right = 179.0
+offset_bottom = 163.0
+flat = true
+metadata/_edit_use_anchors_ = true
+
+[node name="StarMap" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 64.0
+offset_top = 23.0
+offset_right = 304.0
+offset_bottom = 143.0
+mouse_filter = 2
+metadata/_edit_use_anchors_ = true
+
+[node name="Window" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 320.0
+offset_bottom = 200.0
+mouse_filter = 2
+metadata/_edit_use_anchors_ = true
+
+[node name="ACCScreen" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 320.0
+offset_bottom = 200.0
+mouse_filter = 2
+
+[node name="Modules" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 206.0
+offset_top = 148.0
+offset_right = 309.0
+offset_bottom = 183.0
+metadata/_edit_use_anchors_ = true
+
+[node name="00" type="TextureButton" parent="Modules"]
+layout_mode = 0
+offset_top = 16.0
+offset_right = 16.0
+offset_bottom = 28.0
+texture_normal = ExtResource("11_fwf6c")
+metadata/_edit_use_anchors_ = true
+
+[node name="01" type="TextureButton" parent="Modules"]
+layout_mode = 0
+offset_left = 32.0
+offset_top = 6.0
+offset_right = 48.0
+offset_bottom = 18.0
+texture_normal = ExtResource("12_mgp52")
+metadata/_edit_use_anchors_ = true
+
+[node name="02" type="TextureButton" parent="Modules"]
+layout_mode = 0
+offset_left = 57.0
+offset_right = 73.0
+offset_bottom = 12.0
+texture_normal = ExtResource("12_mgp52")
+metadata/_edit_use_anchors_ = true
+
+[node name="03" type="TextureButton" parent="Modules"]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 20.0
+offset_right = 56.0
+offset_bottom = 32.0
+texture_normal = ExtResource("12_mgp52")
+metadata/_edit_use_anchors_ = true
+
+[node name="04" type="TextureButton" parent="Modules"]
+layout_mode = 0
+offset_left = 70.0
+offset_top = 9.0
+offset_right = 86.0
+offset_bottom = 21.0
+texture_normal = ExtResource("13_nk72e")
+metadata/_edit_use_anchors_ = true
+
+[node name="05" type="TextureButton" parent="Modules"]
+layout_mode = 0
+offset_left = 87.0
+offset_top = 23.0
+offset_right = 103.0
+offset_bottom = 35.0
+texture_normal = ExtResource("11_fwf6c")
+metadata/_edit_use_anchors_ = true
+
+[node name="GrappleHolder" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="AMAHolder" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2

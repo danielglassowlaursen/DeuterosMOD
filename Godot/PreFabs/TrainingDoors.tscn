@@ -1,0 +1,83 @@
+[gd_scene load_steps=8 format=3 uid="uid://dp0lxsds7dkua"]
+
+[ext_resource type="Texture2D" uid="uid://cogsg1ue77m7j" path="res://Sprites/Buttons/Training_Door_Animation/05.png" id="1_4mujw"]
+[ext_resource type="Texture2D" uid="uid://c7h0mn51ny7ha" path="res://Sprites/Buttons/Training_Door_Animation/04.png" id="2_dcjvg"]
+[ext_resource type="Texture2D" uid="uid://ct274dafa4sb1" path="res://Sprites/Buttons/Training_Door_Animation/03.png" id="3_n6fyr"]
+[ext_resource type="Texture2D" uid="uid://dx0yy061dxe1d" path="res://Sprites/Buttons/Training_Door_Animation/02.png" id="4_uwubr"]
+[ext_resource type="Texture2D" uid="uid://77s815ufecmb" path="res://Sprites/Buttons/Training_Door_Animation/01.png" id="5_t0ya8"]
+[ext_resource type="Texture2D" uid="uid://cuv5th4vlx7a0" path="res://Sprites/Buttons/Training_Door_Animation/00.png" id="6_qs8li"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_tnxpv"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("1_4mujw")
+}, {
+"duration": 1.0,
+"texture": ExtResource("2_dcjvg")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_n6fyr")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_uwubr")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_t0ya8")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_qs8li")
+}],
+"loop": false,
+"name": &"close",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("6_qs8li")
+}],
+"loop": false,
+"name": &"closed",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": null
+}],
+"loop": false,
+"name": &"open",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("6_qs8li")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_t0ya8")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_uwubr")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_n6fyr")
+}, {
+"duration": 1.0,
+"texture": ExtResource("2_dcjvg")
+}, {
+"duration": 1.0,
+"texture": ExtResource("1_4mujw")
+}, {
+"duration": 1.0,
+"texture": null
+}],
+"loop": false,
+"name": &"opening",
+"speed": 5.0
+}]
+
+[node name="TrainingDoors" type="Node2D"]
+
+[node name="DoorAnimation" type="AnimatedSprite2D" parent="."]
+sprite_frames = SubResource("SpriteFrames_tnxpv")
+animation = &"open"
+centered = false

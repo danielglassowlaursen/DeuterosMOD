@@ -1,0 +1,46 @@
+[gd_scene load_steps=4 format=3 uid="uid://be1t4kk6a6g1h"]
+
+[ext_resource type="Texture2D" uid="uid://4dd80ehsuasj" path="res://Sprites/Menus/Rounded_Box_Left.png" id="1_jmu4g"]
+[ext_resource type="Texture2D" uid="uid://d1y1ybghichyy" path="res://Sprites/Menus/Rounded_Box_Right.png" id="2_hs7ec"]
+[ext_resource type="Texture2D" uid="uid://ddj4djsrwj0h0" path="res://Sprites/Menus/Rounded_Box_Tile.png" id="3_uwjua"]
+
+[node name="UIBox" type="Control"]
+custom_minimum_size = Vector2(24, 16)
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = -252.0
+offset_bottom = -184.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 0
+
+[node name="Left" type="TextureRect" parent="HBoxContainer"]
+custom_minimum_size = Vector2(6, 0)
+layout_mode = 2
+size_flags_horizontal = 0
+texture = ExtResource("1_jmu4g")
+stretch_mode = 2
+
+[node name="Centre" type="TextureRect" parent="HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+texture = ExtResource("3_uwjua")
+expand_mode = 2
+stretch_mode = 1
+
+[node name="Right" type="TextureRect" parent="HBoxContainer"]
+custom_minimum_size = Vector2(6, 0)
+layout_mode = 2
+size_flags_horizontal = 8
+texture = ExtResource("2_hs7ec")
+stretch_mode = 2

@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3 uid="uid://bm1d5drxu0vqd"]
+
+[ext_resource type="Script" path="res://Code/Platform/Screens/NoScript.cs" id="1_4cp7s"]
+[ext_resource type="Texture2D" uid="uid://beayuxr5na6cl" path="res://Sprites/Scenes/Station.png" id="1_6v8v5"]
+
+[node name="Station" type="Node2D"]
+script = ExtResource("1_4cp7s")
+
+[node name="Station" type="TextureRect" parent="."]
+offset_left = 72.0
+offset_top = 36.0
+offset_right = 320.0
+offset_bottom = 148.0
+texture = ExtResource("1_6v8v5")

@@ -1,0 +1,136 @@
+[gd_scene load_steps=7 format=3 uid="uid://380q5ahay68h"]
+
+[ext_resource type="Texture2D" uid="uid://dyyddnxh7d4pg" path="res://Sprites/Scenes/Store.png" id="2"]
+[ext_resource type="Script" path="res://Code/Platform/Screens/GroundMaterials.cs" id="3"]
+[ext_resource type="PackedScene" path="res://PreFabs/Sound/BackGround.tscn" id="4"]
+[ext_resource type="Texture2D" uid="uid://bvmn0ua8qjqg3" path="res://Sprites/Buttons/AddDerrick.png" id="4_n5d4x"]
+[ext_resource type="Theme" uid="uid://befke7oqkcv3j" path="res://Themes/BiegeFont5.tres" id="5_fb1ts"]
+[ext_resource type="Texture2D" uid="uid://b6d7m2t8nvm" path="res://Sprites/Buttons/GreenArrowRight.png" id="6_swoae"]
+
+[node name="Node2D" type="Node2D"]
+script = ExtResource("3")
+
+[node name="Resource" type="TextureRect" parent="."]
+offset_left = 48.0
+offset_top = 16.0
+offset_right = 320.0
+offset_bottom = 184.0
+mouse_filter = 2
+texture = ExtResource("2")
+
+[node name="DerrickCount" type="Label" parent="."]
+offset_left = 272.0
+offset_top = 142.0
+offset_right = 285.0
+offset_bottom = 154.0
+text = "1"
+
+[node name="SoundController" parent="." instance=ExtResource("4")]
+SoundToPlay = 3
+
+[node name="Derrick" type="TextureRect" parent="."]
+offset_left = 287.0
+offset_top = 139.0
+offset_right = 311.0
+offset_bottom = 155.0
+texture = ExtResource("4_n5d4x")
+stretch_mode = 2
+
+[node name="AddDerrick" type="Button" parent="Derrick"]
+show_behind_parent = true
+layout_mode = 0
+offset_right = 24.0
+offset_bottom = 16.0
+
+[node name="Rigs" type="Label" parent="."]
+offset_left = 272.0
+offset_top = 128.0
+offset_right = 312.0
+offset_bottom = 140.0
+theme = ExtResource("5_fb1ts")
+text = "Rigs"
+
+[node name="MaterialNames" type="Label" parent="."]
+offset_left = 239.0
+offset_top = 32.0
+offset_right = 322.0
+offset_bottom = 97.0
+text = "Iron
+Titanium
+Aluminium
+Carbon
+Copper
+Hydrogen
+Deuterium
+Methane"
+
+[node name="GreenArrows" type="GridContainer" parent="."]
+offset_left = 225.0
+offset_top = 33.0
+offset_right = 232.0
+offset_bottom = 95.0
+theme_override_constants/v_separation = 2
+
+[node name="TextureRect6" type="TextureRect" parent="GreenArrows"]
+layout_mode = 2
+texture = ExtResource("6_swoae")
+
+[node name="TextureRect7" type="TextureRect" parent="GreenArrows"]
+layout_mode = 2
+texture = ExtResource("6_swoae")
+
+[node name="TextureRect" type="TextureRect" parent="GreenArrows"]
+layout_mode = 2
+texture = ExtResource("6_swoae")
+
+[node name="TextureRect2" type="TextureRect" parent="GreenArrows"]
+layout_mode = 2
+texture = ExtResource("6_swoae")
+
+[node name="TextureRect3" type="TextureRect" parent="GreenArrows"]
+layout_mode = 2
+texture = ExtResource("6_swoae")
+
+[node name="TextureRect4" type="TextureRect" parent="GreenArrows"]
+layout_mode = 2
+texture = ExtResource("6_swoae")
+
+[node name="TextureRect5" type="TextureRect" parent="GreenArrows"]
+layout_mode = 2
+texture = ExtResource("6_swoae")
+
+[node name="TextureRect8" type="TextureRect" parent="GreenArrows"]
+layout_mode = 2
+texture = ExtResource("6_swoae")
+
+[node name="MaterialAmounts" type="Label" parent="."]
+offset_left = 174.0
+offset_top = 32.0
+offset_right = 216.0
+offset_bottom = 99.0
+text = "5212
+5224
+10345
+5216
+5216
+5235
+5363
+5235"
+horizontal_alignment = 2
+
+[node name="SeamLabel" type="Label" parent="."]
+offset_left = 183.0
+offset_top = 20.0
+offset_right = 223.0
+offset_bottom = 29.0
+theme = ExtResource("5_fb1ts")
+text = "Seam"
+
+[node name="MaterialLabel" type="Label" parent="."]
+offset_left = 239.0
+offset_top = 20.0
+offset_right = 303.0
+offset_bottom = 29.0
+theme = ExtResource("5_fb1ts")
+text = "Material
+"

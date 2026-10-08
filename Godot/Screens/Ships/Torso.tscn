@@ -1,0 +1,134 @@
+[gd_scene load_steps=9 format=3 uid="uid://bm6n1v0bgu6ar"]
+
+[ext_resource type="Script" path="res://Code/Platform/Screens/ShipBayScenes/Torso.cs" id="1_h6w6f"]
+[ext_resource type="Texture2D" uid="uid://prhn474347cd" path="res://Sprites/SceneSprites/Ships/TorsoNeck.png" id="1_taes7"]
+[ext_resource type="Texture2D" uid="uid://bqjtlnn6j6lji" path="res://Sprites/Scenes/ShuttleBackground.png" id="2_05hcw"]
+[ext_resource type="Texture2D" uid="uid://icd3u8ejop2k" path="res://Sprites/SceneSprites/Ships/Support.png" id="3_shqx2"]
+[ext_resource type="Texture2D" uid="uid://ddfsn63son586" path="res://Sprites/SceneSprites/Ships/Component_Bandaid.png" id="5_r2v0k"]
+[ext_resource type="Texture2D" uid="uid://dnjp14pwp5xm" path="res://Sprites/Buttons/Shipbay/Torso_Equip_SupplyPod.png" id="6_u74nv"]
+[ext_resource type="Texture2D" uid="uid://b3cqb2nl4kgxn" path="res://Sprites/Buttons/Shipbay/Torso_Equip_ToolPod.png" id="7_quqhb"]
+[ext_resource type="Texture2D" uid="uid://bdinekamysv8t" path="res://Sprites/Buttons/Shipbay/Torso_Equip_CryoPod.png" id="8_ph8f1"]
+
+[node name="Torso" type="Control"]
+custom_minimum_size = Vector2(224, 116)
+layout_mode = 3
+anchors_preset = 0
+offset_right = 224.0
+offset_bottom = 120.0
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("1_h6w6f")
+
+[node name="BackgroundTexture" type="TextureRect" parent="."]
+layout_mode = 0
+offset_left = -8.0
+offset_right = 224.0
+offset_bottom = 116.0
+mouse_filter = 2
+texture = ExtResource("2_05hcw")
+expand_mode = 2
+stretch_mode = 1
+
+[node name="OpenShipInterior" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 85.0
+offset_top = 101.0
+offset_right = 85.0
+offset_bottom = 101.0
+grow_horizontal = 2
+grow_vertical = 2
+flat = true
+
+[node name="SpriteHolder" type="Control" parent="."]
+anchors_preset = 0
+offset_top = -4.0
+offset_right = 40.0
+offset_bottom = 36.0
+mouse_filter = 2
+
+[node name="TorsoNeck" type="TextureRect" parent="SpriteHolder"]
+layout_mode = 0
+offset_top = 32.0
+offset_right = 224.0
+offset_bottom = 80.0
+mouse_filter = 2
+texture = ExtResource("1_taes7")
+
+[node name="Cargo" type="Control" parent="SpriteHolder"]
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+mouse_filter = 2
+
+[node name="Support" type="TextureRect" parent="SpriteHolder/Cargo"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 88.0
+offset_right = 176.0
+offset_bottom = 120.0
+mouse_filter = 2
+texture = ExtResource("3_shqx2")
+stretch_mode = 2
+
+[node name="Component" type="TextureRect" parent="SpriteHolder/Cargo"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 8.0
+offset_right = 176.0
+offset_bottom = 88.0
+mouse_filter = 2
+texture = ExtResource("5_r2v0k")
+
+[node name="Buttons" type="Control" parent="SpriteHolder"]
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+mouse_filter = 2
+
+[node name="AddSupplyPod" type="TextureButton" parent="SpriteHolder/Buttons"]
+layout_mode = 0
+offset_top = 104.0
+offset_right = 24.0
+offset_bottom = 120.0
+texture_normal = ExtResource("6_u74nv")
+
+[node name="AddToolPod" type="TextureButton" parent="SpriteHolder/Buttons"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 104.0
+offset_right = 48.0
+offset_bottom = 120.0
+texture_normal = ExtResource("7_quqhb")
+
+[node name="AddCryoPod" type="TextureButton" parent="SpriteHolder/Buttons"]
+layout_mode = 0
+offset_left = 48.0
+offset_top = 104.0
+offset_right = 72.0
+offset_bottom = 120.0
+texture_normal = ExtResource("8_ph8f1")
+
+[node name="ActivatePod" type="Button" parent="SpriteHolder/Buttons"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 10.0
+offset_right = 176.0
+offset_bottom = 79.0
+flat = true
+
+[node name="Labels" type="Control" parent="SpriteHolder"]
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+mouse_filter = 2
+
+[node name="Contents" type="Label" parent="SpriteHolder/Labels"]
+layout_mode = 0
+offset_left = 84.0
+offset_top = 106.0
+offset_right = 167.0
+offset_bottom = 120.0
+horizontal_alignment = 1

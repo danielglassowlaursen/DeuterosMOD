@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://dlpf322m5s804"]
+
+[ext_resource type="Script" path="res://Code/Platform/RepeatingButton.cs" id="1_xgh1p"]
+
+[node name="RepeatingButton" type="Button"]
+script = ExtResource("1_xgh1p")

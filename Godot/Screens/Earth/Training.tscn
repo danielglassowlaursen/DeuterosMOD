@@ -1,0 +1,206 @@
+[gd_scene load_steps=11 format=3 uid="uid://d0uqnho3uu3r3"]
+
+[ext_resource type="Texture2D" uid="uid://rfjd46ce2jbj" path="res://Sprites/Scenes/Training.png" id="2_7nv2c"]
+[ext_resource type="PackedScene" path="res://PreFabs/Sound/BackGround.tscn" id="3"]
+[ext_resource type="Texture2D" uid="uid://cj5mtfs103lao" path="res://Sprites/Buttons/Training_Left.png" id="3_u3cm6"]
+[ext_resource type="Script" path="res://Code/Platform/Screens/Training.cs" id="4"]
+[ext_resource type="Texture2D" uid="uid://dt084d6t16tc5" path="res://Sprites/Buttons/Training_Right.png" id="4_mst8a"]
+[ext_resource type="PackedScene" uid="uid://dlpf322m5s804" path="res://PreFabs/Buttons/RepeatingButton.tscn" id="5_esdh4"]
+[ext_resource type="Theme" uid="uid://44d6jm1awi5s" path="res://Themes/RedFont5.tres" id="6_soado"]
+[ext_resource type="PackedScene" uid="uid://dp0lxsds7dkua" path="res://PreFabs/TrainingDoors.tscn" id="6_t8wod"]
+[ext_resource type="Theme" uid="uid://178ghfmxejyy" path="res://Themes/BlueFont5.tres" id="8_qncj2"]
+[ext_resource type="Theme" uid="uid://bbq2svf2lcuqk" path="res://Themes/YellowFont5.tres" id="9_lbtdk"]
+
+[node name="Node2D" type="Node2D"]
+script = ExtResource("4")
+
+[node name="Training" type="TextureRect" parent="."]
+offset_left = 48.0
+offset_top = 16.0
+offset_right = 320.0
+offset_bottom = 184.0
+mouse_filter = 2
+texture = ExtResource("2_7nv2c")
+stretch_mode = 5
+
+[node name="Doors" type="Node" parent="."]
+
+[node name="Marines" type="Node" parent="Doors"]
+
+[node name="MinusButton" type="TextureRect" parent="Doors/Marines"]
+offset_left = 264.0
+offset_top = 120.0
+offset_right = 278.0
+offset_bottom = 136.0
+texture = ExtResource("3_u3cm6")
+stretch_mode = 2
+
+[node name="MarinesMinusButton" parent="Doors/Marines/MinusButton" instance=ExtResource("5_esdh4")]
+show_behind_parent = true
+layout_mode = 0
+offset_left = 2.0
+offset_top = 2.0
+offset_right = 13.0
+offset_bottom = 14.0
+keep_pressed_outside = true
+RepeatRate = 0.005
+
+[node name="PlusButton" type="TextureRect" parent="Doors/Marines"]
+offset_left = 280.0
+offset_top = 120.0
+offset_right = 294.0
+offset_bottom = 136.0
+texture = ExtResource("4_mst8a")
+stretch_mode = 2
+
+[node name="MarinesPlusButton" parent="Doors/Marines/PlusButton" instance=ExtResource("5_esdh4")]
+show_behind_parent = true
+layout_mode = 0
+offset_left = 2.0
+offset_top = 2.0
+offset_right = 13.0
+offset_bottom = 14.0
+keep_pressed_outside = true
+RepeatRate = 0.005
+
+[node name="MarinesTrainingCountLabel" type="Label" parent="Doors/Marines"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 258.0
+offset_top = 97.0
+offset_right = 297.0
+offset_bottom = 104.6
+pivot_offset = Vector2(73.838, 18)
+theme = ExtResource("6_soado")
+horizontal_alignment = 2
+
+[node name="TrainingDoors" parent="Doors/Marines" instance=ExtResource("6_t8wod")]
+position = Vector2(258, 96)
+
+[node name="Production" type="Node" parent="Doors"]
+
+[node name="MinusButton" type="TextureRect" parent="Doors/Production"]
+offset_left = 200.0
+offset_top = 120.0
+offset_right = 214.0
+offset_bottom = 136.0
+texture = ExtResource("3_u3cm6")
+stretch_mode = 2
+
+[node name="ProductionMinusButton" parent="Doors/Production/MinusButton" instance=ExtResource("5_esdh4")]
+show_behind_parent = true
+layout_mode = 0
+offset_left = 2.0
+offset_top = 2.0
+offset_right = 13.0
+offset_bottom = 14.0
+keep_pressed_outside = true
+RepeatRate = 0.005
+
+[node name="PlusButton" type="TextureRect" parent="Doors/Production"]
+offset_left = 216.0
+offset_top = 120.0
+offset_right = 230.0
+offset_bottom = 136.0
+texture = ExtResource("4_mst8a")
+stretch_mode = 2
+
+[node name="ProductionPlusButton" parent="Doors/Production/PlusButton" instance=ExtResource("5_esdh4")]
+show_behind_parent = true
+layout_mode = 0
+offset_left = 2.0
+offset_top = 2.0
+offset_right = 13.0
+offset_bottom = 14.0
+keep_pressed_outside = true
+RepeatRate = 0.005
+
+[node name="ProductionTrainingCountLabel" type="Label" parent="Doors/Production"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 194.0
+offset_top = 97.0
+offset_right = 233.0
+offset_bottom = 104.6
+pivot_offset = Vector2(73.838, 18)
+theme = ExtResource("8_qncj2")
+horizontal_alignment = 2
+
+[node name="TrainingDoors" parent="Doors/Production" instance=ExtResource("6_t8wod")]
+position = Vector2(194, 96)
+
+[node name="Research" type="Node" parent="Doors"]
+
+[node name="MinusButton" type="TextureRect" parent="Doors/Research"]
+offset_left = 136.0
+offset_top = 120.0
+offset_right = 150.0
+offset_bottom = 136.0
+texture = ExtResource("3_u3cm6")
+stretch_mode = 2
+
+[node name="ResearchMinusButton" parent="Doors/Research/MinusButton" instance=ExtResource("5_esdh4")]
+show_behind_parent = true
+layout_mode = 0
+offset_left = 2.0
+offset_top = 2.0
+offset_right = 13.0
+offset_bottom = 14.0
+keep_pressed_outside = true
+RepeatRate = 0.005
+
+[node name="PlusButton" type="TextureRect" parent="Doors/Research"]
+offset_left = 152.0
+offset_top = 120.0
+offset_right = 166.0
+offset_bottom = 136.0
+texture = ExtResource("4_mst8a")
+stretch_mode = 2
+
+[node name="ResearchPlusButton" parent="Doors/Research/PlusButton" instance=ExtResource("5_esdh4")]
+show_behind_parent = true
+layout_mode = 0
+offset_left = 2.0
+offset_top = 2.0
+offset_right = 13.0
+offset_bottom = 14.0
+keep_pressed_outside = true
+RepeatRate = 0.005
+
+[node name="ResearchTrainingCountLabel" type="Label" parent="Doors/Research"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 130.0
+offset_top = 97.0
+offset_right = 169.0
+offset_bottom = 104.6
+pivot_offset = Vector2(73.838, 18)
+theme = ExtResource("9_lbtdk")
+horizontal_alignment = 2
+
+[node name="TrainingDoors" parent="Doors/Research" instance=ExtResource("6_t8wod")]
+position = Vector2(130, 96)
+
+[node name="LightSwitchButton" parent="Doors" instance=ExtResource("5_esdh4")]
+show_behind_parent = true
+offset_left = 117.0
+offset_top = 127.0
+offset_right = 125.0
+offset_bottom = 135.0
+keep_pressed_outside = true
+RepeatRate = 0.005
+
+[node name="SoundController" parent="." instance=ExtResource("3")]
+SoundToPlay = 1
+
+[node name="SoundPlayer" type="AudioStreamPlayer" parent="."]
+bus = &"Effects"
+
+[node name="TraineeCountLabel" type="Label" parent="."]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 55.0
+offset_top = 104.0
+offset_right = 89.0
+offset_bottom = 114.0
+pivot_offset = Vector2(73.838, 18)

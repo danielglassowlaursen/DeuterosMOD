@@ -1,0 +1,36 @@
+[gd_scene load_steps=7 format=3 uid="uid://qfrsmxasaluu"]
+
+[ext_resource type="Script" path="res://Code/Platform/MenuButton.cs" id="1_s1nlq"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_x8e1u"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_agyfr"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_j61ae"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_5s47o"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_vgx6x"]
+
+[node name="MenuButton" type="Button"]
+custom_minimum_size = Vector2(24, 16)
+offset_right = 24.0
+offset_bottom = 16.0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_x8e1u")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_agyfr")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_j61ae")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_5s47o")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_vgx6x")
+script = ExtResource("1_s1nlq")
+ButtonType = 200
+TargetScene = 4
+
+[node name="Sprite" type="TextureRect" parent="."]
+custom_minimum_size = Vector2(24, 16)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+stretch_mode = 2

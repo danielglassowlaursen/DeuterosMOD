@@ -1,0 +1,78 @@
+FACTS
+-----
+Items that don't use standard Tool pod
+
+Bandaid
+Grapple
+AMA
+RFrame
+CommsPod
+
+----
+MOON INDEX
+----
+
+Mari - 4
+Tyre - 3
+Beta - 3
+Earth - 3
+Pluto - 3
+Paleozoil - 7
+Creon - 2, 10
+Pacific - 2, 7
+Mars - 2, 7
+Pompeii - 2, 10
+Burah - 1, 9
+Cecrops - 1, 4
+Sulfurum - 3, 8, 11
+Radius - 2, 4, 11
+Gamma - 2, 5, 10
+Jericho - 4, 7, 11
+Neptune - 2, 5, 7, 10
+Julius - 2, 5, 6, 10
+Uranus - 2, 6, 7, 11
+Osme - 1, 3, 5, 7, 9
+Crete - 1, 3, 5, 6, 9, 10
+Titanes - 2, 4, 5, 6, 8, 10
+Cainozoic - 1, 4, 5, 7, 8, 11
+Epsilon - 4, 5, 6, 8, 9, 11
+Zargun - 2, 3, 5, 6, 8, 9, 11
+Zeta - 1, 3, 4, 5, 7, 8, 10
+Thebes - 1, 3, 4, 5, 6, 8, 9, 11
+Jupiter - 2, 3, 4, 5, 7, 8, 9, 10, 11
+Saturn - 1, 2, 4, 6, 7, 8, 9, 10, 11
+
+MISSING GRAPHICS
+----------------
+Ship Interior - IOS Doesn't have landing arrow, need version with no arrow.
+Ship Interior - Smaller view of ship exterior/interior has overlay on bottom and left, missing from exports.
+
+
+----------------
+
+
+
+production algorithm
+    when switching between production items the production_complete level is preserved
+    but the production value is reset from the object_current_value if you switch to another
+    production and then come back
+
+initialise at start of production:
+  production_value = object_current_value
+  production_complete = 1
+
+on each tick:
+
+v = (num_engineers << rank) * object_multipler / $321
+
+if (production_value + v)>255
+ production_value = ((production_value + v) & 255)
+ if production_complete<4
+     production_complete++
+else
+ production_value = production_value + v
+
+ends when:
+  production_complete = 4
+
+looks like v = 128 in the production algorithm when auto operations computer is fitted

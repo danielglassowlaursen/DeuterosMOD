@@ -1,0 +1,26 @@
+[gd_scene load_steps=7 format=3 uid="uid://c20saow7lsa7y"]
+
+[ext_resource type="Script" path="res://Code/Platform/TimerSwitchButton.cs" id="1"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_lbngp"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_whei5"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_283o1"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_xua1l"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_v7xte"]
+
+[node name="Button" type="Button"]
+show_behind_parent = true
+offset_left = -0.943909
+offset_top = 0.943878
+offset_right = 313.056
+offset_bottom = 239.944
+theme_override_styles/normal = SubResource("StyleBoxEmpty_lbngp")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_whei5")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_283o1")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_xua1l")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_v7xte")
+script = ExtResource("1")

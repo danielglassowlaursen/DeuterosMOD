@@ -1,0 +1,128 @@
+[gd_scene load_steps=11 format=3 uid="uid://dm6c3u7eka7hc"]
+
+[ext_resource type="Script" path="res://Code/Platform/Screens/Production.cs" id="1_7mj6f"]
+[ext_resource type="Texture2D" uid="uid://clcj5c7woisxx" path="res://Sprites/Scenes/Production.png" id="2"]
+[ext_resource type="Theme" uid="uid://ca7skhjpl6nn5" path="res://Themes/WhiteFont5.tres" id="2_e5ye3"]
+[ext_resource type="Texture2D" uid="uid://bi2p2ur5o2nv8" path="res://Sprites/Buttons/ProductionRemoveStaff.png" id="3_4lyxk"]
+[ext_resource type="PackedScene" path="res://PreFabs/Sound/BackGround.tscn" id="3_purcx"]
+[ext_resource type="PackedScene" uid="uid://oi1xywbqhsbj" path="res://PreFabs/Buttons/ProductionButton.tscn" id="3_sfo6b"]
+[ext_resource type="Texture2D" uid="uid://bgbjb8hvgi1dm" path="res://Sprites/SceneSprites/team_frame.png" id="3_tqxy8"]
+[ext_resource type="Texture2D" uid="uid://c7knvkf0f66yw" path="res://Sprites/SceneSprites/Buttons.png" id="4_tahoa"]
+[ext_resource type="Texture2D" uid="uid://11pif8j3he8r" path="res://Sprites/Items/Production/derrick_1.png" id="5_t6bcq"]
+[ext_resource type="Texture2D" uid="uid://bc52dl6g8a6o3" path="res://Sprites/Items/Research/a__o__c.png" id="6_timql"]
+
+[node name="Node2D" type="Node2D"]
+script = ExtResource("1_7mj6f")
+
+[node name="Production" type="TextureRect" parent="."]
+offset_left = 48.0
+offset_top = 16.0
+offset_right = 320.0
+offset_bottom = 184.0
+mouse_filter = 2
+texture = ExtResource("2")
+stretch_mode = 5
+
+[node name="RemoveStaff" type="TextureButton" parent="."]
+offset_left = 168.0
+offset_top = 163.0
+offset_right = 192.0
+offset_bottom = 179.0
+texture_normal = ExtResource("3_4lyxk")
+
+[node name="Sprites" type="Node2D" parent="."]
+
+[node name="TeamFrameImage" type="TextureRect" parent="Sprites"]
+offset_left = 192.0
+offset_top = 152.0
+offset_right = 320.0
+offset_bottom = 182.0
+texture = ExtResource("3_tqxy8")
+
+[node name="ButtonsImage" type="TextureRect" parent="Sprites"]
+offset_left = 272.0
+offset_top = 16.0
+offset_right = 312.0
+offset_bottom = 149.0
+texture = ExtResource("4_tahoa")
+stretch_mode = 2
+
+[node name="ItemProgressImage" type="TextureRect" parent="Sprites"]
+offset_left = 64.0
+offset_top = 40.0
+offset_right = 128.0
+offset_bottom = 96.0
+texture = ExtResource("5_t6bcq")
+
+[node name="SmallItemImage" type="TextureRect" parent="Sprites"]
+offset_left = 136.0
+offset_top = 50.0
+offset_right = 184.0
+offset_bottom = 98.0
+texture = ExtResource("6_timql")
+
+[node name="Labels" type="Node2D" parent="."]
+
+[node name="ProductionNameLabel" type="Label" parent="Labels"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 50.0
+offset_top = 32.0
+offset_right = 72.0
+offset_bottom = 40.0
+pivot_offset = Vector2(73.838, 18)
+theme = ExtResource("2_e5ye3")
+theme_override_colors/font_color = Color(0, 0.533333, 0, 1)
+text = "Derrick"
+horizontal_alignment = 2
+
+[node name="StaffNameLabel" type="Label" parent="Labels"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 242.0
+offset_top = 156.0
+offset_right = 302.0
+offset_bottom = 165.0
+pivot_offset = Vector2(73.838, 18)
+theme = ExtResource("2_e5ye3")
+horizontal_alignment = 2
+
+[node name="StaffRankLabel" type="Label" parent="Labels"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 229.0
+offset_top = 164.0
+offset_right = 289.0
+offset_bottom = 173.0
+pivot_offset = Vector2(73.838, 18)
+theme = ExtResource("2_e5ye3")
+horizontal_alignment = 2
+
+[node name="StaffCountLabel" type="Label" parent="Labels"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 239.0
+offset_top = 172.0
+offset_right = 256.0
+offset_bottom = 181.0
+pivot_offset = Vector2(73.838, 18)
+theme = ExtResource("2_e5ye3")
+horizontal_alignment = 2
+
+[node name="ProductionButtonGrid" type="GridContainer" parent="."]
+offset_left = 275.0
+offset_top = 19.0
+offset_right = 309.0
+offset_bottom = 147.0
+theme_override_constants/h_separation = 0
+theme_override_constants/v_separation = 0
+columns = 2
+
+[node name="Button" parent="ProductionButtonGrid" instance=ExtResource("3_sfo6b")]
+layout_mode = 2
+
+[node name="Button2" parent="ProductionButtonGrid" instance=ExtResource("3_sfo6b")]
+layout_mode = 2
+
+[node name="SoundController" parent="." instance=ExtResource("3_purcx")]
+SoundToPlay = 2

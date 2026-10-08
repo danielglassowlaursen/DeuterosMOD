@@ -1,0 +1,472 @@
+[gd_scene load_steps=13 format=3 uid="uid://dmltsahr8lu51"]
+
+[ext_resource type="Script" path="res://Code/Platform/Screens/StarMap.cs" id="1_y2pv4"]
+[ext_resource type="Texture2D" uid="uid://k2xebxfubg52" path="res://Sprites/SceneSprites/Map/Background.png" id="2_ee6i1"]
+[ext_resource type="Texture2D" uid="uid://cqkccloqi8xvo" path="res://Sprites/SceneSprites/Map/Planet_Red_Rings.png" id="3_gpnbd"]
+[ext_resource type="Texture2D" uid="uid://b0eo6jyb0mwrc" path="res://Sprites/SceneSprites/Map/Satellite_Chart.png" id="4_k80nc"]
+[ext_resource type="Texture2D" uid="uid://bu3lddq6gtgov" path="res://Sprites/SceneSprites/Map/Moon_Small.png" id="5_2pcc7"]
+[ext_resource type="Texture2D" uid="uid://yqihukdu5pnf" path="res://Sprites/SceneSprites/Map/Moon_Medium.png" id="6_b5rvd"]
+[ext_resource type="Texture2D" uid="uid://cb32dxq0kj3po" path="res://Sprites/SceneSprites/Map/Moon_Large.png" id="7_qn2om"]
+[ext_resource type="Texture2D" uid="uid://dhu7sj703cmtf" path="res://Sprites/SceneSprites/Map/Star_The_Sun.png" id="8_0npm3"]
+[ext_resource type="Texture2D" uid="uid://dlqs5mjawe82l" path="res://Sprites/SceneSprites/Map/Stars.png" id="9_lf5h4"]
+[ext_resource type="Theme" uid="uid://bbq2svf2lcuqk" path="res://Themes/YellowFont5.tres" id="10_xyw0q"]
+[ext_resource type="Theme" uid="uid://bag2vb6bnxnrx" path="res://Themes/DarkBiegeFont5.tres" id="11_wv0dr"]
+[ext_resource type="Theme" uid="uid://befke7oqkcv3j" path="res://Themes/BiegeFont5.tres" id="12_j8rs2"]
+
+[node name="StarMap" type="Node2D"]
+script = ExtResource("1_y2pv4")
+
+[node name="Background" type="TextureRect" parent="."]
+offset_right = 240.0
+offset_bottom = 102.0
+texture = ExtResource("2_ee6i1")
+
+[node name="PlanetHolder" type="Control" parent="."]
+visible = false
+layout_mode = 3
+anchors_preset = 0
+offset_left = 5.0
+offset_top = 20.0
+offset_right = 235.0
+offset_bottom = 99.0
+
+[node name="Planet" type="TextureRect" parent="PlanetHolder"]
+layout_mode = 0
+offset_left = 11.0
+offset_right = 59.0
+offset_bottom = 79.0
+texture = ExtResource("3_gpnbd")
+
+[node name="SatelliteChart" type="TextureRect" parent="PlanetHolder"]
+layout_mode = 0
+offset_left = 124.0
+offset_top = 73.0
+offset_right = 214.0
+offset_bottom = 78.0
+pivot_offset = Vector2(73, 5)
+texture = ExtResource("4_k80nc")
+stretch_mode = 2
+
+[node name="GoBack" type="Button" parent="PlanetHolder"]
+layout_mode = 0
+offset_right = 41.0
+offset_bottom = 79.0
+flat = true
+
+[node name="Moons" type="Control" parent="PlanetHolder"]
+anchors_preset = 0
+offset_left = 48.0
+offset_top = 33.0
+offset_right = 214.0
+offset_bottom = 49.0
+
+[node name="Moon00" type="TextureButton" parent="PlanetHolder/Moons"]
+layout_mode = 0
+offset_top = 4.0
+offset_right = 6.0
+offset_bottom = 9.0
+texture_normal = ExtResource("5_2pcc7")
+
+[node name="Moon01" type="TextureButton" parent="PlanetHolder/Moons"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 2.0
+offset_right = 22.0
+offset_bottom = 7.0
+texture_normal = ExtResource("5_2pcc7")
+
+[node name="Moon02" type="TextureButton" parent="PlanetHolder/Moons"]
+layout_mode = 0
+offset_left = 30.0
+offset_top = 5.0
+offset_right = 40.0
+offset_bottom = 14.0
+texture_normal = ExtResource("6_b5rvd")
+
+[node name="Moon03" type="TextureButton" parent="PlanetHolder/Moons"]
+layout_mode = 0
+offset_left = 44.0
+offset_right = 56.0
+offset_bottom = 11.0
+texture_normal = ExtResource("7_qn2om")
+
+[node name="Moon04" type="TextureButton" parent="PlanetHolder/Moons"]
+layout_mode = 0
+offset_left = 62.0
+offset_top = 6.0
+offset_right = 72.0
+offset_bottom = 15.0
+texture_normal = ExtResource("6_b5rvd")
+
+[node name="Moon05" type="TextureButton" parent="PlanetHolder/Moons"]
+layout_mode = 0
+offset_left = 76.0
+offset_top = 1.0
+offset_right = 88.0
+offset_bottom = 12.0
+texture_normal = ExtResource("7_qn2om")
+
+[node name="Moon06" type="TextureButton" parent="PlanetHolder/Moons"]
+layout_mode = 0
+offset_left = 94.0
+offset_top = 4.0
+offset_right = 104.0
+offset_bottom = 13.0
+texture_normal = ExtResource("6_b5rvd")
+
+[node name="Moon07" type="TextureButton" parent="PlanetHolder/Moons"]
+layout_mode = 0
+offset_left = 108.0
+offset_top = 6.0
+offset_right = 120.0
+offset_bottom = 17.0
+texture_normal = ExtResource("7_qn2om")
+
+[node name="Moon08" type="TextureButton" parent="PlanetHolder/Moons"]
+layout_mode = 0
+offset_left = 126.0
+offset_top = 3.0
+offset_right = 136.0
+offset_bottom = 12.0
+texture_normal = ExtResource("6_b5rvd")
+
+[node name="Moon09" type="TextureButton" parent="PlanetHolder/Moons"]
+layout_mode = 0
+offset_left = 142.0
+offset_right = 152.0
+offset_bottom = 9.0
+texture_normal = ExtResource("6_b5rvd")
+
+[node name="Moon10" type="TextureButton" parent="PlanetHolder/Moons"]
+layout_mode = 0
+offset_left = 160.0
+offset_top = 3.0
+offset_right = 166.0
+offset_bottom = 8.0
+texture_normal = ExtResource("5_2pcc7")
+
+[node name="StarSystemHolder" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 5.0
+offset_top = 20.0
+offset_right = 235.0
+offset_bottom = 99.0
+
+[node name="StarSystem" type="TextureRect" parent="StarSystemHolder"]
+layout_mode = 0
+offset_right = 208.0
+offset_bottom = 79.0
+texture = ExtResource("8_0npm3")
+
+[node name="GoBack" type="Button" parent="StarSystemHolder"]
+layout_mode = 0
+offset_right = 23.0
+offset_bottom = 79.0
+flat = true
+
+[node name="Planets" type="Control" parent="StarSystemHolder"]
+anchors_preset = 0
+offset_right = 230.0
+offset_bottom = 79.0
+mouse_filter = 2
+
+[node name="Planet00" type="Button" parent="StarSystemHolder/Planets"]
+layout_mode = 0
+offset_top = 27.0
+offset_right = 23.0
+offset_bottom = 52.0
+flat = true
+
+[node name="Planet01" type="Button" parent="StarSystemHolder/Planets"]
+layout_mode = 0
+offset_top = 27.0
+offset_right = 23.0
+offset_bottom = 52.0
+flat = true
+
+[node name="Planet02" type="Button" parent="StarSystemHolder/Planets"]
+layout_mode = 0
+offset_top = 27.0
+offset_right = 23.0
+offset_bottom = 52.0
+flat = true
+
+[node name="Planet03" type="Button" parent="StarSystemHolder/Planets"]
+layout_mode = 0
+offset_top = 27.0
+offset_right = 23.0
+offset_bottom = 52.0
+flat = true
+
+[node name="Planet04" type="Button" parent="StarSystemHolder/Planets"]
+layout_mode = 0
+offset_top = 27.0
+offset_right = 23.0
+offset_bottom = 52.0
+flat = true
+
+[node name="Planet05" type="Button" parent="StarSystemHolder/Planets"]
+layout_mode = 0
+offset_top = 27.0
+offset_right = 23.0
+offset_bottom = 52.0
+flat = true
+
+[node name="Planet06" type="Button" parent="StarSystemHolder/Planets"]
+layout_mode = 0
+offset_top = 27.0
+offset_right = 23.0
+offset_bottom = 52.0
+flat = true
+
+[node name="Planet07" type="Button" parent="StarSystemHolder/Planets"]
+layout_mode = 0
+offset_top = 27.0
+offset_right = 23.0
+offset_bottom = 52.0
+flat = true
+
+[node name="Planet08" type="Button" parent="StarSystemHolder/Planets"]
+layout_mode = 0
+offset_top = 27.0
+offset_right = 23.0
+offset_bottom = 52.0
+flat = true
+
+[node name="Planet09" type="Button" parent="StarSystemHolder/Planets"]
+layout_mode = 0
+offset_top = 27.0
+offset_right = 23.0
+offset_bottom = 52.0
+flat = true
+
+[node name="Planet10" type="Button" parent="StarSystemHolder/Planets"]
+layout_mode = 0
+offset_top = 27.0
+offset_right = 23.0
+offset_bottom = 52.0
+flat = true
+
+[node name="StarMapHolder" type="Control" parent="."]
+visible = false
+layout_mode = 3
+anchors_preset = 0
+offset_left = 5.0
+offset_top = 20.0
+offset_right = 235.0
+offset_bottom = 99.0
+
+[node name="StarMap" type="TextureRect" parent="StarMapHolder"]
+layout_mode = 0
+offset_left = 11.0
+offset_right = 219.0
+offset_bottom = 79.0
+texture = ExtResource("9_lf5h4")
+stretch_mode = 2
+
+[node name="Buttons" type="Control" parent="StarMapHolder"]
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="The Sun" type="Button" parent="StarMapHolder/Buttons"]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 3.0
+offset_right = 52.0
+offset_bottom = 15.0
+flat = true
+
+[node name="Proxima" type="Button" parent="StarMapHolder/Buttons"]
+layout_mode = 0
+offset_left = 43.0
+offset_top = 53.0
+offset_right = 55.0
+offset_bottom = 65.0
+flat = true
+
+[node name="Centauri" type="Button" parent="StarMapHolder/Buttons"]
+layout_mode = 0
+offset_left = 56.0
+offset_top = 59.0
+offset_right = 68.0
+offset_bottom = 71.0
+flat = true
+
+[node name="Barnard" type="Button" parent="StarMapHolder/Buttons"]
+layout_mode = 0
+offset_left = 90.0
+offset_top = 67.0
+offset_right = 102.0
+offset_bottom = 79.0
+flat = true
+
+[node name="Lalande" type="Button" parent="StarMapHolder/Buttons"]
+layout_mode = 0
+offset_left = 109.0
+offset_top = 10.0
+offset_right = 121.0
+offset_bottom = 22.0
+flat = true
+
+[node name="Sirius" type="Button" parent="StarMapHolder/Buttons"]
+layout_mode = 0
+offset_left = 118.0
+offset_top = 37.0
+offset_right = 130.0
+offset_bottom = 49.0
+flat = true
+
+[node name="Cygni" type="Button" parent="StarMapHolder/Buttons"]
+layout_mode = 0
+offset_left = 141.0
+offset_top = 45.0
+offset_right = 153.0
+offset_bottom = 57.0
+flat = true
+
+[node name="Procyon" type="Button" parent="StarMapHolder/Buttons"]
+layout_mode = 0
+offset_left = 159.0
+offset_top = 11.0
+offset_right = 171.0
+offset_bottom = 23.0
+flat = true
+
+[node name="Tau Ceti" type="Button" parent="StarMapHolder/Buttons"]
+layout_mode = 0
+offset_left = 186.0
+offset_top = 62.0
+offset_right = 198.0
+offset_bottom = 74.0
+flat = true
+
+[node name="Labels" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 240.0
+offset_bottom = 149.0
+mouse_filter = 2
+
+[node name="Sun" type="Label" parent="Labels"]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 64.0
+offset_bottom = 17.0
+theme = ExtResource("10_xyw0q")
+text = "The Sun"
+
+[node name="SelectedLocation" type="Label" parent="Labels"]
+layout_mode = 0
+offset_top = 104.0
+offset_right = 64.0
+offset_bottom = 113.0
+text = "The Moon	"
+
+[node name="StarCount" type="Label" parent="Labels"]
+layout_mode = 0
+offset_top = 120.0
+offset_right = 40.0
+offset_bottom = 129.0
+text = "10"
+
+[node name="StarSummary" type="Label" parent="Labels"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 120.0
+offset_right = 168.0
+offset_bottom = 129.0
+theme = ExtResource("11_wv0dr")
+text = "Planetary Systems."
+
+[node name="Planet" type="Label" parent="Labels"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 8.0
+offset_right = 120.0
+offset_bottom = 17.0
+text = "Earth"
+
+[node name="Moon" type="Label" parent="Labels"]
+layout_mode = 0
+offset_left = 160.0
+offset_top = 8.0
+offset_right = 224.0
+offset_bottom = 17.0
+theme = ExtResource("11_wv0dr")
+text = "The Moon"
+
+[node name="Deposits" type="Label" parent="Labels"]
+layout_mode = 0
+offset_left = 96.0
+offset_top = 104.0
+offset_right = 160.0
+offset_bottom = 113.0
+theme = ExtResource("12_j8rs2")
+text = "Deposits"
+
+[node name="Deposit00" type="Label" parent="Labels"]
+layout_mode = 0
+offset_left = 96.0
+offset_top = 112.0
+offset_right = 136.0
+offset_bottom = 121.0
+text = "Iron"
+
+[node name="Deposit01" type="Label" parent="Labels"]
+layout_mode = 0
+offset_left = 96.0
+offset_top = 120.0
+offset_right = 160.0
+offset_bottom = 129.0
+text = "Titanium"
+
+[node name="Deposit02" type="Label" parent="Labels"]
+layout_mode = 0
+offset_left = 96.0
+offset_top = 128.0
+offset_right = 168.0
+offset_bottom = 137.0
+text = "Aluminium"
+
+[node name="Deposit03" type="Label" parent="Labels"]
+layout_mode = 0
+offset_left = 96.0
+offset_top = 136.0
+offset_right = 144.0
+offset_bottom = 145.0
+text = "Carbon"
+
+[node name="Deposit04" type="Label" parent="Labels"]
+layout_mode = 0
+offset_left = 176.0
+offset_top = 112.0
+offset_right = 248.0
+offset_bottom = 121.0
+text = "Deuterium"
+
+[node name="Deposit05" type="Label" parent="Labels"]
+layout_mode = 0
+offset_left = 176.0
+offset_top = 120.0
+offset_right = 216.0
+offset_bottom = 129.0
+text = "Gold"
+
+[node name="Deposit06" type="Label" parent="Labels"]
+layout_mode = 0
+offset_left = 176.0
+offset_top = 128.0
+offset_right = 224.0
+offset_bottom = 137.0
+text = "Silica"
+
+[node name="Deposit07" type="Label" parent="Labels"]
+layout_mode = 0
+offset_left = 176.0
+offset_top = 136.0
+offset_right = 224.0
+offset_bottom = 145.0
+text = "Silica"

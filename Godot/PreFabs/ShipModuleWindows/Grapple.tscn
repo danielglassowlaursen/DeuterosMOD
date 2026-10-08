@@ -1,0 +1,186 @@
+[gd_scene load_steps=9 format=3 uid="uid://dv17gstghbwl1"]
+
+[ext_resource type="PackedScene" uid="uid://dfxcpnk8y4m45" path="res://PreFabs/UI/Window.tscn" id="1_q1sx5"]
+[ext_resource type="Script" path="res://Code/Platform/Screens/ModuleScenes/Grapple.cs" id="1_qpu83"]
+[ext_resource type="Texture2D" uid="uid://cx1fnol5ay8s5" path="res://Sprites/Buttons/Release.png" id="2_ebvra"]
+[ext_resource type="Texture2D" uid="uid://ctlilmdg3qdsw" path="res://Sprites/SceneSprites/Asteroid_Small.png" id="2_kiob6"]
+[ext_resource type="Texture2D" uid="uid://dhfvjauab50hj" path="res://Sprites/Buttons/Grab.png" id="3_nmnmd"]
+[ext_resource type="Theme" uid="uid://d3ky76lin6gp4" path="res://Themes/GreenFont5.tres" id="6_xwir8"]
+[ext_resource type="Theme" uid="uid://bag2vb6bnxnrx" path="res://Themes/DarkBiegeFont5.tres" id="7_b8t4h"]
+[ext_resource type="Theme" uid="uid://44d6jm1awi5s" path="res://Themes/RedFont5.tres" id="8_0xb5j"]
+
+[node name="Grapple" type="Node2D"]
+script = ExtResource("1_qpu83")
+
+[node name="Window" parent="." instance=ExtResource("1_q1sx5")]
+
+[node name="Enabled" type="Control" parent="."]
+visible = false
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Labels" type="Control" parent="Enabled"]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 69.0
+offset_top = 28.0
+offset_right = 299.0
+offset_bottom = 138.0
+
+[node name="ScannerAnalysis" type="Label" parent="Enabled/Labels"]
+layout_mode = 0
+offset_left = 3.0
+offset_top = 3.0
+offset_right = 75.0
+offset_bottom = 19.0
+text = "Scanner
+Analysis."
+
+[node name="ScannerStatus" type="Label" parent="Enabled/Labels"]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 31.0
+offset_right = 92.0
+offset_bottom = 47.0
+text = "No Objects
+In Vicinity"
+
+[node name="Mass" type="Label" parent="Enabled/Labels"]
+layout_mode = 0
+offset_left = 6.0
+offset_top = 53.0
+offset_right = 78.0
+offset_bottom = 77.0
+text = "Estimated
+Mass
+5000t."
+
+[node name="Element" type="Label" parent="Enabled/Labels"]
+layout_mode = 0
+offset_left = 5.0
+offset_top = 85.0
+offset_right = 101.0
+offset_bottom = 101.0
+text = "Main Element
+Aluminium"
+
+[node name="ObjectHeld" type="Label" parent="Enabled/Labels"]
+layout_mode = 0
+offset_left = 125.0
+offset_top = 76.0
+offset_right = 221.0
+offset_bottom = 84.0
+text = "Object Held:"
+
+[node name="Contents" type="Label" parent="Enabled/Labels"]
+layout_mode = 0
+offset_left = 125.0
+offset_top = 84.0
+offset_right = 189.0
+offset_bottom = 108.0
+text = "Asteroid
+250t.
+Silica"
+
+[node name="Sprites" type="Control" parent="Enabled"]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 69.0
+offset_top = 28.0
+offset_right = 299.0
+offset_bottom = 138.0
+
+[node name="Asteroid" type="TextureRect" parent="Enabled/Sprites"]
+layout_mode = 0
+offset_left = 147.0
+offset_top = 9.0
+offset_right = 184.0
+offset_bottom = 45.0
+texture = ExtResource("2_kiob6")
+
+[node name="Buttons" type="Control" parent="Enabled"]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 69.0
+offset_top = 28.0
+offset_right = 299.0
+offset_bottom = 138.0
+
+[node name="Release" type="TextureButton" parent="Enabled/Buttons"]
+layout_mode = 0
+offset_left = 126.0
+offset_top = 60.0
+offset_right = 150.0
+offset_bottom = 76.0
+texture_normal = ExtResource("2_ebvra")
+
+[node name="Grab" type="TextureButton" parent="Enabled/Buttons"]
+layout_mode = 0
+offset_left = 178.0
+offset_top = 60.0
+offset_right = 202.0
+offset_bottom = 76.0
+texture_normal = ExtResource("3_nmnmd")
+
+[node name="Disabled" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 69.0
+offset_top = 28.0
+offset_right = 299.0
+offset_bottom = 138.0
+
+[node name="PodType" type="Label" parent="Disabled"]
+layout_mode = 0
+offset_left = 5.0
+offset_top = 8.0
+offset_right = 189.0
+offset_bottom = 16.0
+text = "Pod Type: TOOL MOUNTING"
+
+[node name="Contents" type="Label" parent="Disabled"]
+offset_left = 5.0
+offset_top = 20.0
+offset_right = 189.0
+offset_bottom = 28.0
+text = "Contents:"
+
+[node name="ToolType" type="Label" parent="Disabled"]
+offset_left = 5.0
+offset_top = 37.0
+offset_right = 189.0
+offset_bottom = 45.0
+theme = ExtResource("6_xwir8")
+text = "Hydraulic Grapple"
+
+[node name="ToolContents" type="Label" parent="Disabled"]
+offset_left = 6.0
+offset_top = 45.0
+offset_right = 190.0
+offset_bottom = 53.0
+theme = ExtResource("7_b8t4h")
+text = "( 100 Titanium )"
+
+[node name="Warning" type="Label" parent="Disabled"]
+offset_left = 82.0
+offset_top = 63.0
+offset_right = 146.0
+offset_bottom = 71.0
+theme = ExtResource("8_0xb5j")
+text = "WARNING:"
+
+[node name="WarningBody" type="RichTextLabel" parent="Disabled"]
+layout_mode = 0
+offset_left = 82.0
+offset_top = 72.0
+offset_right = 228.0
+offset_bottom = 105.0
+theme = ExtResource("7_b8t4h")
+bbcode_enabled = true
+text = "A [color=yellow]Crew[/color] Is Required
+To Operate This
+Equipment And Must
+Be Ranked [color=yellow]Captain[/color]"
+autowrap_mode = 0

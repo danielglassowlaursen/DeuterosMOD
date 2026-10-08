@@ -1,0 +1,236 @@
+[gd_scene load_steps=11 format=3 uid="uid://blrlkr6u0hay1"]
+
+[ext_resource type="Script" path="res://Code/Platform/Screens/Research.cs" id="1_odr4x"]
+[ext_resource type="Theme" uid="uid://cqqqainab4nqh" path="res://Themes/DefaultTheme.tres" id="2_v2jm0"]
+[ext_resource type="PackedScene" path="res://PreFabs/Sound/BackGround.tscn" id="3"]
+[ext_resource type="Texture2D" uid="uid://25ugvew1mldy" path="res://Sprites/Scenes/Store_Research.png" id="3_fyd7t"]
+[ext_resource type="Theme" uid="uid://44d6jm1awi5s" path="res://Themes/RedFont5.tres" id="4_2yrbd"]
+[ext_resource type="Theme" uid="uid://d3ky76lin6gp4" path="res://Themes/GreenFont5.tres" id="5_liy2p"]
+[ext_resource type="Theme" uid="uid://befke7oqkcv3j" path="res://Themes/BiegeFont5.tres" id="5_ofj31"]
+[ext_resource type="Theme" uid="uid://ca7skhjpl6nn5" path="res://Themes/WhiteFont5.tres" id="7_o4ukq"]
+[ext_resource type="Texture2D" uid="uid://c7knvkf0f66yw" path="res://Sprites/SceneSprites/Buttons.png" id="9_h2qj2"]
+[ext_resource type="Texture2D" uid="uid://bgbjb8hvgi1dm" path="res://Sprites/SceneSprites/team_frame.png" id="10_21qxa"]
+
+[node name="Node2D" type="Node2D"]
+script = ExtResource("1_odr4x")
+
+[node name="Research" type="TextureRect" parent="."]
+texture_filter = 1
+offset_left = 48.0
+offset_top = 16.0
+offset_right = 320.0
+offset_bottom = 184.0
+mouse_filter = 2
+theme = ExtResource("2_v2jm0")
+texture = ExtResource("3_fyd7t")
+
+[node name="SoundController" parent="." instance=ExtResource("3")]
+SoundToPlay = 4
+
+[node name="Sprites" type="Node2D" parent="."]
+
+[node name="ResearchImage" type="TextureRect" parent="Sprites"]
+offset_left = 180.0
+offset_top = 49.0
+offset_right = 248.0
+offset_bottom = 117.0
+
+[node name="ButtonsImage" type="TextureRect" parent="Sprites"]
+offset_left = 272.0
+offset_top = 24.0
+offset_right = 312.0
+offset_bottom = 157.0
+texture = ExtResource("9_h2qj2")
+stretch_mode = 2
+
+[node name="TeamFrameImage" type="TextureRect" parent="Sprites"]
+offset_left = 48.0
+offset_top = 153.0
+offset_right = 176.0
+offset_bottom = 183.0
+texture = ExtResource("10_21qxa")
+
+[node name="Labels" type="Node2D" parent="."]
+
+[node name="StaffCountLabel" type="Label" parent="Labels"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 90.0
+offset_top = 172.0
+offset_right = 127.0
+offset_bottom = 182.0
+theme = ExtResource("7_o4ukq")
+text = "200"
+horizontal_alignment = 2
+
+[node name="RankLabel" type="Label" parent="Labels"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 86.0
+offset_top = 164.0
+offset_right = 158.0
+offset_bottom = 174.0
+theme = ExtResource("7_o4ukq")
+text = "Doctor"
+
+[node name="LeaderNameLabel" type="Label" parent="Labels"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 102.0
+offset_top = 156.0
+offset_right = 158.0
+offset_bottom = 166.0
+theme = ExtResource("7_o4ukq")
+text = "Bernard"
+
+[node name="ItemAnalysisLabel" type="Label" parent="Labels"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 54.0
+offset_top = 19.0
+offset_right = 158.0
+offset_bottom = 29.0
+theme = ExtResource("4_2yrbd")
+text = "ITEM ANALYSIS"
+horizontal_alignment = 2
+
+[node name="ItemNameLabel" type="Label" parent="Labels"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 54.0
+offset_top = 27.0
+offset_right = 174.0
+offset_bottom = 37.0
+theme = ExtResource("7_o4ukq")
+text = "Item Name Label"
+
+[node name="TechLevelDataLabel" type="Label" parent="Labels"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 152.0
+offset_top = 35.0
+offset_right = 161.0
+offset_bottom = 45.0
+theme = ExtResource("4_2yrbd")
+text = "1"
+horizontal_alignment = 2
+
+[node name="TechLevelLabel" type="Label" parent="Labels"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 55.0
+offset_top = 35.0
+offset_right = 157.0
+offset_bottom = 45.0
+theme = ExtResource("5_ofj31")
+text = "Tech Level"
+
+[node name="InProgress" type="Node2D" parent="Labels"]
+
+[node name="TeamWorkingLabel" type="Label" parent="Labels/InProgress"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 71.0
+offset_top = 56.0
+offset_right = 159.0
+offset_bottom = 65.0
+theme = ExtResource("5_liy2p")
+text = "Team Working"
+horizontal_alignment = 2
+
+[node name="ProjectCompletionLabel" type="Label" parent="Labels/InProgress"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 71.0
+offset_top = 66.0
+offset_right = 157.0
+offset_bottom = 90.0
+theme = ExtResource("7_o4ukq")
+text = "Project is
+ 1% Complete"
+
+[node name="Researched" type="Node2D" parent="Labels"]
+
+[node name="MassLabel" type="Label" parent="Labels/Researched"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 56.0
+offset_top = 48.0
+offset_right = 144.0
+offset_bottom = 58.0
+theme = ExtResource("5_ofj31")
+text = "Mass     T."
+
+[node name="MassDataLabel" type="Label" parent="Labels/Researched"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 94.0
+offset_top = 48.0
+offset_right = 120.0
+offset_bottom = 58.0
+theme = ExtResource("4_2yrbd")
+text = "124"
+horizontal_alignment = 2
+
+[node name="ProductionAmountListLabel" type="Label" parent="Labels/Researched"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 59.0
+offset_top = 56.0
+offset_right = 88.0
+offset_bottom = 134.0
+theme = ExtResource("5_liy2p")
+text = "6
+70
+10
+30
+2
+5
+1"
+horizontal_alignment = 2
+
+[node name="ProductionMaterialListLabel" type="Label" parent="Labels/Researched"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 96.0
+offset_top = 56.0
+offset_right = 187.0
+offset_bottom = 134.0
+theme = ExtResource("5_liy2p")
+text = "Iron
+Titanium
+Aluminium
+Carbon
+Copper
+Platinum
+Silver"
+
+[node name="ItemNotesLabel" type="Label" parent="Labels/Researched"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 54.0
+offset_top = 121.0
+offset_right = 160.0
+offset_bottom = 141.0
+theme = ExtResource("7_o4ukq")
+text = "This item may
+be producted"
+
+[node name="ItemNotesDataLabel" type="Label" parent="Labels/Researched"]
+anchors_preset = -1
+anchor_bottom = 0.012
+offset_left = 54.0
+offset_top = 139.0
+offset_right = 167.0
+offset_bottom = 149.0
+theme = ExtResource("7_o4ukq")
+text = "by any factory"
+
+[node name="ResearchButtonGrid" type="GridContainer" parent="."]
+offset_left = 275.0
+offset_top = 27.0
+offset_right = 309.0
+offset_bottom = 155.0
+theme_override_constants/h_separation = 0
+theme_override_constants/v_separation = 0
+columns = 2
