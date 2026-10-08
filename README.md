@@ -6,6 +6,7 @@ Et strategispil i et hacker-univers med asynkron, turbaseret online-multiplayer,
 |---|---|
 | `crates/nullnet-core` | Spillets regler: ren, deterministisk Rust uden motor eller I/O |
 | `crates/nullnet-client` | Web-klienten (Bevy → WebAssembly) med procedurel grafik |
+| `crates/nullnet-sim` | Lader bot-crews spille mod hinanden og udskriver tidslinjen |
 | `web/`, `scripts/` | HTML-side og build-script til browseren |
 | `Godot/` | Godot-remaken [DeuterosOrg/Deuteros-Resurrected](https://github.com/DeuterosOrg/Deuteros-Resurrected), brugt som opslagsværk for regler og data |
 
@@ -16,6 +17,9 @@ Kræver [Rust](https://rustup.rs).
 ```bash
 # Kerne-tests
 cargo test -p nullnet-core
+
+# Se 3 bot-crews spille 3.000 dage (--verbose viser alt, hvad der bygges og flyttes)
+cargo run -p nullnet-sim -- --seed 7 --crews 3 --days 3000
 
 # Web-klienten (første build tager et stykke tid)
 rustup target add wasm32-unknown-unknown

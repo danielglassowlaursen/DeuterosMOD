@@ -7,6 +7,7 @@
 //! every platform, so the rules use integer arithmetic only, iterate ordered
 //! collections only, and draw randomness from [`Rng`] stored in the world.
 
+pub mod bot;
 pub mod command;
 pub mod data;
 pub mod exfil;
@@ -34,6 +35,7 @@ pub use items::ItemType;
 pub use links::LinkConfig;
 pub use rng::Rng;
 pub use site::{Citadel, STAFF_SLOTS, Site, Vein};
+pub use staff::{Staff, StaffKind};
 pub use store::Store;
 pub use transport::{
     Berth, Cargo, Destination, Module, ModuleKind, Seat, Vessel, VesselId, VesselKind, VesselState,

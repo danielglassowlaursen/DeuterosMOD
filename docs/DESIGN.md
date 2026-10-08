@@ -103,6 +103,7 @@ crates/
   nullnet-core      Spillets regler. Ren Rust uden motor, ur eller I/O.
   nullnet-server    (M2) axum + SQLite. Autoritativ: gemmer spil og afvikler ture.
   nullnet-client    Bevy, kompileret til WebAssembly. Serveres af serveren.
+  nullnet-sim       Lader bot-crews spille mod hinanden og udskriver spillets tidslinje.
 tools/              Konverter, der henter datatabellerne ud af Godot-koden.
 Godot/              Godot-remaken: opslagsværk for regler og data.
 ```
@@ -171,7 +172,7 @@ Hver dag i bevægelse koster én enhed anonymisering: proxykæder for droppere o
 
 Den sidste regel er ny: Godot-remaken åbnede aldrig for rejser mellem stjerner, men originalen gjorde det, når Sol var renset. Kvantelink, forstærker, exploit-launcher, jæger-daemon, honeypot og jammer har endnu ingen regler og forbliver lukkede, indtil de designes.
 
-**Samtidige konflikter løses deterministisk.** Hvis to crews for eksempel bygger bagdør på den samme vært samme dag, afgør spillets seed og en prioritet, der roterer fra tur til tur.
+**Samtidige konflikter løses deterministisk.** Ordrerne udføres crew for crew, og den crew, der går først, roterer fra tur til tur. Hvis to crews for eksempel installerer på den samme frie vært i samme tur, får den første værten, og den andens ordre afvises med "host is held by someone else". Uden rotationen vandt crew 0 altid, hvilket bot-spillet afslørede.
 
 ## Konkurrence
 
@@ -199,6 +200,7 @@ Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellern
 | Exfil-scripts og krypterede links | `Objects/ACC.cs`, `MTX.cs` | `exfil.rs`, `links.rs` | ✅ |
 | The Legacy Net og kamp | `EnemyFleets.cs`, `EnemyDroneBuilder.cs`, `BattleLogic.cs` | | M4 |
 | Unlocks | `Platform/Unlocker.cs` | `unlocks.rs` | ✅ (krig og fund via sniffer kommer med M4) |
+| Bot-spil | (nyt) | `bot.rs`, `tests/bot_game.rs`, `nullnet-sim` | ✅ |
 | Beskeder og bulletiner | `Bulletins.cs`, `AlienMessages.cs` | | M4 |
 
 **Fejl i Godot-koden, som ikke skal kopieres:**
@@ -218,6 +220,35 @@ Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellern
 
 **Mangler i Godot-remaken, som skal designes:** gemte spil, sejr og nederlag, rejsetid mellem netværk og effekten af kvantelink, forstærker, honeypot, jammer, jæger-daemon, kill switch og logikbomber.
 
+## Bot-spil
+
+`bot::orders(data, world, crew)` giver de ordrer, en crew skal have denne tur, ud fra verdenen alene. Botten husker intet mellem turene, og den planlægger mod kopier af de lagre, den trækker på, så den aldrig giver en ordre, reglerne afviser. Den spiller i tre faser:
+
+1. **Økonomi og citadel.** Rekrutterer analytikere, kodere og tre operatørhold, forsker i en fast rækkefølge, bygger taps op til 8, bygger en dropper og bærer citadel-moduler ud ét ad gangen, indtil citadellet over skjulestedet er færdigt.
+2. **Bemanding og forsyning.** Koderne flytter op i citadellet, når de har niveau 2, og nye rekrutter overtager værkstedet i skjulestedet. Et operatørhold følger efter. Dropperen fragter ressourcer op og kører fast rute med exfil-script, når det er bygget. Citadellet bygger orm, værktøjsmoduler og citadel-moduler.
+3. **Ekspansion.** Ormen fyldes med citadel-moduler og sendes til den nærmeste frie vært i hjemmenettet. Den bygger citadeller der, til nettet er fuldt.
+
+Botten bruger endnu ikke de erobrede værters citadeller, krypterede links eller tunnelskibe. Bagdørssæt og build-bots kræver ressourcer, der ikke findes i hjemmenettet (certifikater, krypto og firmware). De kommer med caches i M4.
+
+`tests/bot_game.rs` spiller 1-4 bots i op til 4.000 dage i ture på 10 dage. Efter hver tur tjekkes, at ingen ordrer afvises (bortset fra tabte kapløb om en vært), at lagre, taps, moduler, hold og brændstof holder sig inden for grænserne, at ejede værter forbliver ejet, at forskning og milepæle aldrig går tabt, og at intet fartøj går tabt. Spillet skal være deterministisk og give samme resultat efter gem og genindlæsning. CI kører desuden `cargo run -p nullnet-sim -- --crews 4 --days 5000`, som fejler, hvis en bot får en ordre afvist.
+
+**Tidslinje** for 2 crews (`cargo run -p nullnet-sim -- --crews 2 --days 4000`):
+
+| Dag | Begge crews |
+|---|---|
+| 350 | Første citadel-modul over skjulestedet |
+| 490 | Citadellet over skjulestedet er færdigt |
+| 776 | Første orm-kerne bygget |
+| 810-830 | Første værter indtaget (kapløb om månen) |
+| 2000 | 7 færdige citadeller hver |
+| 4000 | 17 hver, alle 34 frie værter i hjemmenettet er taget |
+
+**Fund til balanceringen (M5):**
+
+- Ressourcerne hober sig op (ca. 15.000 af hver i skjulestedet efter 4.000 dage). Tempoet bestemmes af forskning, byggetid og transport, ikke af udvindingen. Derfor giver forskellige seeds samme tidslinje i hjemmenettet.
+- En dropper bærer ét citadel-modul pr. tur, mens et exfil-script fragter 250 enheder af én ressource ad gangen på skift. Til citadel-moduler er scriptet derfor halvt så hurtigt som at bære modulerne selv. Det er bekvemt, men ikke effektivt.
+- Proxykæder er den knappe ressource i skjulestedet, fordi dropperen og scriptet tanker derfra.
+
 ## Ophavsret
 
 Godot-remakens kode er udgivet under CC0, så den må frit bruges. Dens grafik, lyd, skrifttyper og tekster stammer derimod fra originalspillet (© Activision 1991). NullNet bruger derfor procedurel grafik og egne tekster og genbruger ikke originalens materiale. Spilmekanik er ikke beskyttet af ophavsret, og navnet NullNet undgår originalens titel.
@@ -227,7 +258,7 @@ Godot-remakens kode er udgivet under CC0, så den må frit bruges. Dens grafik, 
 | | Indhold |
 |---|---|
 | **M0** | Workspace, CI, designdokument, kerne med forskning og turafvikling, web-klient med procedurel oversigt. ✅ |
-| **M1** | Kerneregler for én crew: datatabeller, udvinding, rekruttering, værksted, transport, exfil-scripts og krypterede links. Testes med et headless "bot-spil". |
+| **M1** | Kerneregler for én crew: datatabeller, udvinding, rekruttering, værksted, transport, exfil-scripts og krypterede links. Testes med et headless "bot-spil". ✅ |
 | **M2** | Server: opret spil, invitationslinks, aflever ordrer, afvikl tur, gem i SQLite, fog of war. |
 | **M3** | Klient i hacker-look: lobby, netværkskort, terminalpaneler for vært, citadel og transport, ordrepanel og turlog. |
 | **M4** | The Legacy Net: AI, krig, kampafvikling med animeret genafspilning, erobring og befrielse. |
@@ -237,6 +268,7 @@ Godot-remakens kode er udgivet under CC0, så den må frit bruges. Dens grafik, 
 ## Åbne spørgsmål
 
 - Standard for turlængde (spildage) og frist (timer)?
+- Kapløb om en fri vært: skal den crew, hvis ordrer udføres først, vinde (som nu), eller den, hvis orm har luret der længst?
 - Sejrsbetingelse og pointtabel.
 - Navne på de 9 netværk og 160 værter.
 - Skal man kunne logge ind på tværs af enheder (e-mail-login), eller er et invitationslink pr. spil nok?

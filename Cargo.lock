@@ -3337,6 +3337,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nullnet-sim"
+version = "0.1.0"
+dependencies = [
+ "nullnet-core",
+]
+
+[[package]]
 name = "num-traits"
 version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"

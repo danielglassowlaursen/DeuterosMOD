@@ -19,6 +19,8 @@ use crate::workshop::{SiteRef, Workshop};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct World {
     pub day: Day,
+    /// Turns resolved so far. Which crew's orders go first rotates with it.
+    pub turn: u32,
     pub rng: Rng,
     pub players: BTreeMap<PlayerId, Player>,
     /// Indexed by [`HostId`], parallel to `GameData::hosts`.
@@ -47,6 +49,7 @@ impl World {
     pub fn new(seed: u64) -> Self {
         World {
             day: 0,
+            turn: 0,
             rng: Rng::new(seed, 0),
             players: BTreeMap::new(),
             hosts: Vec::new(),

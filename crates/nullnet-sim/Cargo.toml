@@ -1,0 +1,10 @@
+[package]
+name = "nullnet-sim"
+description = "Plays bot crews against each other and prints the game's timeline."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+nullnet-core.workspace = true

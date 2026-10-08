@@ -104,14 +104,17 @@ pub struct TurnReport {
 
 /// Applies every player's orders, then advances the world `days` days.
 ///
-/// Orders are applied before the first day, in player-id order and each
-/// player's commands in the order given; what they do at once (a host
+/// Orders are applied before the first day, one player's after another and
+/// each player's commands in the order given; what they do at once (a host
 /// claimed, a vessel setting off) is reported on the day they were given.
-/// An invalid command is skipped and reported; it never aborts the turn.
+/// When two crews' orders clash, as when both claim the same free host, the
+/// first applied wins, so the player who goes first moves on by one every
+/// turn. An invalid command is skipped and reported; it never aborts the
+/// turn.
 pub fn resolve_turn(data: &GameData, world: &mut World, orders: &Orders, days: u32) -> TurnReport {
     let mut rejected = Vec::new();
     let mut events = Vec::new();
-    for (&player, commands) in orders {
+    for (player, commands) in turn_order(world, orders) {
         for (index, command) in commands.iter().enumerate() {
             if let Err(error) = command.apply(data, world, player, &mut events) {
                 rejected.push(RejectedCommand {
@@ -134,12 +137,37 @@ pub fn resolve_turn(data: &GameData, world: &mut World, orders: &Orders, days: u
         events.extend(granted);
     }
 
+    world.turn += 1;
     TurnReport {
         first_day,
         last_day: world.day,
         rejected,
         events,
     }
+}
+
+/// The orders in the sequence they apply this turn: players by id, starting
+/// from the one whose turn it is to go first. Orders for players not in the
+/// game come last; they are all rejected.
+fn turn_order<'a>(world: &World, orders: &'a Orders) -> Vec<(PlayerId, &'a Vec<Command>)> {
+    let players = world.players.len().max(1);
+    let first = world.turn as usize % players;
+    let mut queue: Vec<(usize, PlayerId, &Vec<Command>)> = orders
+        .iter()
+        .map(|(&player, commands)| {
+            let place = world
+                .players
+                .keys()
+                .position(|&p| p == player)
+                .map_or(usize::MAX, |i| (i + players - first) % players);
+            (place, player, commands)
+        })
+        .collect();
+    queue.sort_by_key(|&(place, player, _)| (place, player));
+    queue
+        .into_iter()
+        .map(|(_, player, commands)| (player, commands))
+        .collect()
 }
 
 fn step_day(data: &GameData, world: &mut World, events: &mut Vec<Event>) {
@@ -376,6 +404,26 @@ mod tests {
         let b = resolve_turn(&data, &mut restored, &Orders::new(), 100);
         assert_eq!(a, b);
         assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn the_player_whose_orders_go_first_rotates_every_turn() {
+        let data = data();
+        let mut world = world(&data);
+        let stranger = PlayerId(9);
+        let orders = Orders::from([(ALICE, vec![]), (BOB, vec![]), (stranger, vec![])]);
+        let sequence = |world: &World| -> Vec<PlayerId> {
+            turn_order(world, &orders)
+                .into_iter()
+                .map(|(player, _)| player)
+                .collect()
+        };
+        assert_eq!(sequence(&world), [ALICE, BOB, stranger]);
+        resolve_turn(&data, &mut world, &Orders::new(), 0);
+        assert_eq!(world.turn, 1);
+        assert_eq!(sequence(&world), [BOB, ALICE, stranger]);
+        resolve_turn(&data, &mut world, &Orders::new(), 10);
+        assert_eq!(sequence(&world), [ALICE, BOB, stranger]);
     }
 
     #[test]
