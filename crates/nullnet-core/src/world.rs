@@ -12,6 +12,7 @@ use crate::rng::Rng;
 use crate::site::{Citadel, Site};
 use crate::staff::Staff;
 use crate::transport::{Vessel, VesselId};
+use crate::unlocks::Milestones;
 use crate::workshop::{SiteRef, Workshop};
 
 /// The complete mutable state of one game.
@@ -148,6 +149,7 @@ pub struct Player {
     pub current_research: Option<ItemType>,
     /// Research the player has access to, in progress or finished.
     pub research: BTreeMap<ItemType, ResearchProgress>,
+    pub milestones: Milestones,
 }
 
 impl Player {
@@ -160,6 +162,7 @@ impl Player {
             research_team: None,
             current_research: None,
             research: BTreeMap::new(),
+            milestones: Milestones::new(),
         }
     }
 

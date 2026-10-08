@@ -8,6 +8,7 @@ use crate::ids::{Day, HostId, PlayerId};
 use crate::items::ItemType;
 use crate::staff::StaffKind;
 use crate::transport::{self, AbortReason, Berth, VesselId};
+use crate::unlocks::{self, Milestone};
 use crate::workshop::{self, WorkshopRef};
 use crate::world::World;
 use crate::{links, mining, recruitment, research};
@@ -77,6 +78,12 @@ pub enum Event {
         vessel: VesselId,
         host: HostId,
     },
+    /// A crew reached a milestone; its research is now open.
+    Unlocked {
+        day: Day,
+        player: PlayerId,
+        milestone: Milestone,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,9 +123,15 @@ pub fn resolve_turn(data: &GameData, world: &mut World, orders: &Orders, days: u
         }
     }
 
+    let granted = unlocks::check(data, world, &events);
+    events.extend(granted);
+
     let first_day = world.day + 1;
     for _ in 0..days {
+        let seen = events.len();
         step_day(data, world, &mut events);
+        let granted = unlocks::check(data, world, &events[seen..]);
+        events.extend(granted);
     }
 
     TurnReport {

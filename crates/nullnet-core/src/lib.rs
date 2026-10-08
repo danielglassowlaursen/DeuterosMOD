@@ -22,6 +22,7 @@ pub mod staff;
 pub mod store;
 pub mod transport;
 pub mod turn;
+pub mod unlocks;
 pub mod workshop;
 pub mod world;
 
@@ -38,5 +39,6 @@ pub use transport::{
     Berth, Cargo, Destination, Module, ModuleKind, Seat, Vessel, VesselId, VesselKind, VesselState,
 };
 pub use turn::{Event, Orders, TurnReport, resolve_turn};
+pub use unlocks::Milestone;
 pub use workshop::{AutoMode, SiteRef, WorkshopRef};
 pub use world::{Controller, HostState, Player, World};

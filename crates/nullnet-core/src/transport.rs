@@ -1117,13 +1117,20 @@ mod tests {
                 slot: 0,
             }],
         );
+        // The first module above the hideout also opens worm research.
         assert!(matches!(
             report.events[..],
-            [Event::Installed {
-                item: ItemType::CitadelModule,
-                installed: 1,
-                ..
-            }]
+            [
+                Event::Installed {
+                    item: ItemType::CitadelModule,
+                    installed: 1,
+                    ..
+                },
+                Event::Unlocked {
+                    milestone: crate::unlocks::Milestone::FirstCitadelModule,
+                    ..
+                }
+            ]
         ));
         assert_eq!(world.players[&CREW].hideout.citadel.modules, 1);
         assert_eq!(world.vessels[&dropper].modules[0], Module::ToolModule(None));

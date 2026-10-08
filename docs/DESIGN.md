@@ -158,6 +158,19 @@ Hver dag i bevægelse koster én enhed anonymisering: proxykæder for droppere o
 
 **Automatik.** Et exfil-script kører et fartøj i fast fragtrute mellem to bays: en dropper mellem en værts inderside og dens citadel, orme og tunnelskibe mellem to citadeller. Ved hver ende losser fartøjet, tanker op (droppere under 50 op til 100, orme og tunnelskibe under 200 op til 250) og laster de valgte ressourcer på skift. Et krypteret link i et citadel håndterer én vare om dagen på skift til et andet linket citadel: send alt, der er plads til, eller udlign de to lagre.
 
+**Unlocks.** Forskning åbnes, når et crew når en milepæl. Det gælder pr. crew, undtagen tunnelskibene:
+
+| Milepæl | Åbner for forskning i |
+|---|---|
+| Første citadel-modul over skjulestedet | orm-kerne, orm-motor, exfil-script |
+| Første orm-kerne bygget | crawler, build-bot, patch, sniffer, bagdørssæt |
+| Legacy-exploit forsket | C2-controller, daemon |
+| Crewet ejer et citadel med krypteret link | krypteret link |
+| Crewet ejer et citadel med kill switch | kill switch |
+| Hjemmenettet fri for The Legacy Net | tunnel-kerne, tunnel-motor, onion-ruter, for alle crews |
+
+Den sidste regel er ny: Godot-remaken åbnede aldrig for rejser mellem stjerner, men originalen gjorde det, når Sol var renset. Kvantelink, forstærker, exploit-launcher, jæger-daemon, honeypot og jammer har endnu ingen regler og forbliver lukkede, indtil de designes.
+
 **Samtidige konflikter løses deterministisk.** Hvis to crews for eksempel bygger bagdør på den samme vært samme dag, afgør spillets seed og en prioritet, der roterer fra tur til tur.
 
 ## Konkurrence
@@ -185,7 +198,8 @@ Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellern
 | Droppere, orme og tunnelskibe | `Ship.cs`, `InterStellarShip.cs`, `ShipBay.cs`, `ShipInterior.cs` | `transport.rs` | ✅ |
 | Exfil-scripts og krypterede links | `Objects/ACC.cs`, `MTX.cs` | `exfil.rs`, `links.rs` | ✅ |
 | The Legacy Net og kamp | `EnemyFleets.cs`, `EnemyDroneBuilder.cs`, `BattleLogic.cs` | | M4 |
-| Unlocks og beskeder | `Platform/Unlocker.cs` | | M1 |
+| Unlocks | `Platform/Unlocker.cs` | `unlocks.rs` | ✅ (krig og fund via sniffer kommer med M4) |
+| Beskeder og bulletiner | `Bulletins.cs`, `AlienMessages.cs` | | M4 |
 
 **Fejl i Godot-koden, som ikke skal kopieres:**
 
