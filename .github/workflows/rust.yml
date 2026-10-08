@@ -32,6 +32,8 @@ jobs:
         run: |
           version=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')
           cargo install wasm-bindgen-cli --locked --version "$version"
+      - name: Install wasm-opt
+        run: sudo apt-get update && sudo apt-get install -y binaryen
       - run: scripts/build-web.sh
       - uses: actions/upload-artifact@v4
         with:

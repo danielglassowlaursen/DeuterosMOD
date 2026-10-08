@@ -18,7 +18,9 @@ mkdir -p dist
 wasm-bindgen --target web --no-typescript --out-dir dist --out-name deuteros-client \
   "$target_dir/deuteros-client.wasm"
 if command -v wasm-opt >/dev/null; then
-  wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
+  # The features rustc enables by default for wasm32-unknown-unknown.
+  wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext \
+    --enable-reference-types --enable-multivalue --enable-mutable-globals \
     -o dist/deuteros-client_bg.wasm dist/deuteros-client_bg.wasm
 fi
 cp web/index.html dist/

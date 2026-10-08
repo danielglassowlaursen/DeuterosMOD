@@ -24,6 +24,6 @@ opt-level = 3
 [profile.web]
 inherits = "release"
 opt-level = "s"
-lto = "thin"
+lto = "fat"
 codegen-units = 1
-strip = "debuginfo"
+strip = true
