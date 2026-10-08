@@ -1,5 +1,5 @@
-//! Deuteros game rules: a pure, deterministic simulation with no engine,
-//! clock or I/O.
+//! NullNet game rules (built on the rules of Deuteros, 1991): a pure,
+//! deterministic simulation with no engine, clock or I/O.
 //!
 //! The server owns the authoritative [`World`] and advances it one turn at a
 //! time with [`resolve_turn`]; clients link the same crate to preview what

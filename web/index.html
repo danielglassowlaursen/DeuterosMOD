@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Deuteros</title>
+  <title>NullNet</title>
   <style>
     html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
-    canvas#deuteros { display: block; width: 100%; height: 100%; outline: none; }
+    canvas#nullnet { display: block; width: 100%; height: 100%; outline: none; }
     #loading {
       position: fixed; inset: 0; display: grid; place-items: center;
       color: #9fb4e8; font: 14px/1.4 ui-monospace, monospace; letter-spacing: 0.2em;
@@ -14,10 +14,10 @@
   </style>
 </head>
 <body>
-  <div id="loading">LOADING DEUTEROS…</div>
-  <canvas id="deuteros"></canvas>
+  <div id="loading">CONNECTING TO NULLNET…</div>
+  <canvas id="nullnet"></canvas>
   <script type="module">
-    import init from "./deuteros-client.js";
+    import init from "./nullnet-client.js";
     const loading = document.getElementById("loading");
     init().then(
       () => loading.remove(),

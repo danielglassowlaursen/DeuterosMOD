@@ -7,7 +7,7 @@
     mesh2d_vertex_output::VertexOutput,
     mesh2d_view_bindings::globals,
 }
-#import deuteros::noise::fbm
+#import nullnet::noise::fbm
 
 struct PlanetParams {
     color_a: vec4<f32>,

@@ -2149,22 +2149,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deuteros-client"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "deuteros-core",
-]
-
-[[package]]
-name = "deuteros-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3334,6 +3318,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "nullnet-client"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "nullnet-core",
+]
+
+[[package]]
+name = "nullnet-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

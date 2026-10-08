@@ -18,13 +18,13 @@ Udgangspunktet er Godot-remaken [DeuterosOrg/Deuteros-Resurrected](https://githu
 
 ```
 crates/
-  deuteros-core     Spillets regler. Ren Rust uden motor, ur eller I/O.
+  nullnet-core     Spillets regler. Ren Rust uden motor, ur eller I/O.
   deuteros-server   (M2) axum + SQLite. Autoritativ: gemmer spil og afvikler ture.
-  deuteros-client   Bevy, kompileret til WebAssembly. Serveres af serveren.
+  nullnet-client   Bevy, kompileret til WebAssembly. Serveres af serveren.
 Godot/              Godot-remaken: opslagsværk for regler, data og grafik.
 ```
 
-### deuteros-core
+### nullnet-core
 
 - **Deterministisk.** Samme verden og samme ordrer giver altid samme resultat, på alle platforme. Derfor bruges kun heltal, kun ordnede samlinger (`BTreeMap`) og en egen PCG32-generator (`Rng`). Generatorens tilstand gemmes i verdenen, så en tur altid kan genafspilles. Den kommer ikke fra `rand`, fordi en opgradering af den pakke kunne ændre tallene.
 - **To slags data.** `GameData` er de faste regeltabeller (genstande, forskning, planeter), og `World` er alt, der ændrer sig. Et gemt spil er en `World` serialiseret med serde.
@@ -41,7 +41,7 @@ Godot/              Godot-remaken: opslagsværk for regler, data og grafik.
 - Giver besked, når en ny tur er klar. Første version gør det i browseren, senere eventuelt også med e-mail eller push.
 - Én binærfil, der også serverer web-klienten, så den er let at hoste.
 
-### deuteros-client
+### nullnet-client
 
 - Bevy 0.19 i browseren via WebGL2. Bygges med `scripts/build-web.sh`.
 - Al grafik genereres i WGSL-shaders: planeter (sten, gas, jordlignende, is), ringe, atmosfære, sol og stjernefelt med parallakse. Klienten har ingen billedfiler.

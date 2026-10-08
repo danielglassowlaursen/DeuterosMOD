@@ -4,8 +4,8 @@ En ny udgave af Deuteros (1991) med tidssvarende 2D-grafik og asynkron, turbaser
 
 | Mappe | Indhold |
 |---|---|
-| `crates/deuteros-core` | Spillets regler: ren, deterministisk Rust uden motor eller I/O |
-| `crates/deuteros-client` | Web-klienten (Bevy → WebAssembly) med procedurel grafik |
+| `crates/nullnet-core` | Spillets regler: ren, deterministisk Rust uden motor eller I/O |
+| `crates/nullnet-client` | Web-klienten (Bevy → WebAssembly) med procedurel grafik |
 | `web/`, `scripts/` | HTML-side og build-script til browseren |
 | `Godot/` | Godot-remaken [DeuterosOrg/Deuteros-Resurrected](https://github.com/DeuterosOrg/Deuteros-Resurrected), brugt som opslagsværk for regler og data |
 
@@ -15,7 +15,7 @@ Kræver [Rust](https://rustup.rs).
 
 ```bash
 # Kerne-tests
-cargo test -p deuteros-core
+cargo test -p nullnet-core
 
 # Web-klienten (første build tager et stykke tid)
 rustup target add wasm32-unknown-unknown
@@ -24,7 +24,7 @@ scripts/build-web.sh
 python3 -m http.server -d dist 8080                # åbn http://localhost:8080
 ```
 
-Klienten kan også køre som desktop-app med `cargo run -p deuteros-client`.
+Klienten kan også køre som desktop-app med `cargo run -p nullnet-client`.
 
 Sådan henter du ændringer fra Godot-remaken:
 

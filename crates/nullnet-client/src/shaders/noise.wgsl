@@ -1,4 +1,4 @@
-#define_import_path deuteros::noise
+#define_import_path nullnet::noise
 
 fn hash3(p: vec3<f32>) -> f32 {
     let q = fract(p * 0.3183099 + vec3<f32>(0.71, 0.113, 0.419));

@@ -4,7 +4,7 @@
     mesh2d_vertex_output::VertexOutput,
     mesh2d_view_bindings::globals,
 }
-#import deuteros::noise::{fbm, hash2}
+#import nullnet::noise::{fbm, hash2}
 
 struct BackgroundParams {
     // xy: parallax offset in world units.

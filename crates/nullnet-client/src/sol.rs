@@ -5,7 +5,7 @@ use bevy::camera::ScalingMode;
 use bevy::prelude::*;
 use bevy::sprite_render::AlphaMode2d;
 use bevy::window::PrimaryWindow;
-use deuteros_core::calendar_date;
+use nullnet_core::calendar_date;
 
 use crate::materials::{
     BackgroundMaterial, BackgroundParams, PlanetMaterial, PlanetParams, Surface, linear,
@@ -377,11 +377,7 @@ fn spawn_hud(mut commands: Commands) {
             ..default()
         },
         children![
-            (
-                Text::new("DEUTEROS"),
-                TextFont::from_font_size(34.0),
-                bright
-            ),
+            (Text::new("NULLNET"), TextFont::from_font_size(34.0), bright),
             (
                 Text::new(format!("YEAR {year}   DAY {day:03}")),
                 TextFont::from_font_size(15.0),
