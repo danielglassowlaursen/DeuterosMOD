@@ -8,13 +8,6 @@ use crate::research::{ResearchDef, ResearchProgress};
 use crate::rng::Rng;
 use crate::staff::Staff;
 
-/// Rules data that never changes during a game: the item, research and body
-/// tables. Kept apart from [`World`] so saves hold only what changes.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GameData {
-    pub research: BTreeMap<ItemType, ResearchDef>,
-}
-
 /// The complete mutable state of one game.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct World {

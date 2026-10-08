@@ -3,11 +3,12 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::command::{Command, CommandError};
+use crate::data::GameData;
 use crate::ids::{Day, PlayerId};
 use crate::items::ItemType;
 use crate::research;
 use crate::staff::StaffKind;
-use crate::world::{GameData, World};
+use crate::world::World;
 
 /// Every player's orders for one turn.
 pub type Orders = BTreeMap<PlayerId, Vec<Command>>;

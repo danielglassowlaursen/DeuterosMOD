@@ -12,6 +12,19 @@ pub fn calendar_date(day: Day) -> (u32, u32) {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PlayerId(pub u8);
 
+/// A network (a star system in Deuteros): index into `GameData::networks`.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub struct NetworkId(pub u8);
+
+/// A host or subsystem (a planet or moon in Deuteros): index into
+/// `GameData::hosts`.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub struct HostId(pub u16);
+
 #[cfg(test)]
 mod tests {
     use super::*;

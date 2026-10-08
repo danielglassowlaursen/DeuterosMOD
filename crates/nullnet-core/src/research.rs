@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+use crate::data::GameData;
 use crate::staff::Staff;
 use crate::turn::Event;
-use crate::world::{GameData, World};
+use crate::world::World;
 
 /// Static research parameters of one item, from the item table.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -13,9 +14,15 @@ pub struct ResearchDef {
     pub multiplier: u32,
     /// Starting value of the daily accumulator; 64 for most items.
     pub initial_value: u32,
-    /// Highest percentage research can reach. Alien artifacts start at 0 and
-    /// rise as artifacts are recovered.
+    /// Highest percentage research can reach. Source fragments start at 0
+    /// and rise as fragments are recovered.
     pub limit: u8,
+    /// Open to research when a crew starts.
+    #[serde(default)]
+    pub available_at_start: bool,
+    /// Already researched when a crew starts.
+    #[serde(default)]
+    pub researched_at_start: bool,
 }
 
 impl Default for ResearchDef {
@@ -25,6 +32,8 @@ impl Default for ResearchDef {
             multiplier: 64,
             initial_value: 64,
             limit: 100,
+            available_at_start: false,
+            researched_at_start: false,
         }
     }
 }

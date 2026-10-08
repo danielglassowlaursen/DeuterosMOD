@@ -162,7 +162,7 @@ Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellern
 | Tilfældigheder | `Random.Shared` (uden seed) | `rng.rs` | ✅ PCG32 med seed |
 | Personale og niveauer | `Objects/Staff.cs` | `staff.rs` | ✅ |
 | Forskning | `Platform/Screens/Research.cs` | `research.rs` | ✅ |
-| Datatabeller: genstande, netværk, værter | `CoreData.cs` | `data/` + `tools/extract_coredata.py` | M1 |
+| Datatabeller: genstande, netværk, værter | `CoreData.cs` | `data.rs`, `data/classic.json` | ✅ udtrukket med `tools/extract_coredata.py` |
 | Udvinding med taps og rekognoscering | `Objects/Planet.cs` | | M1 |
 | Rekruttering | `Objects/Training.cs` | | M1 |
 | Værksted og build-bots | `Factory.cs`, `Production.cs` | | M1 |

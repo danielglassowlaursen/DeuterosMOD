@@ -8,6 +8,7 @@
 //! collections only, and draw randomness from [`Rng`] stored in the world.
 
 pub mod command;
+pub mod data;
 pub mod ids;
 pub mod items;
 pub mod research;
@@ -17,8 +18,9 @@ pub mod turn;
 pub mod world;
 
 pub use command::{Command, CommandError};
-pub use ids::{Day, PlayerId, calendar_date};
+pub use data::GameData;
+pub use ids::{Day, HostId, NetworkId, PlayerId, calendar_date};
 pub use items::ItemType;
 pub use rng::Rng;
 pub use turn::{Event, Orders, TurnReport, resolve_turn};
-pub use world::{GameData, Player, World};
+pub use world::{Player, World};
