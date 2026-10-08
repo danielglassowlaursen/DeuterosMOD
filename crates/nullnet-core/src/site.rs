@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::data::HostDef;
 use crate::items::ItemType;
+use crate::links::LinkConfig;
 use crate::staff::Staff;
 use crate::store::Store;
 use crate::workshop::Workshop;
@@ -82,6 +83,8 @@ pub struct Citadel {
     pub store: Store,
     /// Teams stationed in the citadel, up to [`STAFF_SLOTS`].
     pub staff: Vec<Staff>,
+    /// What the encrypted link sends or balances, and where.
+    pub link: LinkConfig,
 }
 
 impl Citadel {

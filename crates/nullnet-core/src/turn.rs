@@ -10,7 +10,7 @@ use crate::staff::StaffKind;
 use crate::transport::{self, AbortReason, Berth, VesselId};
 use crate::workshop::{self, WorkshopRef};
 use crate::world::World;
-use crate::{mining, recruitment, research};
+use crate::{links, mining, recruitment, research};
 
 /// Every player's orders for one turn.
 pub type Orders = BTreeMap<PlayerId, Vec<Command>>;
@@ -140,6 +140,7 @@ fn step_day(data: &GameData, world: &mut World, events: &mut Vec<Event>) {
     workshop::run_all(data, world, events);
     transport::run_day(data, world, events);
     research::run_day(data, world, events);
+    links::run_day(data, world);
 }
 
 #[cfg(test)]

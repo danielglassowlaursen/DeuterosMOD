@@ -156,6 +156,8 @@ Latens inden for et netværk følger originalen: mellem en vært og dens undersy
 
 Hver dag i bevægelse koster én enhed anonymisering: proxykæder for droppere og orme, onion-ruter for tunnelskibe. Et skridt kræver en operatør som pilot og mindst én enhed. Et fartøj, der lurer uden anonymisering i 5 dage, bliver sporet og brændt. Citadel-moduler installeres udefra (lurende), bagdørssæt indefra (en plantet dropper).
 
+**Automatik.** Et exfil-script kører et fartøj i fast fragtrute mellem to bays: en dropper mellem en værts inderside og dens citadel, orme og tunnelskibe mellem to citadeller. Ved hver ende losser fartøjet, tanker op (droppere under 50 op til 100, orme og tunnelskibe under 200 op til 250) og laster de valgte ressourcer på skift. Et krypteret link i et citadel håndterer én vare om dagen på skift til et andet linket citadel: send alt, der er plads til, eller udlign de to lagre.
+
 **Samtidige konflikter løses deterministisk.** Hvis to crews for eksempel bygger bagdør på den samme vært samme dag, afgør spillets seed og en prioritet, der roterer fra tur til tur.
 
 ## Konkurrence
@@ -181,13 +183,14 @@ Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellern
 | Rekruttering | `Objects/Training.cs` | `recruitment.rs` | ✅ |
 | Værksted og build-bots | `Factory.cs`, `Production.cs` | `workshop.rs` | ✅ |
 | Droppere, orme og tunnelskibe | `Ship.cs`, `InterStellarShip.cs`, `ShipBay.cs`, `ShipInterior.cs` | `transport.rs` | ✅ |
-| Exfil-scripts og krypterede links | `Objects/ACC.cs`, `MTX.cs` | | M1 |
+| Exfil-scripts og krypterede links | `Objects/ACC.cs`, `MTX.cs` | `exfil.rs`, `links.rs` | ✅ |
 | The Legacy Net og kamp | `EnemyFleets.cs`, `EnemyDroneBuilder.cs`, `BattleLogic.cs` | | M4 |
 | Unlocks og beskeder | `Platform/Unlocker.cs` | | M1 |
 
 **Fejl i Godot-koden, som ikke skal kopieres:**
 
-- MTX-balancering skaber ressourcer ud af ingenting: formlen `(a + b/2)` i `MTX.cs:403`.
+- MTX-balancering skaber ressourcer ud af ingenting: formlen `(a + b/2)` i `MTX.cs:403`. NullNet deler summen ligeligt.
+- Spilleren kan ikke selv installere en MTX; den følger kun med erobrede stationer. NullNet har ordren `InstallLink`.
 - `=` i stedet for `==` åbner forskning i star drive, hver gang skibshangaren åbnes (`ShipBay.cs:191`).
 - `Next(Count - 1)` i opsætningen vælger aldrig den sidste planet (`CoreData.cs:68,4269,4283`).
 - `Next(0,6)` giver aldrig silica eller de største asteroider, så kun 1 ud af 6 asteroider kan udvindes (`Asteroid.cs`).

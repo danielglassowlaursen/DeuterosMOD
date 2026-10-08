@@ -3,8 +3,10 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::data::GameData;
+use crate::exfil::{self, Route};
 use crate::ids::{HostId, PlayerId};
 use crate::items::ItemType;
+use crate::links::{self, LinkConfig};
 use crate::recruitment;
 use crate::site::Site;
 use crate::staff::StaffKind;
@@ -100,6 +102,27 @@ pub enum Command {
         vessel: VesselId,
         slot: usize,
     },
+    /// Installs an exfil script from the bay's store into a docked vessel.
+    InstallScript {
+        vessel: VesselId,
+    },
+    /// Starts, changes or (with `None`) stops a vessel's cargo route.
+    ConfigureScript {
+        vessel: VesselId,
+        route: Option<Route>,
+    },
+    /// Installs an encrypted link from a citadel's store.
+    InstallLink {
+        host: HostId,
+    },
+    /// Points a citadel's encrypted link at another linked citadel of the
+    /// crew, with the items to send there and to balance between them.
+    ConfigureLink {
+        host: HostId,
+        target: Option<HostId>,
+        send: Vec<ItemType>,
+        balance: Vec<ItemType>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -140,6 +163,9 @@ pub enum CommandError {
     NothingToDeploy,
     NotDeployable(ItemType),
     AlreadyComplete,
+    NoScript,
+    NoDataContainer,
+    NoLink(HostId),
 }
 
 impl fmt::Display for CommandError {
@@ -204,6 +230,13 @@ impl fmt::Display for CommandError {
             CommandError::NothingToDeploy => write!(f, "that module holds nothing to install"),
             CommandError::NotDeployable(item) => write!(f, "{item:?} cannot be installed"),
             CommandError::AlreadyComplete => write!(f, "that is already complete"),
+            CommandError::NoScript => write!(f, "the vessel has no exfil script"),
+            CommandError::NoDataContainer => {
+                write!(f, "a cargo route needs at least one data container")
+            }
+            CommandError::NoLink(id) => {
+                write!(f, "there is no linked citadel of yours at host {}", id.0)
+            }
         }
     }
 }
@@ -292,6 +325,25 @@ impl Command {
             }
             Command::Deploy { vessel, slot } => {
                 transport::deploy(data, world, player, vessel, slot, events)
+            }
+            Command::InstallScript { vessel } => exfil::install(data, world, player, vessel),
+            Command::ConfigureScript { vessel, ref route } => {
+                exfil::configure(data, world, player, vessel, route.clone(), events)
+            }
+            Command::InstallLink { host } => links::install(data, world, player, host),
+            Command::ConfigureLink {
+                host,
+                target,
+                ref send,
+                ref balance,
+            } => {
+                let config = LinkConfig {
+                    target,
+                    send: send.iter().copied().collect(),
+                    balance: balance.iter().copied().collect(),
+                    last: None,
+                };
+                links::configure(data, world, player, host, config)
             }
         }
     }

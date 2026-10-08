@@ -9,8 +9,10 @@
 
 pub mod command;
 pub mod data;
+pub mod exfil;
 pub mod ids;
 pub mod items;
+pub mod links;
 pub mod mining;
 pub mod recruitment;
 pub mod research;
@@ -25,8 +27,10 @@ pub mod world;
 
 pub use command::{Command, CommandError};
 pub use data::GameData;
+pub use exfil::{ExfilScript, Route};
 pub use ids::{Day, HostId, NetworkId, PlayerId, calendar_date};
 pub use items::ItemType;
+pub use links::LinkConfig;
 pub use rng::Rng;
 pub use site::{Citadel, STAFF_SLOTS, Site, Vein};
 pub use store::Store;

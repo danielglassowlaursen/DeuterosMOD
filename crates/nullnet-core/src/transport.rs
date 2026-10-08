@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::command::CommandError;
 use crate::data::GameData;
+use crate::exfil::{self, ExfilScript};
 use crate::ids::{Day, HostId, PlayerId};
 use crate::items::ItemType;
 use crate::site::{STAFF_SLOTS, Site};
@@ -170,6 +171,8 @@ pub struct Vessel {
     pub destination: Option<Destination>,
     /// Days spent lurking with no anonymisation left.
     pub exposed_days: u32,
+    /// An installed exfil script that can run the vessel on a cargo route.
+    pub script: Option<ExfilScript>,
 }
 
 impl Vessel {
@@ -212,7 +215,7 @@ pub const NETWORK_HOP_DAYS: u32 = 20;
 
 /// Where a vessel's resting position puts it: the store, staff slots and
 /// citadel it can reach.
-fn site_mut<'a>(
+pub(crate) fn site_mut<'a>(
     data: &GameData,
     players: &'a mut std::collections::BTreeMap<PlayerId, Player>,
     hosts: &'a mut [crate::world::HostState],
@@ -230,7 +233,7 @@ fn site_mut<'a>(
 
 /// The store and staff slots a vessel at rest can reach: the host's inside
 /// when planted, the citadel when connected.
-fn bay(site: &mut Site, berth: Berth) -> Option<(&mut Store, &mut Vec<Staff>)> {
+pub(crate) fn bay(site: &mut Site, berth: Berth) -> Option<(&mut Store, &mut Vec<Staff>)> {
     match berth {
         Berth::Planted => Some((&mut site.store, &mut site.staff)),
         Berth::Connected => Some((&mut site.citadel.store, &mut site.citadel.staff)),
@@ -240,7 +243,7 @@ fn bay(site: &mut Site, berth: Berth) -> Option<(&mut Store, &mut Vec<Staff>)> {
 
 /// Whether `owner` may use the host's inside or citadel: its own hideout,
 /// a host it holds, or (to claim it) a free one.
-fn may_use(
+pub(crate) fn may_use(
     data: &GameData,
     world_hosts: &[crate::world::HostState],
     owner: PlayerId,
@@ -310,13 +313,14 @@ pub(crate) fn assemble(
             modules: vec![Module::Empty; kind.modules()],
             destination: None,
             exposed_days: 0,
+            script: None,
         },
     );
     Ok(id)
 }
 
 /// Whether the crew holds the host, counting its own hideout.
-fn owns(data: &GameData, world: &World, owner: PlayerId, host: HostId) -> bool {
+pub(crate) fn owns(data: &GameData, world: &World, owner: PlayerId, host: HostId) -> bool {
     host == data.hideout.host
         || world
             .hosts
@@ -326,7 +330,7 @@ fn owns(data: &GameData, world: &World, owner: PlayerId, host: HostId) -> bool {
 
 /// Everything a command on a docked vessel needs: the vessel and the store
 /// and staff slots of the bay it rests in.
-fn docked<'a>(
+pub(crate) fn docked<'a>(
     data: &GameData,
     world: &'a mut World,
     owner: PlayerId,
@@ -703,6 +707,7 @@ pub(crate) fn run_day(data: &GameData, world: &mut World, events: &mut Vec<Event
     for id in ids {
         burn_fuel(world.vessels.get_mut(&id).expect("listed"));
         finish_step(world, id, day, events);
+        exfil::run(data, world, id);
         start_step(data, world, id, day, events);
 
         let vessel = &world.vessels[&id];
@@ -767,6 +772,11 @@ fn finish_step(world: &mut World, id: VesselId, day: Day, events: &mut Vec<Event
     vessel.state = VesselState::At(berth);
     if vessel.destination == Some(Destination { host, berth }) {
         vessel.destination = None;
+        // A scripted run arrives at its ends every few days; only report
+        // trips a crew ordered.
+        if vessel.script.as_ref().is_some_and(ExfilScript::running) {
+            return;
+        }
         events.push(Event::VesselArrived {
             day,
             player: vessel.owner,
@@ -778,7 +788,13 @@ fn finish_step(world: &mut World, id: VesselId, day: Day, events: &mut Vec<Event
 }
 
 /// Starts the next step toward the vessel's destination, if it is resting.
-fn start_step(data: &GameData, world: &mut World, id: VesselId, day: Day, events: &mut Vec<Event>) {
+pub(crate) fn start_step(
+    data: &GameData,
+    world: &mut World,
+    id: VesselId,
+    day: Day,
+    events: &mut Vec<Event>,
+) {
     let vessel = &world.vessels[&id];
     let (Some(berth), Some(to)) = (vessel.berth(), vessel.destination) else {
         return;
