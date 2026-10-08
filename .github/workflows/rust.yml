@@ -1,0 +1,39 @@
+name: Rust
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy -p deuteros-core --all-targets -- -D warnings
+      - run: cargo test -p deuteros-core
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -p deuteros-client --target wasm32-unknown-unknown -- -D warnings
+      - name: Install wasm-bindgen-cli matching Cargo.lock
+        run: |
+          version=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')
+          cargo install wasm-bindgen-cli --locked --version "$version"
+      - run: scripts/build-web.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deuteros-web
+          path: dist

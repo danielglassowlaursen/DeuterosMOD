@@ -23,3 +23,7 @@ mono_crash.*.json
 
 # Local secrets
 .env
+
+# Rust
+/target/
+/dist/

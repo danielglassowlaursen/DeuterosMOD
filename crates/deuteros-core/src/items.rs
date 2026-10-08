@@ -1,0 +1,57 @@
+use serde::{Deserialize, Serialize};
+
+/// Every resource and manufactured item in the game, in the order of the
+/// original `Enums.ItemTypes` (Godot/Code/Enums.cs).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum ItemType {
+    // Raw resources.
+    Iron,
+    Titanium,
+    Aluminium,
+    Carbon,
+    Copper,
+    Hydrogen,
+    Deuterium,
+    Methane,
+    Helium,
+    Palladium,
+    Platinum,
+    Silver,
+    Gold,
+    Silica,
+    // Fuels, refined automatically in every factory.
+    MehFuel,
+    HedFuel,
+    // Manufactured items.
+    Derrick,
+    SChassis,
+    SDrive,
+    OfFrame,
+    SupplyPod,
+    ToolPod,
+    CryoPod,
+    IChassis,
+    IDrive,
+    Acc,
+    Aoc,
+    Bandaid,
+    Sdm,
+    Grapple,
+    Dfcc,
+    Ama,
+    Hyperlight,
+    Mtx,
+    Mfl,
+    RFrame,
+    TorpedoLauncher,
+    CommsPod,
+    IosDrone,
+    GChassis,
+    StarDrive,
+    Ptl,
+    StarDrone,
+    PrisonPod,
+    SonicBlaster,
+    PulseBlasterLaser,
+    AlienArtifact,
+}
