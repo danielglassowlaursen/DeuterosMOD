@@ -2,7 +2,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::data::HostDef;
 use crate::items::ItemType;
+use crate::staff::Staff;
 use crate::store::Store;
+use crate::workshop::Workshop;
+
+/// Teams a site or citadel can hold, as the original's four staff slots.
+pub const STAFF_SLOTS: usize = 4;
 
 /// One party's foothold on a host: the backdoor into it, the taps on it,
 /// what has been extracted, and the citadel above it. A planet's ground base
@@ -17,6 +22,8 @@ pub struct Site {
     pub veins: Vec<Vein>,
     /// Extracted resources waiting on the host.
     pub store: Store,
+    /// Teams stationed here, up to [`STAFF_SLOTS`].
+    pub staff: Vec<Staff>,
     pub citadel: Citadel,
 }
 
@@ -71,9 +78,10 @@ pub struct Citadel {
     /// With an encrypted link, taps deliver straight into the citadel.
     pub encrypted_link: bool,
     pub kill_switch: bool,
-    /// A build-bot runs the citadel's workshop without coders.
-    pub build_bot: bool,
+    pub workshop: Workshop,
     pub store: Store,
+    /// Teams stationed in the citadel, up to [`STAFF_SLOTS`].
+    pub staff: Vec<Staff>,
 }
 
 impl Citadel {

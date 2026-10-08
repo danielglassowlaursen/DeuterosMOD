@@ -7,8 +7,9 @@ use crate::data::GameData;
 use crate::ids::{Day, PlayerId};
 use crate::items::ItemType;
 use crate::staff::StaffKind;
+use crate::workshop::{self, WorkshopRef};
 use crate::world::World;
-use crate::{mining, research};
+use crate::{mining, recruitment, research};
 
 /// Every player's orders for one turn.
 pub type Orders = BTreeMap<PlayerId, Vec<Command>>;
@@ -26,6 +27,18 @@ pub enum Event {
         player: PlayerId,
         kind: StaffKind,
         level: u8,
+    },
+    RecruitsGraduated {
+        day: Day,
+        player: PlayerId,
+        kind: StaffKind,
+        count: u32,
+    },
+    ItemBuilt {
+        day: Day,
+        player: PlayerId,
+        at: WorkshopRef,
+        item: ItemType,
     },
 }
 
@@ -54,7 +67,7 @@ pub fn resolve_turn(data: &GameData, world: &mut World, orders: &Orders, days: u
     let mut rejected = Vec::new();
     for (&player, commands) in orders {
         for (index, command) in commands.iter().enumerate() {
-            if let Err(error) = command.apply(world, player) {
+            if let Err(error) = command.apply(data, world, player) {
                 rejected.push(RejectedCommand {
                     player,
                     index,
@@ -85,6 +98,8 @@ fn step_day(data: &GameData, world: &mut World, events: &mut Vec<Event>) {
     // transmissions, encrypted links. Systems are added here in that order
     // as they are ported.
     mining::run_day(data, world);
+    recruitment::run_day(data, world, events);
+    workshop::run_all(data, world, events);
     research::run_day(data, world, events);
 }
 
@@ -232,6 +247,68 @@ mod tests {
         assert!(first > 0);
         resolve_turn(&data, &mut world, &Orders::new(), 1);
         assert_eq!(mined(&world), first, "nothing on odd day 5");
+    }
+
+    #[test]
+    fn a_crew_mines_recruits_builds_and_installs_a_second_tap() {
+        use crate::workshop::{SiteRef, WorkshopRef};
+
+        let data = GameData::classic();
+        let mut world = World::new_game(&data, 3, &[(ALICE, "Alice")]);
+        let recruit = Command::Recruit {
+            kind: StaffKind::Coder,
+            count: 100,
+        };
+        resolve_turn(
+            &data,
+            &mut world,
+            &Orders::from([(ALICE, vec![recruit])]),
+            30,
+        );
+        let hideout = &world.players[&ALICE].hideout;
+        assert!(
+            hideout.store.get(ItemType::Compute) >= 3,
+            "{:?}",
+            hideout.store
+        );
+
+        let build = Command::Build {
+            at: WorkshopRef::Hideout,
+            item: ItemType::Tap,
+        };
+        let report = resolve_turn(&data, &mut world, &Orders::from([(ALICE, vec![build])]), 50);
+        assert!(report.rejected.is_empty(), "{:?}", report.rejected);
+        assert!(report.events.iter().any(|e| matches!(
+            e,
+            Event::ItemBuilt {
+                item: ItemType::Tap,
+                ..
+            }
+        )));
+
+        let install = Command::InstallTaps {
+            site: SiteRef::Hideout,
+            count: 1,
+        };
+        let report = resolve_turn(
+            &data,
+            &mut world,
+            &Orders::from([(ALICE, vec![install])]),
+            1,
+        );
+        assert!(report.rejected.is_empty(), "{:?}", report.rejected);
+        let hideout = &world.players[&ALICE].hideout;
+        assert_eq!((hideout.taps, hideout.store.get(ItemType::Tap)), (2, 0));
+
+        let again = Command::InstallTaps {
+            site: SiteRef::Hideout,
+            count: 1,
+        };
+        let report = resolve_turn(&data, &mut world, &Orders::from([(ALICE, vec![again])]), 1);
+        assert_eq!(
+            report.rejected[0].error,
+            CommandError::MissingResources(ItemType::Tap)
+        );
     }
 
     #[test]

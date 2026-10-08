@@ -164,8 +164,8 @@ Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellern
 | Forskning | `Platform/Screens/Research.cs` | `research.rs` | ✅ |
 | Datatabeller: genstande, netværk, værter | `CoreData.cs` | `data.rs`, `data/classic.json` | ✅ udtrukket med `tools/extract_coredata.py` |
 | Udvinding med taps og rekognoscering | `Objects/Planet.cs` | `mining.rs`, `site.rs` | ✅ |
-| Rekruttering | `Objects/Training.cs` | | M1 |
-| Værksted og build-bots | `Factory.cs`, `Production.cs` | | M1 |
+| Rekruttering | `Objects/Training.cs` | `recruitment.rs` | ✅ |
+| Værksted og build-bots | `Factory.cs`, `Production.cs` | `workshop.rs` | ✅ |
 | Droppere, orme og tunnelskibe | `Ship.cs`, `InterStellarShip.cs`, `ShipInterior.cs` | | M1 |
 | Exfil-scripts og krypterede links | `Objects/ACC.cs`, `MTX.cs` | | M1 |
 | The Legacy Net og kamp | `EnemyFleets.cs`, `EnemyDroneBuilder.cs`, `BattleLogic.cs` | | M4 |
@@ -181,6 +181,9 @@ Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellern
 - Planeter, der behandles i samme millisekund, får de samme tilfældige tal (`Planet.cs:61`).
 - Et boretårn kan tage mere, end der er tilbage i åren (`Planet.cs:81`).
 - Skibe fjernes fra en liste, mens den gennemløbes (`ShipInterior.cs:1091-1097`).
+- En AOC, der gentager et emne uden andre i køen, bygger det igen uden at betale for det (`Production.cs:368-381`).
+- Brændstof raffineres efter et fælles flag for alle fabrikker, så det afhænger af rækkefølgen (`Production.cs:389-406`). NullNet raffinerer i hvert værksted hver anden dag.
+- Jordens produktion lander på jorden eller i stationen efter en UI-indstilling (`Earth.cs:24-30`). I NullNet lander den altid i værkstedets eget lager.
 
 **Mangler i Godot-remaken, som skal designes:** gemte spil, sejr og nederlag, rejsetid mellem netværk og effekten af kvantelink, forstærker, honeypot, jammer, jæger-daemon, kill switch og logikbomber.
 

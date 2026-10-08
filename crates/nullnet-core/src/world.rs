@@ -2,13 +2,16 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::command::CommandError;
 use crate::data::GameData;
 use crate::ids::{Day, HostId, NetworkId, PlayerId};
 use crate::items::ItemType;
+use crate::recruitment::Recruitment;
 use crate::research::{ResearchDef, ResearchProgress};
 use crate::rng::Rng;
 use crate::site::{Citadel, Site};
 use crate::staff::Staff;
+use crate::workshop::{SiteRef, Workshop};
 
 /// The complete mutable state of one game.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,6 +21,8 @@ pub struct World {
     pub players: BTreeMap<PlayerId, Player>,
     /// Indexed by [`HostId`], parallel to `GameData::hosts`.
     pub hosts: Vec<HostState>,
+    /// Index of the next team leader's handle.
+    pub next_handle: u32,
 }
 
 /// Who holds a host.
@@ -41,6 +46,7 @@ impl World {
             rng: Rng::new(seed, 0),
             players: BTreeMap::new(),
             hosts: Vec::new(),
+            next_handle: 0,
         }
     }
 
@@ -79,7 +85,10 @@ impl World {
                     modules: Citadel::MODULES,
                     encrypted_link: true,
                     kill_switch: true,
-                    build_bot: true,
+                    workshop: Workshop {
+                        automated: true,
+                        ..Workshop::default()
+                    },
                     ..Citadel::default()
                 };
             }
@@ -94,6 +103,31 @@ impl World {
     pub fn host(&self, id: HostId) -> &HostState {
         &self.hosts[usize::from(id.0)]
     }
+
+    /// A crew's own site: its hideout, or a host it controls.
+    pub(crate) fn crew_site_mut(
+        &mut self,
+        crew: PlayerId,
+        site: SiteRef,
+    ) -> Result<&mut Site, CommandError> {
+        match site {
+            SiteRef::Hideout => self
+                .players
+                .get_mut(&crew)
+                .map(|player| &mut player.hideout)
+                .ok_or(CommandError::UnknownPlayer(crew)),
+            SiteRef::Host(id) => {
+                let host = self
+                    .hosts
+                    .get_mut(usize::from(id.0))
+                    .ok_or(CommandError::UnknownHost(id))?;
+                if host.controller != Some(Controller::Crew(crew)) {
+                    return Err(CommandError::NotYourHost(id));
+                }
+                Ok(&mut host.site)
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,6 +135,9 @@ pub struct Player {
     pub name: String,
     /// The crew's own site on the home host. It cannot be taken.
     pub hideout: Site,
+    /// The hideout's own workshop, apart from any citadel above it.
+    pub workshop: Workshop,
+    pub recruitment: Recruitment,
     /// The single analyst team in the hideout; `None` until recruits graduate.
     pub research_team: Option<Staff>,
     pub current_research: Option<ItemType>,
@@ -113,6 +150,8 @@ impl Player {
         Player {
             name: name.into(),
             hideout: Site::default(),
+            workshop: Workshop::default(),
+            recruitment: Recruitment::default(),
             research_team: None,
             current_research: None,
             research: BTreeMap::new(),
@@ -128,6 +167,7 @@ impl Player {
             taps: data.hideout.taps,
             ..Site::new(data.host(data.hideout.host))
         };
+        player.recruitment.available = data.recruitment.recruits_available;
         for (&item, def) in &data.research {
             if def.available_at_start || def.researched_at_start {
                 player.unlock_research(item, def);
