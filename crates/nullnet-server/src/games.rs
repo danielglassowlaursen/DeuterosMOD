@@ -6,12 +6,13 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use nullnet_core::{
-    Command, CrewView, GameData, Orders, PlayerId, TurnReport, World, bot, crew_view, resolve_turn,
+use nullnet_api::{
+    CreateGame, CrewInvite, CrewState, CrewStatus, CrewTurn, GameCreated, GameInfo, OrdersReceipt,
+    RejectedOrder, TurnSummary,
 };
-use serde::{Deserialize, Serialize};
+use nullnet_core::{Command, GameData, Orders, PlayerId, World, bot, crew_view, resolve_turn};
 
-use crate::db::{CrewRow, GameRow, Store, TurnRow, TurnSummary};
+use crate::db::{CrewRow, GameRow, Store, TurnRow};
 
 /// Unix time in seconds.
 pub fn now() -> i64 {
@@ -45,107 +46,6 @@ impl std::fmt::Display for Error {
             Error::NotFound(m) | Error::BadRequest(m) | Error::Internal(m) => f.write_str(m),
         }
     }
-}
-
-// ------------------------------------------------------------ requests
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct CreateGame {
-    pub name: String,
-    pub crews: Vec<NewCrew>,
-    /// Days each turn runs. Default 10.
-    #[serde(default)]
-    pub turn_days: Option<u32>,
-    /// Hours a turn waits for orders before it runs anyway. Default 24.
-    #[serde(default)]
-    pub deadline_hours: Option<u32>,
-    /// The map's seed; random if left out.
-    #[serde(default)]
-    pub seed: Option<u64>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct NewCrew {
-    pub name: String,
-    /// Played by the server's bot instead of a person.
-    #[serde(default)]
-    pub bot: bool,
-}
-
-// ------------------------------------------------------------ responses
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct GameInfo {
-    pub id: String,
-    pub name: String,
-    pub turn_days: u32,
-    pub deadline_hours: u32,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct GameCreated {
-    #[serde(flatten)]
-    pub game: GameInfo,
-    pub crews: Vec<CrewInvite>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CrewInvite {
-    pub player: PlayerId,
-    pub name: String,
-    pub bot: bool,
-    /// The secret that identifies the crew; `None` for bots.
-    pub token: Option<String>,
-    /// The path of the crew's invite link on this server.
-    pub join_path: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CrewState {
-    pub player: PlayerId,
-    pub name: String,
-    pub bot: bool,
-    pub submitted: bool,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CrewStatus {
-    pub game: GameInfo,
-    pub player: PlayerId,
-    pub name: String,
-    pub turn: u32,
-    pub day: u32,
-    /// Unix time the running turn resolves at the latest.
-    pub deadline: i64,
-    pub submitted: bool,
-    /// The crew's own orders for the running turn.
-    pub orders: Vec<Command>,
-    pub crews: Vec<CrewState>,
-    pub view: CrewView,
-    /// The last resolved turn, as this crew may see it.
-    pub last_turn: Option<CrewTurn>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CrewTurn {
-    pub turn: u32,
-    pub orders: Vec<Command>,
-    pub report: TurnReport,
-    pub resolved_at: i64,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct OrdersReceipt {
-    /// Orders the rules would refuse as things stand, by position.
-    pub rejected: Vec<RejectedOrder>,
-    /// Whether this hand-in completed the turn and it ran.
-    pub resolved: bool,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RejectedOrder {
-    pub index: usize,
-    pub error: String,
 }
 
 // ------------------------------------------------------------ server
@@ -239,7 +139,7 @@ impl Server {
         })
     }
 
-    pub fn crew_status(&self, token: &str) -> Result<CrewStatus, Error> {
+    pub fn crew_status(&self, token: &str, now: i64) -> Result<CrewStatus, Error> {
         let store = self.store();
         let Crew { row, game } = Self::crew(&store, token)?;
         let orders = store.orders(&game.id, game.turn)?;
@@ -267,6 +167,7 @@ impl Server {
             name: row.name,
             turn: game.turn,
             day: game.world.day,
+            now,
             deadline: game.deadline,
             submitted: orders.contains_key(&row.player),
             orders: orders.get(&row.player).cloned().unwrap_or_default(),

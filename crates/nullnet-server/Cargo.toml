@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 axum = "0.8.9"
+nullnet-api.workspace = true
 nullnet-core.workspace = true
 rand = "0.10.3"
 rusqlite = { version = "0.40.2", features = ["bundled"] }

@@ -7,4 +7,4 @@ pub mod db;
 pub mod games;
 
 pub use api::router;
-pub use games::{CreateGame, Server, now};
+pub use games::{Server, now};

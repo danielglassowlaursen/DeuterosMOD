@@ -120,6 +120,7 @@ The Legacy Net holder fra start Colossus, Powergrid, Clinic og Outpost i Metro (
 crates/
   nullnet-core      Spillets regler. Ren Rust uden motor, ur eller I/O.
   nullnet-server    (M2) axum + SQLite. Autoritativ: gemmer spil og afvikler ture.
+  nullnet-api       JSON-typerne, server og klient udveksler.
   nullnet-client    Bevy, kompileret til WebAssembly. Serveres af serveren.
   nullnet-sim       Lader bot-crews spille mod hinanden og udskriver spillets tidslinje.
 tools/              Konverter, der henter datatabellerne ud af Godot-koden.
@@ -149,7 +150,10 @@ Godot/              Godot-remaken: opslagsværk for regler og data.
 
 ### nullnet-client
 
-- Bevy 0.19 i browseren via WebGL2. Bygges med `scripts/build-web.sh`.
+- Bevy 0.19 i browseren via WebGL2. Bygges med `scripts/build-web.sh`. Åbnes med crewets invitationslink (`/join/<token>`), som serveren serverer, når den startes med `--web dist`; natively med `--server URL --token TOKEN`.
+- Taler med serveren gennem `nullnet-api`: henter crewets status ved start og hvert 15. sekund, afleverer ordrer med `PUT`, trækker dem tilbage med `DELETE`. Når en ny tur er kørt, rydder den kladden og viser besked.
+- Kortet er spillebrættet: værter farves efter ejer (crewets egen farve, rivalernes, rød for The Legacy Net), egne fartøjer vises som små noder ved deres vært (til venstre når de er plantet, over når de er koblet, til højre når de lurer), og klik vælger vært eller fartøj. "Route to another host" sætter klienten i rute-tilstand, hvor næste klik på en vært sender fartøjet derhen.
+- Terminalpanelerne er Bevy UI: topbjælken (spil, crew, tur, frist, hvem har afleveret), skjulestedet (folk, forskning, værksted, lager og knapper til rekruttering, forskning, bygning og taps), det valgte (en værts status og egne lagre, eller et fartøj med knapper til pilot, tankning, moduler, last, afsendelse, installation og exfil-script), ordrepanelet (kladden, aflevering, tilbagetrækning og kvitteringen med forhåndsafviste ordrer) og loggen (sidste turs rapport). Panelerne genopbygges, hver gang status, valg eller kladden ændrer sig.
 - Al grafik genereres i WGSL-shaders, så klienten ikke har billedfiler. Oversigten er et netværkskort bygget af spillets egne data: backbonen som en lysende stamme til venstre, Metros værter som sekskantede noder langs en trunk-linje i rækkefølge efter position (latens), undersystemerne som små noder under deres vært, datalinjer med pakker imellem, og firewall-glød i ejerens farve (rød for The Legacy Net, gul for Exchange). Scrapyard tegnes som spredte, blinkende fragmenter.
 - Brugerfladen bliver terminalpaneler i Bevy UI.
 
@@ -284,7 +288,7 @@ Godot-remakens kode er udgivet under CC0, så den må frit bruges. Dens grafik, 
 | **M0** | Workspace, CI, designdokument, kerne med forskning og turafvikling, web-klient med procedurel oversigt. ✅ |
 | **M1** | Kerneregler for én crew: datatabeller, udvinding, rekruttering, værksted, transport, exfil-scripts og krypterede links. Testes med et headless "bot-spil". ✅ |
 | **M2** | Server: opret spil, invitationslinks, aflever ordrer, afvikl tur, gem i SQLite, fog of war. ✅ |
-| **M3** | Klient i hacker-look: lobby, netværkskort, terminalpaneler for vært, citadel og transport, ordrepanel og turlog. |
+| **M3** | Klient i hacker-look: lobby, netværkskort, terminalpaneler for vært, citadel og transport, ordrepanel og turlog. ✅ (lobbyen er konsolsiden; krypterede links styres endnu kun fra konsollen) |
 | **M4** | The Legacy Net: AI, krig, kampafvikling med animeret genafspilning, erobring og befrielse. |
 | **M5** | Crew mod crew: angreb, forsvar, heat, beskyttelse, sejrsbetingelser og balancering. |
 | **M6** | Finish: effekter, lyd, notifikationer og hosting. |

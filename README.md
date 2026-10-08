@@ -5,7 +5,8 @@ Et strategispil i et hacker-univers med asynkron, turbaseret online-multiplayer,
 | Mappe | Indhold |
 |---|---|
 | `crates/nullnet-core` | Spillets regler: ren, deterministisk Rust uden motor eller I/O |
-| `crates/nullnet-client` | Web-klienten (Bevy → WebAssembly): netværkskortet, tegnet i shaders |
+| `crates/nullnet-api` | JSON-typerne, server og klient udveksler |
+| `crates/nullnet-client` | Web-klienten (Bevy → WebAssembly): netværkskortet som spillebræt og terminalpaneler til ordrer |
 | `crates/nullnet-sim` | Lader bot-crews spille mod hinanden og udskriver tidslinjen |
 | `crates/nullnet-server` | Spilserveren: axum + SQLite. Invitationer, ordrer, turafvikling og web-klienten i én binærfil |
 | `web/` | HTML-siden til Bevy-klienten og konsollen (`console.html`), som serveren serverer |
@@ -29,6 +30,9 @@ cargo run --release -p nullnet-sim -- --crews 2 --days 1000 --json | python3 too
 # Start en spilserver og opret et spil på http://localhost:8080/console
 cargo run -p nullnet-server -- --db nullnet.db --port 8080
 
+# Med web-klienten bygget (se nedenfor) åbner invitationslinkene kortet i stedet for konsollen
+cargo run -p nullnet-server -- --db nullnet.db --port 8080 --web dist
+
 # Web-klienten (første build tager et stykke tid)
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.129   # skal matche Cargo.lock
@@ -36,7 +40,7 @@ scripts/build-web.sh
 python3 -m http.server -d dist 8080                # åbn http://localhost:8080
 ```
 
-Klienten kan også køre som desktop-app med `cargo run -p nullnet-client`.
+Klienten kan også køre som desktop-app: `cargo run -p nullnet-client -- --server http://localhost:8080 --token <token>`.
 
 Sådan henter du ændringer fra Godot-remaken:
 

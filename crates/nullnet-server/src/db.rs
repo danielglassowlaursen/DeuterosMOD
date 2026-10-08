@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use nullnet_api::TurnSummary;
 use nullnet_core::{Command, Orders, PlayerId, TurnReport, World};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -77,14 +78,6 @@ pub struct CrewRow {
     pub bot: bool,
     /// The secret in the crew's invite link; bots have none.
     pub token: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct TurnSummary {
-    pub turn: u32,
-    pub first_day: u32,
-    pub last_day: u32,
-    pub resolved_at: i64,
 }
 
 #[derive(Clone, Debug)]

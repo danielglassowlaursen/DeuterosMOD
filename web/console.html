@@ -68,7 +68,7 @@
     </div>
     <div class="panel" id="invites" hidden>
       <h2>Invite links</h2>
-      <p class="muted">Send each crew its own link. The link is the crew's key to the game: anyone with it plays that crew.</p>
+      <p class="muted">Send each crew its own link. The link is the crew's key to the game: anyone with it plays that crew. It opens the map client when the server serves one; this console always works at <code>/console#token</code>.</p>
       <div id="inviteList" style="display:grid;gap:8px"></div>
     </div>
   </div>
@@ -172,7 +172,7 @@
         const list = $('inviteList');
         list.innerHTML = created.crews.map(c => c.bot
           ? '<div><b>' + esc(c.name) + '</b> <span class="muted">plays itself (bot)</span></div>'
-          : '<div><b>' + esc(c.name) + '</b> <a class="link" href="' + esc(c.join_path) + '">' + esc(location.origin + c.join_path) + '</a> <button type="button" data-copy="' + esc(location.origin + c.join_path) + '">Copy</button></div>'
+          : '<div><b>' + esc(c.name) + '</b> <a class="link" href="' + esc(c.join_path) + '">' + esc(location.origin + c.join_path) + '</a> <button type="button" data-copy="' + esc(location.origin + c.join_path) + '">Copy</button> <a href="/console#' + esc(c.token) + '">console</a></div>'
         ).join('');
         list.querySelectorAll('button[data-copy]').forEach(b => b.addEventListener('click', () => {
           navigator.clipboard.writeText(b.dataset.copy).then(() => { b.textContent = 'Copied'; }, () => {});

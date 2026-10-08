@@ -29,7 +29,7 @@ pub mod workshop;
 pub mod world;
 
 pub use command::{Command, CommandError};
-pub use data::{GameData, HostDef, NetworkDef};
+pub use data::{GameData, HostDef, ItemCategory, ItemDef, NetworkDef};
 pub use exfil::{ExfilScript, Route};
 pub use ids::{Day, EPOCH, HostId, NetworkId, PlayerId, date};
 pub use items::ItemType;

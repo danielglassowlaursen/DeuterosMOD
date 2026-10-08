@@ -17,7 +17,7 @@
   <div id="loading">CONNECTING TO NULLNET…</div>
   <canvas id="nullnet"></canvas>
   <script type="module">
-    import init from "./nullnet-client.js";
+    import init from "/nullnet-client.js";
     const loading = document.getElementById("loading");
     init().then(
       () => loading.remove(),

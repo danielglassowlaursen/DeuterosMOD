@@ -16,7 +16,9 @@ use nullnet_core::Command;
 use serde_json::json;
 use tower_http::services::ServeDir;
 
-use crate::games::{self, CreateGame, Error, Server};
+use nullnet_api::{CreateGame, CrewStatus, CrewTurn, GameCreated, OrdersReceipt, TurnSummary};
+
+use crate::games::{self, Error, Server};
 
 const CONSOLE: &str = include_str!("../../../web/console.html");
 
@@ -32,15 +34,27 @@ pub fn router(server: Arc<Server>, web_dir: Option<PathBuf>) -> Router {
         .route("/crew/{token}/turns/{turn}", get(turn))
         .with_state(server);
 
+    // An invite link opens the client when the server has one to serve,
+    // otherwise the console; the console is always at /console.
     let pages = Router::new()
         .route("/console", get(console))
-        .route("/join/{token}", get(console));
+        .route("/join/{token}", get(join))
+        .with_state(web_dir.clone());
 
     let app = Router::new().nest("/api", api).merge(pages);
     match web_dir {
         Some(dir) => app.fallback_service(ServeDir::new(dir)),
         None => app.route("/", get(|| async { Redirect::temporary("/console") })),
     }
+}
+
+async fn join(State(web_dir): State<Option<PathBuf>>) -> Html<String> {
+    if let Some(dir) = web_dir
+        && let Ok(page) = tokio::fs::read_to_string(dir.join("index.html")).await
+    {
+        return Html(page);
+    }
+    Html(CONSOLE.to_string())
 }
 
 impl IntoResponse for Error {
@@ -61,7 +75,7 @@ async fn console() -> Html<&'static str> {
 async fn create_game(
     State(server): State<Arc<Server>>,
     Json(request): Json<CreateGame>,
-) -> Result<(StatusCode, Json<games::GameCreated>), Error> {
+) -> Result<(StatusCode, Json<GameCreated>), Error> {
     let created = server.create_game(request, games::now())?;
     Ok((StatusCode::CREATED, Json(created)))
 }
@@ -69,15 +83,15 @@ async fn create_game(
 async fn crew_status(
     State(server): State<Arc<Server>>,
     Path(token): Path<String>,
-) -> Result<Json<games::CrewStatus>, Error> {
-    Ok(Json(server.crew_status(&token)?))
+) -> Result<Json<CrewStatus>, Error> {
+    Ok(Json(server.crew_status(&token, games::now())?))
 }
 
 async fn submit_orders(
     State(server): State<Arc<Server>>,
     Path(token): Path<String>,
     Json(orders): Json<Vec<Command>>,
-) -> Result<Json<games::OrdersReceipt>, Error> {
+) -> Result<Json<OrdersReceipt>, Error> {
     Ok(Json(server.submit_orders(&token, orders, games::now())?))
 }
 
@@ -92,13 +106,13 @@ async fn withdraw_orders(
 async fn turns(
     State(server): State<Arc<Server>>,
     Path(token): Path<String>,
-) -> Result<Json<Vec<crate::db::TurnSummary>>, Error> {
+) -> Result<Json<Vec<TurnSummary>>, Error> {
     Ok(Json(server.turns(&token)?))
 }
 
 async fn turn(
     State(server): State<Arc<Server>>,
     Path((token, turn)): Path<(String, u32)>,
-) -> Result<Json<games::CrewTurn>, Error> {
+) -> Result<Json<CrewTurn>, Error> {
     Ok(Json(server.turn(&token, turn)?))
 }

@@ -1,11 +1,20 @@
 mod map;
 mod materials;
+mod net;
+mod text;
+mod ui;
 
 use bevy::prelude::*;
+use nullnet_core::GameData;
+
+/// The rules data, loaded once.
+#[derive(Resource)]
+pub struct Rules(pub GameData);
 
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::BLACK))
+        .insert_resource(Rules(GameData::classic()))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "NullNet".into(),
@@ -18,6 +27,11 @@ fn main() {
             }),
             ..default()
         }))
-        .add_plugins((materials::MaterialsPlugin, map::MapPlugin))
+        .add_plugins((
+            materials::MaterialsPlugin,
+            net::NetPlugin,
+            map::MapPlugin,
+            ui::UiPlugin,
+        ))
         .run();
 }
