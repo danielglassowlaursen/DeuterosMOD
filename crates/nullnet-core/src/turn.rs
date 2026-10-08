@@ -6,9 +6,9 @@ use crate::command::{Command, CommandError};
 use crate::data::GameData;
 use crate::ids::{Day, PlayerId};
 use crate::items::ItemType;
-use crate::research;
 use crate::staff::StaffKind;
 use crate::world::World;
+use crate::{mining, research};
 
 /// Every player's orders for one turn.
 pub type Orders = BTreeMap<PlayerId, Vec<Command>>;
@@ -81,8 +81,10 @@ pub fn resolve_turn(data: &GameData, world: &mut World, orders: &Orders, days: u
 fn step_day(data: &GameData, world: &mut World, events: &mut Vec<Event>) {
     world.day += 1;
     // The original runs its daily systems in this order: unlocks, mining,
-    // training, production, ships, research, Methanoid drones, alien
-    // messages, MTX. Systems are added here in that order as they are ported.
+    // training, production, ships, research, Legacy daemons, Legacy
+    // transmissions, encrypted links. Systems are added here in that order
+    // as they are ported.
+    mining::run_day(data, world);
     research::run_day(data, world, events);
 }
 
@@ -207,6 +209,43 @@ mod tests {
             report.rejected[0].error,
             CommandError::AlreadyResearched(ItemType::DropperCore)
         );
+    }
+
+    #[test]
+    fn hideouts_mine_on_even_days() {
+        let data = GameData::classic();
+        let mut world = World::new_game(&data, 3, &[(ALICE, "Alice")]);
+        let mined = |world: &World| -> u32 {
+            world.players[&ALICE]
+                .hideout
+                .store
+                .iter()
+                .map(|(_, n)| n)
+                .sum()
+        };
+
+        // Day 2 finds the first veins; day 4 is the first extraction.
+        resolve_turn(&data, &mut world, &Orders::new(), 3);
+        assert_eq!(mined(&world), 0);
+        resolve_turn(&data, &mut world, &Orders::new(), 1);
+        let first = mined(&world);
+        assert!(first > 0);
+        resolve_turn(&data, &mut world, &Orders::new(), 1);
+        assert_eq!(mined(&world), first, "nothing on odd day 5");
+    }
+
+    #[test]
+    fn a_new_game_resolves_identically_after_save_and_restore() {
+        let data = GameData::classic();
+        let mut original = World::new_game(&data, 11, &[(ALICE, "Alice"), (BOB, "Bob")]);
+        resolve_turn(&data, &mut original, &Orders::new(), 30);
+
+        let saved = serde_json::to_string(&original).unwrap();
+        let mut restored: World = serde_json::from_str(&saved).unwrap();
+        let a = resolve_turn(&data, &mut original, &Orders::new(), 100);
+        let b = resolve_turn(&data, &mut restored, &Orders::new(), 100);
+        assert_eq!(a, b);
+        assert_eq!(original, restored);
     }
 
     #[test]

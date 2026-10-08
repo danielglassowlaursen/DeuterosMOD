@@ -163,7 +163,7 @@ Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellern
 | Personale og niveauer | `Objects/Staff.cs` | `staff.rs` | ✅ |
 | Forskning | `Platform/Screens/Research.cs` | `research.rs` | ✅ |
 | Datatabeller: genstande, netværk, værter | `CoreData.cs` | `data.rs`, `data/classic.json` | ✅ udtrukket med `tools/extract_coredata.py` |
-| Udvinding med taps og rekognoscering | `Objects/Planet.cs` | | M1 |
+| Udvinding med taps og rekognoscering | `Objects/Planet.cs` | `mining.rs`, `site.rs` | ✅ |
 | Rekruttering | `Objects/Training.cs` | | M1 |
 | Værksted og build-bots | `Factory.cs`, `Production.cs` | | M1 |
 | Droppere, orme og tunnelskibe | `Ship.cs`, `InterStellarShip.cs`, `ShipInterior.cs` | | M1 |
