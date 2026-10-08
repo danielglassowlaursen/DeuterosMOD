@@ -1,6 +1,6 @@
-# Deuteros i Rust
+# NullNet
 
-En ny udgave af Deuteros (1991) med tidssvarende 2D-grafik og asynkron, turbaseret online-multiplayer, der spilles i browseren. Mål, arkitektur og plan står i [docs/DESIGN.md](docs/DESIGN.md).
+Et strategispil i et hacker-univers med asynkron, turbaseret online-multiplayer, der spilles i browseren. Reglerne bygger på Deuteros (Activision, 1991). Mål, arkitektur, ordbog og plan står i [docs/DESIGN.md](docs/DESIGN.md).
 
 | Mappe | Indhold |
 |---|---|

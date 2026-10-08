@@ -1,57 +1,58 @@
 use serde::{Deserialize, Serialize};
 
-/// Every resource and manufactured item in the game, in the order of the
-/// original `Enums.ItemTypes` (Godot/Code/Enums.cs).
+/// Every resource and manufactured item, in the order of the original
+/// `Enums.ItemTypes` (Godot/Code/Enums.cs). The Deuteros name of each is
+/// noted beside it; docs/DESIGN.md has the full glossary.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ItemType {
-    // Raw resources.
-    Iron,
-    Titanium,
-    Aluminium,
-    Carbon,
-    Copper,
-    Hydrogen,
-    Deuterium,
-    Methane,
-    Helium,
-    Palladium,
-    Platinum,
-    Silver,
-    Gold,
-    Silica,
-    // Fuels, refined automatically in every factory.
-    MehFuel,
-    HedFuel,
+    // Resources, extracted by taps.
+    Compute,      // iron
+    Storage,      // titanium
+    Memory,       // aluminium
+    Code,         // carbon
+    Credentials,  // copper
+    Bandwidth,    // hydrogen
+    ExitNodes,    // deuterium
+    Proxies,      // methane
+    Keys,         // helium
+    ZeroDays,     // palladium
+    Crypto,       // platinum
+    Certificates, // silver
+    SigningKeys,  // gold
+    Firmware,     // silica
+    // Transit fuel, refined automatically in every workshop.
+    ProxyChains, // MeH fuel: bandwidth + proxies
+    OnionRoutes, // HeD fuel: keys + exit nodes
     // Manufactured items.
-    Derrick,
-    SChassis,
-    SDrive,
-    OfFrame,
-    SupplyPod,
-    ToolPod,
-    CryoPod,
-    IChassis,
-    IDrive,
-    Acc,
-    Aoc,
-    Bandaid,
-    Sdm,
-    Grapple,
-    Dfcc,
-    Ama,
-    Hyperlight,
-    Mtx,
-    Mfl,
-    RFrame,
-    TorpedoLauncher,
-    CommsPod,
-    IosDrone,
-    GChassis,
-    StarDrive,
-    Ptl,
-    StarDrone,
-    PrisonPod,
-    SonicBlaster,
-    PulseBlasterLaser,
-    AlienArtifact,
+    Tap,             // derrick
+    DropperCore,     // S chassis
+    DropperEngine,   // S drive
+    CitadelModule,   // OF frame
+    DataContainer,   // supply pod
+    ToolModule,      // tool pod
+    SessionPod,      // cryo pod
+    WormCore,        // I chassis
+    WormEngine,      // I drive
+    ExfilScript,     // ACC
+    BuildBot,        // AOC
+    Patch,           // bandaid
+    KillSwitch,      // SDM
+    Sniffer,         // grapple
+    C2Controller,    // DFCC
+    Crawler,         // AMA
+    QuantumLink,     // hyperlight
+    EncryptedLink,   // MTX
+    Amplifier,       // MFL
+    BackdoorKit,     // R frame
+    ExploitLauncher, // prejudice torpedo launcher
+    ProtocolAdapter, // comms pod
+    Daemon,          // IOS drone
+    TunnelCore,      // G chassis
+    TunnelEngine,    // star drive
+    LogicBomb,       // PTL
+    HunterDaemon,    // star drone
+    Honeypot,        // prison pod
+    Jammer,          // sonic blaster
+    LegacyExploit,   // pulse blaster laser
+    SourceFragment,  // alien artifact
 }

@@ -2,24 +2,27 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum StaffKind {
-    Research,
-    Production,
-    Marines,
+    /// Research staff in Deuteros: Script kiddie, Hacker, Elite.
+    Analyst,
+    /// Production staff: Junior, Developer, Architect.
+    Coder,
+    /// Marines and pilots: Runner, Ghost, Phantom.
+    Operator,
 }
 
 impl StaffKind {
     /// Actions needed to reach level 2 and level 3 (Godot/Code/Objects/Staff.cs).
     fn level_thresholds(self) -> [u32; 2] {
         match self {
-            StaffKind::Research => [6, 9],
-            StaffKind::Production => [6, 12],
-            StaffKind::Marines => [10, 40],
+            StaffKind::Analyst => [6, 9],
+            StaffKind::Coder => [6, 12],
+            StaffKind::Operator => [10, 40],
         }
     }
 }
 
 /// A team led by a named leader. Experience comes from completed actions
-/// (research finished, items built, take-offs, deployments) and sets the
+/// (research finished, items built, launches, deployments) and sets the
 /// team's level from 1 to 3.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Staff {
@@ -74,15 +77,15 @@ mod tests {
     #[test]
     fn promotion_thresholds_match_the_original() {
         assert_eq!(
-            levels_after_each_action(StaffKind::Research, 50),
+            levels_after_each_action(StaffKind::Analyst, 50),
             [(6, 2), (9, 3)]
         );
         assert_eq!(
-            levels_after_each_action(StaffKind::Production, 50),
+            levels_after_each_action(StaffKind::Coder, 50),
             [(6, 2), (12, 3)]
         );
         assert_eq!(
-            levels_after_each_action(StaffKind::Marines, 50),
+            levels_after_each_action(StaffKind::Operator, 50),
             [(10, 2), (40, 3)]
         );
     }

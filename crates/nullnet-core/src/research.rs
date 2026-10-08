@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn hundred_technicians_finish_a_standard_item_in_150_days() {
         // 100 technicians gain (100 << 1) * 64 / 801 = 15 a day from 64.
-        let team = Staff::new("Lead", StaffKind::Research, 100);
+        let team = Staff::new("Lead", StaffKind::Analyst, 100);
         let steps = days_until_done(&ResearchDef::default(), &team);
         let days: Vec<u32> = steps.iter().map(|&(day, _)| day).collect();
         assert_eq!(days, [13, 30, 47, 64, 82, 99, 116, 133, 150]);
@@ -143,7 +143,7 @@ mod tests {
             tech_level: 2,
             ..ResearchDef::default()
         };
-        let team = Staff::new("Lead", StaffKind::Research, 250);
+        let team = Staff::new("Lead", StaffKind::Analyst, 250);
         let mut progress = ResearchProgress::new(&def);
         for _ in 0..100 {
             assert!(!research_day(&def, &mut progress, &team));
@@ -157,7 +157,7 @@ mod tests {
             limit: 23,
             ..ResearchDef::default()
         };
-        let team = Staff::new("Lead", StaffKind::Research, 250);
+        let team = Staff::new("Lead", StaffKind::Analyst, 250);
         let mut progress = ResearchProgress::new(&def);
         for _ in 0..1000 {
             assert!(!research_day(&def, &mut progress, &team));

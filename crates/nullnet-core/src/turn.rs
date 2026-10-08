@@ -98,9 +98,9 @@ mod tests {
     fn data() -> GameData {
         let mut data = GameData::default();
         data.research
-            .insert(ItemType::SChassis, ResearchDef::default());
+            .insert(ItemType::DropperCore, ResearchDef::default());
         data.research.insert(
-            ItemType::IChassis,
+            ItemType::WormCore,
             ResearchDef {
                 tech_level: 2,
                 ..ResearchDef::default()
@@ -113,8 +113,11 @@ mod tests {
         let mut world = World::new(2026);
         for (id, name) in [(ALICE, "Alice"), (BOB, "Bob")] {
             let mut player = Player::new(name);
-            player.research_team = Some(Staff::new("Lead", StaffKind::Research, 100));
-            player.unlock_research(ItemType::SChassis, &data.research[&ItemType::SChassis]);
+            player.research_team = Some(Staff::new("Lead", StaffKind::Analyst, 100));
+            player.unlock_research(
+                ItemType::DropperCore,
+                &data.research[&ItemType::DropperCore],
+            );
             world.players.insert(id, player);
         }
         world
@@ -128,13 +131,13 @@ mod tests {
     fn research_completes_on_the_day_the_rules_predict() {
         let data = data();
         let mut world = world(&data);
-        let orders = Orders::from([(ALICE, vec![set_research(ItemType::SChassis)])]);
+        let orders = Orders::from([(ALICE, vec![set_research(ItemType::DropperCore)])]);
 
         let report = resolve_turn(&data, &mut world, &orders, 149);
         assert_eq!((report.first_day, report.last_day), (1, 149));
         assert!(report.events.is_empty());
         assert_eq!(
-            world.players[&ALICE].research[&ItemType::SChassis].percent,
+            world.players[&ALICE].research[&ItemType::DropperCore].percent,
             89
         );
 
@@ -144,11 +147,14 @@ mod tests {
             [Event::ResearchCompleted {
                 day: 150,
                 player: ALICE,
-                item: ItemType::SChassis,
+                item: ItemType::DropperCore,
             }]
         );
         // Bob gave no orders, so his team stayed idle.
-        assert_eq!(world.players[&BOB].research[&ItemType::SChassis].percent, 1);
+        assert_eq!(
+            world.players[&BOB].research[&ItemType::DropperCore].percent,
+            1
+        );
     }
 
     #[test]
@@ -159,11 +165,11 @@ mod tests {
             (
                 ALICE,
                 vec![
-                    set_research(ItemType::IChassis),
-                    set_research(ItemType::SChassis),
+                    set_research(ItemType::WormCore),
+                    set_research(ItemType::DropperCore),
                 ],
             ),
-            (PlayerId(9), vec![set_research(ItemType::SChassis)]),
+            (PlayerId(9), vec![set_research(ItemType::DropperCore)]),
         ]);
 
         let report = resolve_turn(&data, &mut world, &orders, 1);
@@ -173,7 +179,7 @@ mod tests {
                 RejectedCommand {
                     player: ALICE,
                     index: 0,
-                    error: CommandError::ResearchUnavailable(ItemType::IChassis),
+                    error: CommandError::ResearchUnavailable(ItemType::WormCore),
                 },
                 RejectedCommand {
                     player: PlayerId(9),
@@ -184,7 +190,7 @@ mod tests {
         );
         assert_eq!(
             world.players[&ALICE].current_research,
-            Some(ItemType::SChassis)
+            Some(ItemType::DropperCore)
         );
     }
 
@@ -192,13 +198,13 @@ mod tests {
     fn finished_research_cannot_be_selected_again() {
         let data = data();
         let mut world = world(&data);
-        let orders = Orders::from([(ALICE, vec![set_research(ItemType::SChassis)])]);
+        let orders = Orders::from([(ALICE, vec![set_research(ItemType::DropperCore)])]);
         resolve_turn(&data, &mut world, &orders, 150);
 
         let report = resolve_turn(&data, &mut world, &orders, 1);
         assert_eq!(
             report.rejected[0].error,
-            CommandError::AlreadyResearched(ItemType::SChassis)
+            CommandError::AlreadyResearched(ItemType::DropperCore)
         );
     }
 
@@ -207,8 +213,8 @@ mod tests {
         let data = data();
         let mut original = world(&data);
         let orders = Orders::from([
-            (ALICE, vec![set_research(ItemType::SChassis)]),
-            (BOB, vec![set_research(ItemType::SChassis)]),
+            (ALICE, vec![set_research(ItemType::DropperCore)]),
+            (BOB, vec![set_research(ItemType::DropperCore)]),
         ]);
         resolve_turn(&data, &mut original, &orders, 40);
 
