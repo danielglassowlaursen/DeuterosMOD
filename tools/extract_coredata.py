@@ -188,6 +188,8 @@ def extract_hosts(src, networks):
                 ],
                 "segment": boolean(field("Segment") or "false"),
                 "legacy": boolean(field("ActiveMethanoid") or "false"),
+                # The asteroid belt: a field of abandoned data caches, not a host to hold.
+                "cache_field": match.group(1) == "asteroids",
             }
         )
 

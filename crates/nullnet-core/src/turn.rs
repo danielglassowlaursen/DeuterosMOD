@@ -4,9 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::command::{Command, CommandError};
 use crate::data::GameData;
-use crate::ids::{Day, PlayerId};
+use crate::ids::{Day, HostId, PlayerId};
 use crate::items::ItemType;
 use crate::staff::StaffKind;
+use crate::transport::{self, AbortReason, Berth, VesselId};
 use crate::workshop::{self, WorkshopRef};
 use crate::world::World;
 use crate::{mining, recruitment, research};
@@ -40,6 +41,42 @@ pub enum Event {
         at: WorkshopRef,
         item: ItemType,
     },
+    /// A crew installed its first citadel module or backdoor kit on a free
+    /// host and now holds it.
+    HostClaimed {
+        day: Day,
+        player: PlayerId,
+        host: HostId,
+    },
+    /// A citadel module or backdoor kit went in; `installed` is the new count.
+    Installed {
+        day: Day,
+        player: PlayerId,
+        host: HostId,
+        item: ItemType,
+        installed: u32,
+    },
+    VesselArrived {
+        day: Day,
+        player: PlayerId,
+        vessel: VesselId,
+        host: HostId,
+        berth: Berth,
+    },
+    /// A vessel gave up on its destination.
+    VesselStopped {
+        day: Day,
+        player: PlayerId,
+        vessel: VesselId,
+        reason: AbortReason,
+    },
+    /// A vessel lurked too long without anonymisation and was traced.
+    VesselBurned {
+        day: Day,
+        player: PlayerId,
+        vessel: VesselId,
+        host: HostId,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,13 +98,15 @@ pub struct TurnReport {
 /// Applies every player's orders, then advances the world `days` days.
 ///
 /// Orders are applied before the first day, in player-id order and each
-/// player's commands in the order given. An invalid command is skipped and
-/// reported; it never aborts the turn.
+/// player's commands in the order given; what they do at once (a host
+/// claimed, a vessel setting off) is reported on the day they were given.
+/// An invalid command is skipped and reported; it never aborts the turn.
 pub fn resolve_turn(data: &GameData, world: &mut World, orders: &Orders, days: u32) -> TurnReport {
     let mut rejected = Vec::new();
+    let mut events = Vec::new();
     for (&player, commands) in orders {
         for (index, command) in commands.iter().enumerate() {
-            if let Err(error) = command.apply(data, world, player) {
+            if let Err(error) = command.apply(data, world, player, &mut events) {
                 rejected.push(RejectedCommand {
                     player,
                     index,
@@ -78,7 +117,6 @@ pub fn resolve_turn(data: &GameData, world: &mut World, orders: &Orders, days: u
     }
 
     let first_day = world.day + 1;
-    let mut events = Vec::new();
     for _ in 0..days {
         step_day(data, world, &mut events);
     }
@@ -100,6 +138,7 @@ fn step_day(data: &GameData, world: &mut World, events: &mut Vec<Event>) {
     mining::run_day(data, world);
     recruitment::run_day(data, world, events);
     workshop::run_all(data, world, events);
+    transport::run_day(data, world, events);
     research::run_day(data, world, events);
 }
 

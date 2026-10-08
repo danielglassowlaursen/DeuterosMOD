@@ -82,6 +82,10 @@ pub struct HostDef {
     pub segment: bool,
     /// Held by the Legacy Net from the start.
     pub legacy: bool,
+    /// A field of abandoned data caches (the asteroid belt in Deuteros):
+    /// vessels can visit, but no one can build a citadel or backdoor there.
+    #[serde(default)]
+    pub cache_field: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

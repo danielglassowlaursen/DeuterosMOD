@@ -17,7 +17,7 @@ use crate::ids::{Day, HostId, PlayerId};
 use crate::items::ItemType;
 use crate::research::ResearchProgress;
 use crate::site::Citadel;
-use crate::staff::Staff;
+use crate::staff::{Staff, StaffKind};
 use crate::store::Store;
 use crate::turn::Event;
 use crate::world::{Controller, Player, World};
@@ -219,6 +219,35 @@ pub(crate) fn run_all(data: &GameData, world: &mut World, events: &mut Vec<Event
             run_day(data, &player.research, day, id, bench, events);
         }
     }
+}
+
+/// Puts a coder team from the site's staff slots in charge of a workshop
+/// without coders.
+pub(crate) fn assign_coders(bench: Bench<'_>, team: usize) -> Result<(), CommandError> {
+    if bench.workshop.automated {
+        return Err(CommandError::WorkshopAutomated);
+    }
+    if bench.workshop.coders.is_some() {
+        return Err(CommandError::SeatTaken);
+    }
+    match bench.staff.get(team) {
+        None => Err(CommandError::NoSuchTeam),
+        Some(staff) if staff.kind != StaffKind::Coder => Err(CommandError::NotCoders),
+        Some(_) => {
+            bench.workshop.coders = Some(bench.staff.remove(team));
+            Ok(())
+        }
+    }
+}
+
+/// Moves a workshop's coders to the site's staff slots, ready to travel.
+pub(crate) fn release_coders(bench: Bench<'_>) -> Result<(), CommandError> {
+    if bench.staff.len() >= crate::site::STAFF_SLOTS {
+        return Err(CommandError::NoStaffSlot);
+    }
+    let coders = bench.workshop.coders.take().ok_or(CommandError::NoCoders)?;
+    bench.staff.push(coders);
+    Ok(())
 }
 
 /// Checks that `item` is something this crew can build at all.
@@ -445,10 +474,7 @@ fn finish_job(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use super::*;
-    use crate::staff::StaffKind;
 
     struct Fixture {
         data: GameData,

@@ -142,12 +142,26 @@ Med skiftevise ture ville et asynkront spil med flere spillere gå alt for langs
 
 **Ordrer er stående ordrer.** Det er produktionskøer, forskningsvalg, exfil-ruter, flyveplaner og forsvarsholdning. Originalens automatik (ACC, AOC og MTX, her exfil-scripts, build-bots og krypterede links) passer godt til det. Engangshandlinger, som at bygge et citadel eller sende en orm af sted, udføres på turens første dag.
 
+**Transport.** Et fartøj hviler altid ved en vært på én af tre måder: plantet inde i værten gennem bagdøren (kun droppere), koblet til citadellet over den, eller lurende ude på nettet. Crewet giver fartøjet en destination, og det arbejder sig selv derhen tur efter tur:
+
+| Skridt | Tid | Gælder |
+|---|---|---|
+| Exfiltrér ud af værten | 5 dage | droppere |
+| Injicér ind i værten | 2 dage | droppere |
+| Kobl fra citadellet | 1 dag | alle |
+| Kobl til citadellet | næste dag, når porten er ledig | alle; orme og tunnelskibe deler én port pr. citadel |
+| Rout til en anden vært | latens, se nedenfor | orme i eget netværk, tunnelskibe overalt |
+
+Latens inden for et netværk følger originalen: mellem en vært og dens undersystemer forskellen i position (mindst 1 dag), ellers 4 dage pr. position mellem de to værter. Deuteros definerede aldrig rejser mellem stjerner, så et tunnelskib router ind til backbonen og ud igen plus 20 dage pr. netværk, det krydser. Det tal skal balanceres.
+
+Hver dag i bevægelse koster én enhed anonymisering: proxykæder for droppere og orme, onion-ruter for tunnelskibe. Et skridt kræver en operatør som pilot og mindst én enhed. Et fartøj, der lurer uden anonymisering i 5 dage, bliver sporet og brændt. Citadel-moduler installeres udefra (lurende), bagdørssæt indefra (en plantet dropper).
+
 **Samtidige konflikter løses deterministisk.** Hvis to crews for eksempel bygger bagdør på den samme vært samme dag, afgør spillets seed og en prioritet, der roterer fra tur til tur.
 
 ## Konkurrence
 
 - **Crews.** Hver crew har sit eget skjulested med egen forskning, træning, værksted og lager. Skjulestedet kan ikke indtages, så ingen crew kan blive slået helt ud.
-- **Værter.** Den crew, der først bygger en bagdør på en vært, ejer den, og udvindingen der går til ejeren.
+- **Værter.** Den crew, der først installerer et citadel-modul eller et bagdørssæt på en fri vært, ejer den, og udvindingen der går til ejeren.
 - **Heat.** Citadeller, taps og angreb efterlader spor. The Legacy Net går efter crewen med mest heat, så den førende bliver jaget.
 - **The Legacy Net.** Hver crew har sin egen krigstilstand med den, som i originalen: krigen starter ved 6 citadeller eller efter for meget handel.
 - **Crew mod crew.** En orm med daemons, en C2-controller og en operatør sendes mod en rivals vært. Kampen bruger samme regel som mod The Legacy Net: styrke = daemons × (operatørniveau + 4). Før afsendelsen vælges, hvad en sejr skal give: exfiltrér (stjæl fra lageret), plant tap (en del af udvindingen) eller overtag (citadellet skifter ejer). Forsvaret er automatisk med de daemons, der ligger i citadellet. Hvert angreb giver angriberen heat. Angriber to crews hinanden samme dag, kæmpes begge kampe i en rækkefølge, som seed'et bestemmer.
@@ -166,7 +180,7 @@ Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellern
 | Udvinding med taps og rekognoscering | `Objects/Planet.cs` | `mining.rs`, `site.rs` | ✅ |
 | Rekruttering | `Objects/Training.cs` | `recruitment.rs` | ✅ |
 | Værksted og build-bots | `Factory.cs`, `Production.cs` | `workshop.rs` | ✅ |
-| Droppere, orme og tunnelskibe | `Ship.cs`, `InterStellarShip.cs`, `ShipInterior.cs` | | M1 |
+| Droppere, orme og tunnelskibe | `Ship.cs`, `InterStellarShip.cs`, `ShipBay.cs`, `ShipInterior.cs` | `transport.rs` | ✅ |
 | Exfil-scripts og krypterede links | `Objects/ACC.cs`, `MTX.cs` | | M1 |
 | The Legacy Net og kamp | `EnemyFleets.cs`, `EnemyDroneBuilder.cs`, `BattleLogic.cs` | | M4 |
 | Unlocks og beskeder | `Platform/Unlocker.cs` | | M1 |
@@ -175,12 +189,12 @@ Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellern
 
 - MTX-balancering skaber ressourcer ud af ingenting: formlen `(a + b/2)` i `MTX.cs:403`.
 - `=` i stedet for `==` åbner forskning i star drive, hver gang skibshangaren åbnes (`ShipBay.cs:191`).
-- Montering af en motor bruger ikke drevet (`Engine.cs:37-45`).
 - `Next(Count - 1)` i opsætningen vælger aldrig den sidste planet (`CoreData.cs:68,4269,4283`).
 - `Next(0,6)` giver aldrig silica eller de største asteroider, så kun 1 ud af 6 asteroider kan udvindes (`Asteroid.cs`).
 - Planeter, der behandles i samme millisekund, får de samme tilfældige tal (`Planet.cs:61`).
 - Et boretårn kan tage mere, end der er tilbage i åren (`Planet.cs:81`).
 - Skibe fjernes fra en liste, mens den gennemløbes (`ShipInterior.cs:1091-1097`).
+- Et skib bygges uden at bruge sit chassis, og montering af motoren bruger heller ikke drevet (`ShipBay.cs:278-441`, `Engine.cs:37-45`). I NullNet bruges kerne og motor, når fartøjet samles.
 - En AOC, der gentager et emne uden andre i køen, bygger det igen uden at betale for det (`Production.cs:368-381`).
 - Brændstof raffineres efter et fælles flag for alle fabrikker, så det afhænger af rækkefølgen (`Production.cs:389-406`). NullNet raffinerer i hvert værksted hver anden dag.
 - Jordens produktion lander på jorden eller i stationen efter en UI-indstilling (`Earth.cs:24-30`). I NullNet lander den altid i værkstedets eget lager.

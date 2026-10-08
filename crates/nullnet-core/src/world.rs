@@ -11,6 +11,7 @@ use crate::research::{ResearchDef, ResearchProgress};
 use crate::rng::Rng;
 use crate::site::{Citadel, Site};
 use crate::staff::Staff;
+use crate::transport::{Vessel, VesselId};
 use crate::workshop::{SiteRef, Workshop};
 
 /// The complete mutable state of one game.
@@ -23,6 +24,8 @@ pub struct World {
     pub hosts: Vec<HostState>,
     /// Index of the next team leader's handle.
     pub next_handle: u32,
+    pub vessels: BTreeMap<VesselId, Vessel>,
+    pub next_vessel: u32,
 }
 
 /// Who holds a host.
@@ -47,6 +50,8 @@ impl World {
             players: BTreeMap::new(),
             hosts: Vec::new(),
             next_handle: 0,
+            vessels: BTreeMap::new(),
+            next_vessel: 0,
         }
     }
 

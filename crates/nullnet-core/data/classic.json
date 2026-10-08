@@ -1373,7 +1373,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "venus",
@@ -1389,7 +1390,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "earth",
@@ -1407,7 +1409,8 @@
     "Proxies"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "the_moon",
@@ -1424,7 +1427,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "mars",
@@ -1438,7 +1442,8 @@
     "Certificates"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "phobos",
@@ -1450,7 +1455,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "deimos",
@@ -1462,7 +1468,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "asteroids",
@@ -1480,7 +1487,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": true
   },
   {
    "classic": "jupiter",
@@ -1492,7 +1500,8 @@
     "Keys"
    ],
    "segment": false,
-   "legacy": true
+   "legacy": true,
+   "cache_field": false
   },
   {
    "classic": "amalthea",
@@ -1504,7 +1513,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "io",
@@ -1517,7 +1527,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "europa",
@@ -1530,7 +1541,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "ganymede",
@@ -1547,7 +1559,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "callisto",
@@ -1564,7 +1577,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "leda",
@@ -1582,7 +1596,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "himalia",
@@ -1595,7 +1610,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "elara",
@@ -1607,7 +1623,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "pasiphae",
@@ -1619,7 +1636,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "saturn",
@@ -1630,7 +1648,8 @@
     "Bandwidth"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "mimas",
@@ -1642,7 +1661,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "encaladus",
@@ -1658,7 +1678,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "tethys",
@@ -1676,7 +1697,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "dione",
@@ -1688,7 +1710,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "rhea",
@@ -1704,7 +1727,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "titan",
@@ -1721,7 +1745,8 @@
     "Certificates"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "hyperion",
@@ -1737,7 +1762,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "iapetus",
@@ -1749,7 +1775,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "phoebe",
@@ -1767,7 +1794,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "uranus",
@@ -1785,7 +1813,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": true
+   "legacy": true,
+   "cache_field": false
   },
   {
    "classic": "miranda",
@@ -1801,7 +1830,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "ariel",
@@ -1817,7 +1847,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "umbriel",
@@ -1830,7 +1861,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "titania",
@@ -1848,7 +1880,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": true
+   "legacy": true,
+   "cache_field": false
   },
   {
    "classic": "oberon",
@@ -1866,7 +1899,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "neptune",
@@ -1884,7 +1918,8 @@
     "Crypto"
    ],
    "segment": false,
-   "legacy": true
+   "legacy": true,
+   "cache_field": false
   },
   {
    "classic": "triton",
@@ -1902,7 +1937,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": true
+   "legacy": true,
+   "cache_field": false
   },
   {
    "classic": "neried",
@@ -1915,7 +1951,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "nthree",
@@ -1927,7 +1964,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "nfour",
@@ -1938,7 +1976,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "pluto",
@@ -1955,7 +1994,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": true
+   "legacy": true,
+   "cache_field": false
   },
   {
    "classic": "charon",
@@ -1967,7 +2007,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "decuria",
@@ -1981,7 +2022,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "atlantic",
@@ -1999,7 +2041,8 @@
     "Proxies"
    ],
    "segment": true,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "pacific",
@@ -2017,7 +2060,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "barent",
@@ -2031,7 +2075,8 @@
     "ZeroDays"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "baltic",
@@ -2045,7 +2090,8 @@
     "Crypto"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "chiron",
@@ -2063,7 +2109,8 @@
     "Proxies"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "cercops",
@@ -2080,7 +2127,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "circe",
@@ -2094,7 +2142,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "chimaera",
@@ -2108,7 +2157,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "cerberus",
@@ -2126,7 +2176,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "cronus",
@@ -2141,7 +2192,8 @@
     "Crypto"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "chloe",
@@ -2154,7 +2206,8 @@
     "Crypto"
    ],
    "segment": true,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "calchas",
@@ -2168,7 +2221,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "cadmus",
@@ -2182,7 +2236,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "creon",
@@ -2196,7 +2251,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "cybele",
@@ -2210,7 +2266,8 @@
     "Crypto"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "cupid",
@@ -2224,7 +2281,8 @@
     "Crypto"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "mycenae",
@@ -2242,7 +2300,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "tyre",
@@ -2256,7 +2315,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "ur",
@@ -2270,7 +2330,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "thebes",
@@ -2284,7 +2345,8 @@
     "ZeroDays"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "tanis",
@@ -2302,7 +2364,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "memphis",
@@ -2318,7 +2381,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "karnak",
@@ -2335,7 +2399,8 @@
     "Keys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "gizeh",
@@ -2349,7 +2414,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "calah",
@@ -2366,7 +2432,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "noria",
@@ -2380,7 +2447,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "abydos",
@@ -2394,7 +2462,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "saqqara",
@@ -2409,7 +2478,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "pompeii",
@@ -2423,7 +2493,8 @@
     "ZeroDays"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "petra",
@@ -2437,7 +2508,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "palmyra",
@@ -2451,7 +2523,8 @@
     "ZeroDays"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "jericho",
@@ -2465,7 +2538,8 @@
     "Bandwidth"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "babylon",
@@ -2482,7 +2556,8 @@
     "Firmware"
    ],
    "segment": true,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "troy",
@@ -2496,7 +2571,8 @@
     "Certificates"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "carthage",
@@ -2510,7 +2586,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "crete",
@@ -2524,7 +2601,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "knossos",
@@ -2538,7 +2616,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "delphi",
@@ -2552,7 +2631,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "ephesus",
@@ -2566,7 +2646,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "corinth",
@@ -2580,7 +2661,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "athens",
@@ -2595,7 +2677,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "olympia",
@@ -2609,7 +2692,8 @@
     "Credentials"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "mari",
@@ -2627,7 +2711,8 @@
     "Proxies"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "cuzco",
@@ -2641,7 +2726,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "nero",
@@ -2659,7 +2745,8 @@
     "Proxies"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "julius",
@@ -2673,7 +2760,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "septimus",
@@ -2687,7 +2775,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "augustus",
@@ -2701,7 +2790,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "claudius",
@@ -2716,7 +2806,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "hadrian",
@@ -2729,7 +2820,8 @@
     "Firmware"
    ],
    "segment": true,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "romulus",
@@ -2746,7 +2838,8 @@
     "Proxies"
    ],
    "segment": true,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "remus",
@@ -2764,7 +2857,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "helios",
@@ -2778,7 +2872,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "lithos",
@@ -2793,7 +2888,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "burah",
@@ -2807,7 +2903,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "alumen",
@@ -2821,7 +2918,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "silex",
@@ -2838,7 +2936,8 @@
     "Crypto"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "sulfurum",
@@ -2856,7 +2955,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "chloros",
@@ -2874,7 +2974,8 @@
     "Proxies"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "argos",
@@ -2888,7 +2989,8 @@
     "Certificates"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "calx",
@@ -2906,7 +3008,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "titanes",
@@ -2920,7 +3023,8 @@
     "Crypto"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "vanadis",
@@ -2936,7 +3040,8 @@
     "Keys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "chronos",
@@ -2950,7 +3055,8 @@
     "Keys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "selene",
@@ -2968,7 +3074,8 @@
     "Crypto"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "bromos",
@@ -2982,7 +3089,8 @@
     "Keys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "kryptos",
@@ -2996,7 +3104,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "rubidos",
@@ -3010,7 +3119,8 @@
     "Keys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "zargun",
@@ -3024,7 +3134,8 @@
     "ExitNodes"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "niobe",
@@ -3038,7 +3149,8 @@
     "Keys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "kadmeia",
@@ -3052,7 +3164,8 @@
     "Crypto"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "tellus",
@@ -3067,7 +3180,8 @@
     "Crypto"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "iodes",
@@ -3082,7 +3196,8 @@
     "Certificates"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "xenos",
@@ -3096,7 +3211,8 @@
     "Crypto"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "caesius",
@@ -3109,7 +3225,8 @@
     "Firmware"
    ],
    "segment": true,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "rhenus",
@@ -3123,7 +3240,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "osme",
@@ -3137,7 +3255,8 @@
     "Crypto"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "iris",
@@ -3151,7 +3270,8 @@
     "ZeroDays"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "platina",
@@ -3165,7 +3285,8 @@
     "ZeroDays"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "aurum",
@@ -3179,7 +3300,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "thallos",
@@ -3193,7 +3315,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "astatos",
@@ -3207,7 +3330,8 @@
     "Crypto"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "radius",
@@ -3221,7 +3345,8 @@
     "Keys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "aktis",
@@ -3235,7 +3360,8 @@
     "Keys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "protos",
@@ -3249,7 +3375,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "prasios",
@@ -3263,7 +3390,8 @@
     "Keys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "cambrian",
@@ -3281,7 +3409,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "cainozoic",
@@ -3295,7 +3424,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "tertiary",
@@ -3309,7 +3439,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "paleocene",
@@ -3323,7 +3454,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "eocene",
@@ -3337,7 +3469,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "oligocene",
@@ -3351,7 +3484,8 @@
     "ZeroDays"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "miocene",
@@ -3369,7 +3503,8 @@
     "Proxies"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "pliocene",
@@ -3384,7 +3519,8 @@
     "SigningKeys"
    ],
    "segment": true,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "paleozoic",
@@ -3398,7 +3534,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "silurian",
@@ -3412,7 +3549,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "alpha",
@@ -3429,7 +3567,8 @@
     "Firmware"
    ],
    "segment": true,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "beta",
@@ -3444,7 +3583,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "delta",
@@ -3458,7 +3598,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "gamma",
@@ -3472,7 +3613,8 @@
     "Crypto"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "theta",
@@ -3490,7 +3632,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "iota",
@@ -3505,7 +3648,8 @@
     "Keys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "kappa",
@@ -3521,7 +3665,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "epsilon",
@@ -3535,7 +3680,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "lambda",
@@ -3549,7 +3695,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "mu",
@@ -3563,7 +3710,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "nu",
@@ -3577,7 +3725,8 @@
     "ExitNodes"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "xi",
@@ -3591,7 +3740,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "omicron",
@@ -3605,7 +3755,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "pi",
@@ -3619,7 +3770,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "zeta",
@@ -3633,7 +3785,8 @@
     "Certificates"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "rho",
@@ -3647,7 +3800,8 @@
     "Firmware"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "sigma",
@@ -3661,7 +3815,8 @@
     "ZeroDays"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "upsilon",
@@ -3679,7 +3834,8 @@
     "Proxies"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "phi",
@@ -3695,7 +3851,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "chi",
@@ -3711,7 +3868,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "psi",
@@ -3725,7 +3883,8 @@
     "SigningKeys"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   },
   {
    "classic": "omega",
@@ -3739,7 +3898,8 @@
     "ZeroDays"
    ],
    "segment": false,
-   "legacy": false
+   "legacy": false,
+   "cache_field": false
   }
  ],
  "survey_multiplier": {

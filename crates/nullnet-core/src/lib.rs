@@ -18,6 +18,7 @@ pub mod rng;
 pub mod site;
 pub mod staff;
 pub mod store;
+pub mod transport;
 pub mod turn;
 pub mod workshop;
 pub mod world;
@@ -29,6 +30,9 @@ pub use items::ItemType;
 pub use rng::Rng;
 pub use site::{Citadel, STAFF_SLOTS, Site, Vein};
 pub use store::Store;
+pub use transport::{
+    Berth, Cargo, Destination, Module, ModuleKind, Seat, Vessel, VesselId, VesselKind, VesselState,
+};
 pub use turn::{Event, Orders, TurnReport, resolve_turn};
 pub use workshop::{AutoMode, SiteRef, WorkshopRef};
 pub use world::{Controller, HostState, Player, World};
