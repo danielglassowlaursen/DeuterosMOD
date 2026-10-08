@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["crates/nullnet-core", "crates/nullnet-client", "crates/nullnet-sim"]
+members = [
+    "crates/nullnet-core",
+    "crates/nullnet-client",
+    "crates/nullnet-sim",
+    "crates/nullnet-server",
+]
 
 [workspace.package]
 version = "0.1.0"

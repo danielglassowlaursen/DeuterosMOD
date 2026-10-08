@@ -24,6 +24,7 @@ pub mod store;
 pub mod transport;
 pub mod turn;
 pub mod unlocks;
+pub mod view;
 pub mod workshop;
 pub mod world;
 
@@ -42,5 +43,6 @@ pub use transport::{
 };
 pub use turn::{Event, Orders, TurnReport, resolve_turn};
 pub use unlocks::Milestone;
+pub use view::{CrewSummary, CrewView, HostView, crew_view};
 pub use workshop::{AutoMode, Job, SiteRef, Workshop, WorkshopRef};
 pub use world::{Controller, HostState, Player, World};

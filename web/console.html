@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NullNet console</title>
+  <style>
+    :root { --bg: #0b1016; --panel: #121a23; --line: #233140; --fg: #d9e3ee; --dim: #8797a8; --accent: #5fc9d8; --warn: #f08b5a; --ok: #7bd389; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 ui-monospace, "IBM Plex Mono", Menlo, Consolas, monospace; padding: 24px 16px 48px; }
+    .wrap { max-width: 1100px; margin: 0 auto; display: grid; gap: 16px; }
+    h1 { font-size: 18px; letter-spacing: .12em; margin: 0; }
+    h1 span { color: var(--dim); font-weight: 400; letter-spacing: 0; margin-left: 12px; }
+    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); margin: 0 0 8px; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; min-width: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+    label { display: grid; gap: 4px; color: var(--dim); font-size: 12px; }
+    input, textarea, select, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
+    input[type="checkbox"] { width: auto; }
+    textarea { width: 100%; min-height: 160px; resize: vertical; }
+    button { cursor: pointer; background: var(--panel); }
+    button:hover { border-color: var(--accent); }
+    button.primary { border-color: var(--accent); color: var(--accent); }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .crews-form { display: grid; gap: 6px; }
+    .crews-form .row input[type="text"] { flex: 1 1 160px; }
+    .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; }
+    .kv b { color: var(--dim); font-weight: 400; }
+    .muted { color: var(--dim); }
+    .warn { color: var(--warn); }
+    .ok { color: var(--ok); }
+    .chip { display: inline-block; padding: 1px 6px; border: 1px solid var(--line); border-radius: 3px; margin: 2px 4px 2px 0; font-size: 12px; }
+    .chip.on { border-color: var(--ok); color: var(--ok); }
+    ul { margin: 0; padding-left: 1.2em; }
+    .events li { margin: 2px 0; }
+    .events .day { color: var(--dim); margin-right: 8px; }
+    .banner { background: #163a2a; border: 1px solid var(--ok); color: var(--ok); padding: 8px 12px; border-radius: 4px; }
+    .link { word-break: break-all; }
+    a { color: var(--accent); }
+    .tablewrap { overflow-x: auto; }
+    table { border-collapse: collapse; font-size: 13px; }
+    td, th { padding: 2px 8px 2px 0; text-align: left; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    th { color: var(--dim); font-weight: 400; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>NULLNET <span id="sub">console</span></h1>
+  <div id="create" hidden>
+    <div class="panel">
+      <h2>Create a game</h2>
+      <div class="grid">
+        <div style="display:grid;gap:8px">
+          <label>Game name <input id="gname" type="text" value="Friday run"></label>
+          <label>Days per turn <input id="gdays" type="number" value="10" min="1" max="100"></label>
+          <label>Hours before a turn runs without everyone's orders <input id="ghours" type="number" value="24" min="0"></label>
+          <label>Seed (blank for random) <input id="gseed" type="text" placeholder="7"></label>
+        </div>
+        <div class="crews-form" id="crewsForm">
+          <h2>Crews (1 to 4; a bot plays its seat)</h2>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="primary" id="createBtn" type="button">Create game</button>
+        <span id="createMsg" class="muted"></span>
+      </div>
+    </div>
+    <div class="panel" id="invites" hidden>
+      <h2>Invite links</h2>
+      <p class="muted">Send each crew its own link. The link is the crew's key to the game: anyone with it plays that crew.</p>
+      <div id="inviteList" style="display:grid;gap:8px"></div>
+    </div>
+  </div>
+
+  <div id="play" hidden>
+    <div id="banner" class="banner" hidden></div>
+    <div class="grid">
+      <div class="panel">
+        <h2>Game</h2>
+        <div class="kv" id="gameInfo"></div>
+        <div style="margin-top:8px" id="crewList"></div>
+      </div>
+      <div class="panel">
+        <h2>Hideout</h2>
+        <div class="kv" id="hideout"></div>
+      </div>
+      <div class="panel">
+        <h2>Store</h2>
+        <div class="tablewrap"><table id="store"></table></div>
+      </div>
+      <div class="panel">
+        <h2>Vessels and hosts</h2>
+        <div id="vessels"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h2>Orders for this turn</h2>
+        <div class="row" style="margin-bottom:8px">
+          <select id="quickKind"><option value="Analyst">Recruit analysts</option><option value="Coder">Recruit coders</option><option value="Operator">Recruit operators</option></select>
+          <input id="quickCount" type="number" value="100" min="1" style="width:80px">
+          <button type="button" id="addRecruit">Add</button>
+        </div>
+        <div class="row" style="margin-bottom:8px">
+          <select id="researchItem"></select>
+          <button type="button" id="addResearch">Research</button>
+          <select id="buildItem"></select>
+          <button type="button" id="addBuild">Build in hideout</button>
+          <button type="button" id="addTaps">Install taps</button>
+        </div>
+        <textarea id="orders" spellcheck="false">[]</textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="primary" type="button" id="submit">Hand in orders</button>
+          <button type="button" id="withdraw">Withdraw</button>
+          <span id="orderMsg" class="muted"></span>
+        </div>
+        <div id="rejected" class="warn"></div>
+      </div>
+      <div class="panel">
+        <h2>Last turn</h2>
+        <div id="lastTurn" class="muted">No turn has run yet.</div>
+        <h2 style="margin-top:12px">Earlier turns</h2>
+        <div id="turnList" class="row"></div>
+        <div id="turnDetail"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const rn = day => 'RN+' + String(day).padStart(4, '0');
+  const api = async (method, path, body) => {
+    const res = await fetch(path, { method, headers: body === undefined ? {} : { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch (e) { data = { error: text }; }
+    if (!res.ok) throw new Error((data && data.error) || res.statusText);
+    return data;
+  };
+
+  const match = location.pathname.match(/^\/join\/([0-9a-f]+)$/);
+  const token = match ? match[1] : (location.hash.length > 1 ? location.hash.slice(1) : null);
+  if (token) { play(token); } else { createMode(); }
+
+  // ---------------------------------------------------------- create
+  function createMode() {
+    $('create').hidden = false;
+    const form = $('crewsForm');
+    const defaults = ['Ghostline', 'Blackice', 'Nullsector', 'Redshift'];
+    defaults.forEach((name, i) => {
+      const row = document.createElement('div');
+      row.className = 'row crew-row';
+      row.innerHTML = '<input type="text" value="' + (i < 2 ? name : '') + '" placeholder="' + name + '" aria-label="Crew name"> <label style="display:flex;gap:6px;align-items:center">bot <input type="checkbox" ' + (i === 1 ? 'checked' : '') + '></label>';
+      form.appendChild(row);
+    });
+    $('createBtn').addEventListener('click', async () => {
+      const crews = [...form.querySelectorAll('.crew-row')].map(row => ({
+        name: row.querySelector('input[type="text"]').value.trim(),
+        bot: row.querySelector('input[type="checkbox"]').checked,
+      })).filter(c => c.name);
+      const seed = $('gseed').value.trim();
+      const body = { name: $('gname').value, crews, turn_days: Number($('gdays').value), deadline_hours: Number($('ghours').value) };
+      if (seed) body.seed = Number(seed);
+      $('createMsg').textContent = 'Creating…';
+      try {
+        const created = await api('POST', '/api/games', body);
+        $('createMsg').textContent = 'Created ' + created.id;
+        const list = $('inviteList');
+        list.innerHTML = created.crews.map(c => c.bot
+          ? '<div><b>' + esc(c.name) + '</b> <span class="muted">plays itself (bot)</span></div>'
+          : '<div><b>' + esc(c.name) + '</b> <a class="link" href="' + esc(c.join_path) + '">' + esc(location.origin + c.join_path) + '</a> <button type="button" data-copy="' + esc(location.origin + c.join_path) + '">Copy</button></div>'
+        ).join('');
+        list.querySelectorAll('button[data-copy]').forEach(b => b.addEventListener('click', () => {
+          navigator.clipboard.writeText(b.dataset.copy).then(() => { b.textContent = 'Copied'; }, () => {});
+        }));
+        $('invites').hidden = false;
+      } catch (e) {
+        $('createMsg').textContent = 'Failed: ' + e.message;
+      }
+    });
+  }
+
+  // ---------------------------------------------------------- play
+  let status = null;
+  let knownTurn = null;
+
+  async function play(token) {
+    $('play').hidden = false;
+    const base = '/api/crew/' + token;
+    const refresh = async () => {
+      try {
+        status = await api('GET', base);
+      } catch (e) {
+        $('sub').textContent = 'cannot load crew: ' + e.message;
+        return;
+      }
+      if (knownTurn !== null && status.turn !== knownTurn) {
+        $('banner').textContent = 'Turn ' + knownTurn + ' has run. It is now ' + rn(status.day) + '.';
+        $('banner').hidden = false;
+        document.title = '● NullNet console';
+        $('orders').value = '[]';
+      }
+      knownTurn = status.turn;
+      render();
+    };
+    $('submit').addEventListener('click', async () => {
+      let orders;
+      try { orders = JSON.parse($('orders').value); } catch (e) { $('orderMsg').textContent = 'The orders are not valid JSON: ' + e.message; return; }
+      if (!Array.isArray(orders)) { $('orderMsg').textContent = 'Orders must be a JSON array.'; return; }
+      $('orderMsg').textContent = 'Handing in…';
+      try {
+        const receipt = await api('PUT', base + '/orders', orders);
+        $('rejected').innerHTML = receipt.rejected.length
+          ? 'As things stand, these would be refused:<ul>' + receipt.rejected.map(r => '<li>#' + (r.index + 1) + ': ' + esc(r.error) + '</li>').join('') + '</ul>'
+          : '';
+        $('orderMsg').textContent = receipt.resolved ? 'Everyone had handed in: the turn has run.' : 'Handed in. The turn runs when everyone has handed in, or at the deadline.';
+        await refresh();
+      } catch (e) {
+        $('orderMsg').textContent = 'Failed: ' + e.message;
+      }
+    });
+    $('withdraw').addEventListener('click', async () => {
+      try { await api('DELETE', base + '/orders'); $('orderMsg').textContent = 'Withdrawn.'; await refresh(); } catch (e) { $('orderMsg').textContent = 'Failed: ' + e.message; }
+    });
+    $('addRecruit').addEventListener('click', () => addOrder({ Recruit: { kind: $('quickKind').value, count: Number($('quickCount').value) } }));
+    $('addResearch').addEventListener('click', () => { if ($('researchItem').value) addOrder({ SetResearch: { item: $('researchItem').value } }); });
+    $('addBuild').addEventListener('click', () => { if ($('buildItem').value) addOrder({ Build: { at: 'Hideout', item: $('buildItem').value } }); });
+    $('addTaps').addEventListener('click', () => addOrder({ InstallTaps: { site: 'Hideout', count: 1 } }));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) document.title = 'NullNet console'; });
+    await refresh();
+    setInterval(refresh, 15000);
+  }
+
+  function addOrder(order) {
+    let orders = [];
+    try { orders = JSON.parse($('orders').value); if (!Array.isArray(orders)) orders = []; } catch (e) { orders = []; }
+    orders.push(order);
+    $('orders').value = JSON.stringify(orders, null, 1).replace(/\n\s*/g, ' ').replace(/\[ \{/g, '[\n {').replace(/\}, \{/g, '},\n {').replace(/\} \]/g, '}\n]');
+  }
+
+  function countdown(deadline) {
+    const left = deadline - Math.floor(Date.now() / 1000);
+    if (left <= 0) return 'due now';
+    const h = Math.floor(left / 3600), m = Math.floor((left % 3600) / 60);
+    return h + 'h ' + m + 'm';
+  }
+
+  function render() {
+    const s = status;
+    const me = s.view.me;
+    $('sub').textContent = esc(s.game.name) + ' · ' + s.name;
+    $('gameInfo').innerHTML =
+      '<b>Turn</b><span>' + s.turn + ' · ' + rn(s.day) + '</span>' +
+      '<b>Turn length</b><span>' + s.game.turn_days + ' days</span>' +
+      '<b>Deadline</b><span>' + countdown(s.deadline) + ' (' + new Date(s.deadline * 1000).toLocaleString() + ')</span>' +
+      '<b>You</b><span>' + (s.submitted ? '<span class="ok">handed in</span>' : 'orders not handed in') + '</span>';
+    $('crewList').innerHTML = s.crews.map(c => '<span class="chip' + (c.submitted ? ' on' : '') + '">' + esc(c.name) + (c.bot ? ' (bot)' : '') + (c.submitted ? ' ✓' : '') + ' · ' + (s.view.crews.find(v => v.player === c.player) || { hosts: 0 }).hosts + ' hosts</span>').join('');
+    if (!s.submitted && $('orders').value.trim() === '[]' && s.orders.length) $('orders').value = JSON.stringify(s.orders);
+
+    const team = t => t ? esc(t.leader) + ' · ' + t.count + ' ' + t.kind.toLowerCase() + 's · level ' + level(t) : 'none';
+    const research = me.current_research ? me.current_research + ' ' + (me.research[me.current_research] ? me.research[me.current_research].percent + '%' : '') : 'nothing';
+    $('hideout').innerHTML =
+      '<b>Taps</b><span>' + me.hideout.taps + ' / 8</span>' +
+      '<b>Citadel</b><span>' + me.hideout.citadel.modules + ' / 8 modules' + (me.hideout.citadel.workshop.coders ? ' · coders ' + esc(me.hideout.citadel.workshop.coders.leader) : '') + '</span>' +
+      '<b>Analysts</b><span>' + team(me.research_team) + '</span>' +
+      '<b>Coders</b><span>' + team(me.workshop.coders) + '</span>' +
+      '<b>Waiting</b><span>' + (me.hideout.staff.length ? me.hideout.staff.map(team).join('<br>') : 'nobody') + '</span>' +
+      '<b>Researching</b><span>' + research + '</span>' +
+      '<b>Building</b><span>' + (me.workshop.jobs.filter(j => j.active).map(j => j.item + ' (stage ' + j.stage + '/4)').join(', ') || 'nothing') + '</span>' +
+      '<b>Recruits left</b><span>' + me.recruitment.available + '</span>' +
+      '<b>Milestones</b><span>' + (me.milestones.length ? me.milestones.join(', ') : 'none yet') + '</span>';
+
+    const store = me.hideout.store, above = me.hideout.citadel.store;
+    const items = [...new Set([...Object.keys(store), ...Object.keys(above)])];
+    $('store').innerHTML = '<tr><th>Item</th><th>Hideout</th><th>Citadel</th></tr>' + (items.length ? items.map(i => '<tr><td>' + i + '</td><td class="num">' + (store[i] || 0) + '</td><td class="num">' + (above[i] || 0) + '</td></tr>').join('') : '<tr><td colspan="3" class="muted">Nothing yet: taps need a few days to find the first veins.</td></tr>');
+
+    const vessels = Object.entries(s.view.vessels);
+    const hosts = s.view.hosts.map((h, i) => ({ h, i })).filter(x => x.h.controller && x.h.controller.Crew === s.player);
+    $('vessels').innerHTML =
+      (vessels.length ? '<ul>' + vessels.map(([id, v]) => '<li>' + v.kind + ' ' + id + (v.owner !== s.player ? ' (crew ' + v.owner + ')' : '') + ': ' + vesselState(v) + ' at host ' + v.host + ' · ' + v.fuel + ' fuel' + (v.pilot ? ' · pilot ' + esc(v.pilot.leader) : '') + '</li>').join('') + '</ul>' : '<div class="muted">No vessels yet. Research and build a dropper core and engine, then assemble one.</div>') +
+      '<div style="margin-top:8px"><b class="muted">Hosts held:</b> ' + (hosts.length ? hosts.map(x => 'host ' + x.i + ' (' + x.h.citadel_modules + '/8)').join(', ') : 'none beyond the hideout') + '</div>';
+
+    const researchable = Object.entries(me.research).filter(([, p]) => !p.researched).map(([i]) => i);
+    $('researchItem').innerHTML = researchable.map(i => '<option>' + i + '</option>').join('') || '<option value="">nothing to research</option>';
+    const researched = Object.entries(me.research).filter(([, p]) => p.researched).map(([i]) => i);
+    $('buildItem').innerHTML = researched.map(i => '<option>' + i + '</option>').join('') || '<option value="">nothing researched</option>';
+
+    $('lastTurn').innerHTML = s.last_turn ? turnHtml(s.last_turn) : 'No turn has run yet.';
+    loadTurnList();
+  }
+
+  function level(t) {
+    const thresholds = { Analyst: [6, 9], Coder: [6, 12], Operator: [10, 40] }[t.kind] || [6, 12];
+    const a = t.actions_taken || 0;
+    return a >= thresholds[1] ? 3 : a >= thresholds[0] ? 2 : 1;
+  }
+  function vesselState(v) {
+    if (v.state.At) return v.state.At.toLowerCase();
+    return Object.keys(v.state)[0].toLowerCase();
+  }
+  function eventText(ev) {
+    const k = Object.keys(ev)[0], a = ev[k];
+    switch (k) {
+      case 'ResearchCompleted': return 'Researched ' + a.item;
+      case 'StaffPromoted': return a.kind + ' team promoted to level ' + a.level;
+      case 'RecruitsGraduated': return a.count + ' ' + a.kind.toLowerCase() + 's graduated';
+      case 'ItemBuilt': return 'Built ' + a.item;
+      case 'HostClaimed': return 'Crew ' + a.player + ' claimed host ' + a.host;
+      case 'Installed': return a.item + ' ' + a.installed + ' installed at host ' + a.host;
+      case 'VesselArrived': return 'Vessel ' + a.vessel + ' is ' + a.berth.toLowerCase() + ' at host ' + a.host;
+      case 'VesselStopped': return 'Vessel ' + a.vessel + ' stopped: ' + a.reason;
+      case 'VesselBurned': return 'Vessel ' + a.vessel + ' was traced and burned at host ' + a.host;
+      case 'Unlocked': return 'Milestone: ' + a.milestone;
+      default: return k;
+    }
+  }
+  function turnHtml(t) {
+    const day = ev => ev[Object.keys(ev)[0]].day;
+    return '<div><b>Turn ' + t.turn + '</b> · days ' + t.report.first_day + '–' + t.report.last_day + ' · ' + t.orders.length + ' orders' +
+      (t.report.rejected.length ? '<div class="warn">Refused: ' + t.report.rejected.map(r => '#' + (r.index + 1) + ' ' + esc(r.error)).join('; ') + '</div>' : '') +
+      (t.report.events.length ? '<ul class="events">' + t.report.events.map(ev => '<li><span class="day">' + rn(day(ev)) + '</span>' + esc(eventText(ev)) + '</li>').join('') + '</ul>' : '<div class="muted">Nothing to report.</div>') + '</div>';
+  }
+  let turnListLoaded = -1;
+  async function loadTurnList() {
+    if (turnListLoaded === status.turn) return;
+    turnListLoaded = status.turn;
+    try {
+      const turns = await api('GET', '/api/crew/' + token + '/turns');
+      $('turnList').innerHTML = turns.map(t => '<button type="button" data-turn="' + t.turn + '">' + t.turn + '</button>').join('') || '<span class="muted">none</span>';
+      $('turnList').querySelectorAll('button').forEach(b => b.addEventListener('click', async () => {
+        const t = await api('GET', '/api/crew/' + token + '/turns/' + b.dataset.turn);
+        $('turnDetail').innerHTML = turnHtml(t);
+      }));
+    } catch (e) { /* the list is a convenience */ }
+  }
+})();
+</script>
+</body>
+</html>

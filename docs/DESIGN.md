@@ -134,14 +134,18 @@ Godot/              Godot-remaken: opslagsværk for regler og data.
 - **Afvikling.** `resolve_turn(data, world, orders, days)` udfører ordrerne og kører derefter `days` dage. Hver dag kører systemerne i originalens rækkefølge: unlocks, minedrift, træning, produktion, transport, forskning, Legacy-daemons, Legacy-transmissioner og krypterede links.
 - **Klienten bruger samme crate.** Så kan den vise, hvad en ordre vil gøre, før turen sendes. Resultatet bestemmes altid af serveren.
 
-### nullnet-server (M2)
+### nullnet-server
 
-- Opretter spil og laver et invitationslink pr. crew, med et hemmeligt token pr. crew i linket.
-- Modtager ordrer og afvikler turen, når alle har afleveret, eller når fristen udløber.
+- Opretter spil og laver et invitationslink pr. crew, med et hemmeligt token pr. crew i linket: `/join/<token>`. Der er ingen konti; linket er crewets nøgle. En plads kan gives til serverens bot, som så spiller den.
+- Modtager ordrer og afvikler turen, når alle mennesker har afleveret, eller når fristen udløber (tjekkes hvert 30. sekund). Crews uden ordrer giver ingen. Når en crew afleverer, prøves ordrerne straks på en kopi af verdenen, så den får at vide, hvad reglerne ville afvise, som tingene står nu.
 - Gemmer hver tur i SQLite: verdenen før turen, ordrerne og rapporten. Så kan man spole tilbage og finde fejl.
-- Sender hver crew kun det, den har scannet (fog of war). Modstandernes ordrer sendes aldrig.
-- Giver besked, når en ny tur er klar. Første version gør det i browseren, senere eventuelt også med e-mail eller push.
-- Én binærfil, der også serverer web-klienten, så den er let at hoste.
+- Sender hver crew kun det, den må se (fog of war, se nedenfor). Modstandernes ordrer sendes aldrig.
+- Giver besked, når en ny tur er klar: konsolsiden poller og viser et banner. E-mail eller push kan komme senere.
+- Én binærfil, der også serverer web-klienten (`--web dist`) og konsolsiden `web/console.html`, hvor man kan oprette spil, aflevere ordrer og læse turloggen, indtil Bevy-klienten kan det selv (M3).
+
+**API** (JSON): `POST /api/games` opretter et spil og returnerer invitationerne. Alt andet går gennem crewets token: `GET /api/crew/{token}` er crewets status (tur, dag, frist, hvem har afleveret, dets egne ordrer, dets udsigt over verdenen og sidste turs rapport), `PUT /api/crew/{token}/orders` afleverer ordrer og returnerer en kvittering med forhåndsafviste ordrer, `DELETE` trækker dem tilbage, og `GET /api/crew/{token}/turns[/{n}]` er turarkivet.
+
+**Fog of war** (`view.rs` i kernen, så klient og server deler reglen): en crew ser sin egen tilstand fuldt ud. Af resten af verdenen ser den det, der er synligt på nettet: hvem der holder hver vært, og hvor stort citadellet over den er; de fartøjer, der ligger ved værter, crewet holder, eller ude på det åbne net ved Exchange. Alt inde i en rivals skjulested, citadel eller værter er skjult, og af turens hændelser ser crewet kun sine egne plus dem, alle ser: at en vært skifter hænder. Sniffere, der kan scanne mere, kommer med M4.
 
 ### nullnet-client
 
@@ -279,7 +283,7 @@ Godot-remakens kode er udgivet under CC0, så den må frit bruges. Dens grafik, 
 |---|---|
 | **M0** | Workspace, CI, designdokument, kerne med forskning og turafvikling, web-klient med procedurel oversigt. ✅ |
 | **M1** | Kerneregler for én crew: datatabeller, udvinding, rekruttering, værksted, transport, exfil-scripts og krypterede links. Testes med et headless "bot-spil". ✅ |
-| **M2** | Server: opret spil, invitationslinks, aflever ordrer, afvikl tur, gem i SQLite, fog of war. |
+| **M2** | Server: opret spil, invitationslinks, aflever ordrer, afvikl tur, gem i SQLite, fog of war. ✅ |
 | **M3** | Klient i hacker-look: lobby, netværkskort, terminalpaneler for vært, citadel og transport, ordrepanel og turlog. |
 | **M4** | The Legacy Net: AI, krig, kampafvikling med animeret genafspilning, erobring og befrielse. |
 | **M5** | Crew mod crew: angreb, forsvar, heat, beskyttelse, sejrsbetingelser og balancering. |

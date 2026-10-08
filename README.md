@@ -7,7 +7,9 @@ Et strategispil i et hacker-univers med asynkron, turbaseret online-multiplayer,
 | `crates/nullnet-core` | Spillets regler: ren, deterministisk Rust uden motor eller I/O |
 | `crates/nullnet-client` | Web-klienten (Bevy → WebAssembly): netværkskortet, tegnet i shaders |
 | `crates/nullnet-sim` | Lader bot-crews spille mod hinanden og udskriver tidslinjen |
-| `web/`, `scripts/` | HTML-side og build-script til browseren |
+| `crates/nullnet-server` | Spilserveren: axum + SQLite. Invitationer, ordrer, turafvikling og web-klienten i én binærfil |
+| `web/` | HTML-siden til Bevy-klienten og konsollen (`console.html`), som serveren serverer |
+| `scripts/` | Build-script til browser-klienten |
 | `Godot/` | Godot-remaken [DeuterosOrg/Deuteros-Resurrected](https://github.com/DeuterosOrg/Deuteros-Resurrected), brugt som opslagsværk for regler og data |
 
 ## Kom i gang
@@ -23,6 +25,9 @@ cargo run -p nullnet-sim -- --seed 7 --crews 3 --days 3000
 
 # Lav en afspilning, hvor du kan bladre gennem turene i browseren
 cargo run --release -p nullnet-sim -- --crews 2 --days 1000 --json | python3 tools/replay.py > replay.html
+
+# Start en spilserver og opret et spil på http://localhost:8080/console
+cargo run -p nullnet-server -- --db nullnet.db --port 8080
 
 # Web-klienten (første build tager et stykke tid)
 rustup target add wasm32-unknown-unknown
