@@ -26,6 +26,8 @@ use crate::text;
 const REPLAY_SECONDS: f32 = 5.0;
 /// Seconds the turn toast stays up.
 const TOAST_SECONDS: f32 = 14.0;
+/// Height of the top bar: two rows of text.
+const TOP_BAR: f32 = 58.0;
 /// Width of a side panel plus its margins.
 const SIDE_PANEL: f32 = 312.0;
 /// Where the overlays over the map start and end, clear of the side panels.
@@ -201,6 +203,28 @@ fn heading(p: &mut ChildSpawnerCommands, s: &str) {
     ));
 }
 
+/// Text that never breaks across lines, for the top bar.
+fn nowrap(s: impl Into<String>, size: f32, color: Color) -> impl Bundle {
+    (text(s, size, color), TextLayout::no_wrap())
+}
+
+/// A button whose label never breaks across lines, for the top bar.
+fn bar_button(label: impl Into<String>, action: Action) -> impl Bundle {
+    (
+        Button,
+        action,
+        Node {
+            padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+            border: UiRect::all(Val::Px(1.0)),
+            flex_shrink: 0.0,
+            ..default()
+        },
+        BackgroundColor(BUTTON_BG),
+        BorderColor::all(BORDER),
+        children![nowrap(label, 12.0, ACCENT)],
+    )
+}
+
 fn button(label: impl Into<String>, action: Action) -> impl Bundle {
     (
         Button,
@@ -257,12 +281,13 @@ fn spawn_layout(mut commands: Commands) {
             top: Val::Px(0.0),
             left: Val::Px(0.0),
             right: Val::Px(0.0),
-            height: Val::Px(40.0),
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            column_gap: Val::Px(18.0),
-            padding: UiRect::axes(Val::Px(16.0), Val::Px(0.0)),
+            height: Val::Px(TOP_BAR),
+            flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::Center,
+            row_gap: Val::Px(3.0),
+            padding: UiRect::axes(Val::Px(16.0), Val::Px(4.0)),
             border: UiRect::bottom(Val::Px(1.0)),
+            overflow: Overflow::clip(),
             ..default()
         },
         BackgroundColor(PANEL_BG),
@@ -273,7 +298,7 @@ fn spawn_layout(mut commands: Commands) {
     commands.spawn(panel(
         Node {
             left: Val::Px(12.0),
-            top: Val::Px(50.0),
+            top: Val::Px(TOP_BAR + 10.0),
             width: Val::Px(SIDE_PANEL - 12.0),
             bottom: Val::Px(196.0),
             ..default()
@@ -283,7 +308,7 @@ fn spawn_layout(mut commands: Commands) {
     commands.spawn(panel(
         Node {
             right: Val::Px(12.0),
-            top: Val::Px(50.0),
+            top: Val::Px(TOP_BAR + 10.0),
             width: Val::Px(SIDE_PANEL - 12.0),
             bottom: Val::Px(196.0),
             ..default()
@@ -313,7 +338,7 @@ fn spawn_layout(mut commands: Commands) {
     commands.spawn((
         panel(
             Node {
-                top: Val::Px(50.0),
+                top: Val::Px(TOP_BAR + 10.0),
                 left: Val::Px(OVERLAY_INSET),
                 right: Val::Px(OVERLAY_INSET),
                 ..default()
@@ -340,7 +365,7 @@ fn spawn_layout(mut commands: Commands) {
     commands.spawn((
         panel(
             Node {
-                top: Val::Px(50.0),
+                top: Val::Px(TOP_BAR + 10.0),
                 left: Val::Px(OVERLAY_INSET),
                 right: Val::Px(OVERLAY_INSET),
                 ..default()
@@ -353,7 +378,7 @@ fn spawn_layout(mut commands: Commands) {
     commands.spawn((
         panel(
             Node {
-                top: Val::Px(50.0),
+                top: Val::Px(TOP_BAR + 10.0),
                 bottom: Val::Px(50.0),
                 left: Val::Px(OVERLAY_INSET),
                 right: Val::Px(OVERLAY_INSET),
@@ -885,116 +910,137 @@ fn top_bar(
     sounds: &Sounds,
     guide: &GuideState,
 ) {
-    p.spawn(text("NULLNET", 18.0, FG));
-    p.spawn(button("Help", Action::ToggleHelp));
-    if session.status.is_some() {
-        p.spawn(button(
-            if guide.hidden {
-                "Show guide"
-            } else {
-                "Hide guide"
-            },
-            Action::ToggleGuide,
-        ));
-    }
-    p.spawn(button(
-        if sounds.muted {
-            "Sound: off"
-        } else {
-            "Sound: on"
-        },
-        Action::ToggleMute,
-    ));
-    if notify::permission() == notify::Permission::Ask {
-        p.spawn(button("Notify me", Action::RequestNotify));
-    }
-    let Some(status) = &session.status else {
-        if api.token.is_none() {
-            muted(
-                p,
-                "No crew token. Open your invite link, or create a game at /console.",
-            );
-        } else if let Some(error) = &session.error {
-            p.spawn(text(error.clone(), 12.0, WARN));
-        } else {
-            muted(p, "Connecting...");
-        }
-        return;
+    let bar_row = || Node {
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        column_gap: Val::Px(16.0),
+        ..default()
     };
-    muted(p, status.game.name.clone());
-    p.spawn(text(
-        status.name.clone(),
-        13.0,
-        Color::Srgba(Srgba::hex(crew_color(status.player, status.player)).unwrap()),
-    ));
-    line(
-        p,
-        format!(
-            "Turn {}   {}   {} days per turn",
-            status.turn,
-            date(status.day),
-            status.game.turn_days
-        ),
-    );
-    if let Some(end) = &status.view.ended {
-        let winner = status
-            .crews
-            .iter()
-            .find(|c| c.player == end.winner)
-            .map_or("a crew".to_string(), |c| c.name.clone());
-        p.spawn(text(
-            format!(
-                "GAME OVER on {}: {} wins {}",
-                date(end.day),
-                winner,
-                match end.reason {
-                    EndReason::Domination => "by holding most of the home network",
-                    EndReason::DayLimit => "on points",
-                }
-            ),
-            13.0,
-            GOOD,
-        ));
-    } else {
-        p.spawn((text(countdown_text(session, clock), 12.0, MUTED), Countdown));
-        if let Some(end) = status.game.end_day {
-            muted(p, format!("Last day {}", date(end)));
+    // First row: the client's own buttons, the game and the running turn.
+    p.spawn(bar_row()).with_children(|r| {
+        r.spawn(nowrap("NULLNET", 18.0, FG));
+        r.spawn(bar_button("Help", Action::ToggleHelp));
+        if session.status.is_some() {
+            r.spawn(bar_button(
+                if guide.hidden {
+                    "Show guide"
+                } else {
+                    "Hide guide"
+                },
+                Action::ToggleGuide,
+            ));
         }
-    }
-    if status.view.me.war.is_some() {
-        p.spawn(text("AT WAR", 12.0, WARN));
-    }
-    if status.turn < PROTECTION_TURNS {
-        muted(
-            p,
-            format!("Crews cannot raid each other before turn {PROTECTION_TURNS}"),
-        );
-    }
-    for crew in &status.crews {
-        let color = Color::Srgba(Srgba::hex(crew_color(status.player, crew.player)).unwrap());
-        let summary = status.view.crews.iter().find(|c| c.player == crew.player);
-        let held = summary.map_or(0, |c| c.hosts);
-        let heat = summary.map_or(0, |c| c.heat);
-        let points = status
-            .view
-            .scores
-            .iter()
-            .find(|s| s.player == crew.player)
-            .map_or(0, |s| s.total);
-        p.spawn(text(
+        r.spawn(bar_button(
+            if sounds.muted {
+                "Sound: off"
+            } else {
+                "Sound: on"
+            },
+            Action::ToggleMute,
+        ));
+        if notify::permission() == notify::Permission::Ask {
+            r.spawn(bar_button("Notify me", Action::RequestNotify));
+        }
+        let Some(status) = &session.status else {
+            if api.token.is_none() {
+                r.spawn(nowrap(
+                    "No crew token. Open your invite link, or create a game at /console.",
+                    12.0,
+                    MUTED,
+                ));
+            } else if let Some(error) = &session.error {
+                r.spawn(nowrap(error.clone(), 12.0, WARN));
+            } else {
+                r.spawn(nowrap("Connecting...", 12.0, MUTED));
+            }
+            return;
+        };
+        r.spawn(nowrap(status.game.name.clone(), 12.0, MUTED));
+        r.spawn(nowrap(
+            status.name.clone(),
+            13.0,
+            Color::Srgba(Srgba::hex(crew_color(status.player, status.player)).unwrap()),
+        ));
+        r.spawn(nowrap(
             format!(
-                "{}{} [{}] {} hosts  {} pts  heat {}",
-                crew.name,
-                if crew.bot { " (bot)" } else { "" },
-                if crew.submitted { "x" } else { " " },
-                held,
-                points,
-                heat
+                "Turn {}   {}   {} days per turn",
+                status.turn,
+                date(status.day),
+                status.game.turn_days
             ),
             12.0,
-            color,
+            FG,
         ));
-    }
+        if let Some(end) = &status.view.ended {
+            let winner = status
+                .crews
+                .iter()
+                .find(|c| c.player == end.winner)
+                .map_or("a crew".to_string(), |c| c.name.clone());
+            r.spawn(nowrap(
+                format!(
+                    "GAME OVER on {}: {} wins {}",
+                    date(end.day),
+                    winner,
+                    match end.reason {
+                        EndReason::Domination => "by holding most of the home network",
+                        EndReason::DayLimit => "on points",
+                    }
+                ),
+                13.0,
+                GOOD,
+            ));
+        } else {
+            r.spawn((
+                nowrap(countdown_text(session, clock), 12.0, MUTED),
+                Countdown,
+            ));
+            if let Some(end) = status.game.end_day {
+                r.spawn(nowrap(format!("Last day {}", date(end)), 12.0, MUTED));
+            }
+        }
+    });
+    let Some(status) = &session.status else {
+        return;
+    };
+    // Second row: the crews and what stands between them.
+    p.spawn(bar_row()).with_children(|r| {
+        if status.view.me.war.is_some() {
+            r.spawn(nowrap("AT WAR", 12.0, WARN));
+        }
+        if status.turn < PROTECTION_TURNS {
+            r.spawn(nowrap(
+                format!("No raids between crews before turn {PROTECTION_TURNS}"),
+                12.0,
+                MUTED,
+            ));
+        }
+        for crew in &status.crews {
+            let color = Color::Srgba(Srgba::hex(crew_color(status.player, crew.player)).unwrap());
+            let summary = status.view.crews.iter().find(|c| c.player == crew.player);
+            let held = summary.map_or(0, |c| c.hosts);
+            let heat = summary.map_or(0, |c| c.heat);
+            let points = status
+                .view
+                .scores
+                .iter()
+                .find(|s| s.player == crew.player)
+                .map_or(0, |s| s.total);
+            r.spawn(nowrap(
+                format!(
+                    "{}{}: {} hosts, {} pts, heat {}{}",
+                    crew.name,
+                    if crew.bot { " (bot)" } else { "" },
+                    held,
+                    points,
+                    heat,
+                    if crew.submitted { ", handed in" } else { "" }
+                ),
+                12.0,
+                color,
+            ));
+        }
+    });
 }
 
 // ------------------------------------------------------------ hideout
