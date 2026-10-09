@@ -26,6 +26,10 @@ use crate::text;
 const REPLAY_SECONDS: f32 = 5.0;
 /// Seconds the turn toast stays up.
 const TOAST_SECONDS: f32 = 14.0;
+/// Width of a side panel plus its margins.
+const SIDE_PANEL: f32 = 312.0;
+/// Where the overlays over the map start and end, clear of the side panels.
+const OVERLAY_INSET: f32 = SIDE_PANEL + 12.0;
 
 pub struct UiPlugin;
 
@@ -270,7 +274,7 @@ fn spawn_layout(mut commands: Commands) {
         Node {
             left: Val::Px(12.0),
             top: Val::Px(50.0),
-            width: Val::Px(300.0),
+            width: Val::Px(SIDE_PANEL - 12.0),
             bottom: Val::Px(196.0),
             ..default()
         },
@@ -280,7 +284,7 @@ fn spawn_layout(mut commands: Commands) {
         Node {
             right: Val::Px(12.0),
             top: Val::Px(50.0),
-            width: Val::Px(300.0),
+            width: Val::Px(SIDE_PANEL - 12.0),
             bottom: Val::Px(196.0),
             ..default()
         },
@@ -310,8 +314,8 @@ fn spawn_layout(mut commands: Commands) {
         panel(
             Node {
                 top: Val::Px(50.0),
-                left: Val::Percent(24.0),
-                right: Val::Percent(24.0),
+                left: Val::Px(OVERLAY_INSET),
+                right: Val::Px(OVERLAY_INSET),
                 ..default()
             },
             Slot::Toast,
@@ -337,8 +341,8 @@ fn spawn_layout(mut commands: Commands) {
         panel(
             Node {
                 top: Val::Px(50.0),
-                left: Val::Percent(27.0),
-                right: Val::Percent(27.0),
+                left: Val::Px(OVERLAY_INSET),
+                right: Val::Px(OVERLAY_INSET),
                 ..default()
             },
             Slot::Guide,
@@ -349,10 +353,10 @@ fn spawn_layout(mut commands: Commands) {
     commands.spawn((
         panel(
             Node {
-                top: Val::Percent(6.0),
-                bottom: Val::Percent(6.0),
-                left: Val::Percent(23.0),
-                right: Val::Percent(23.0),
+                top: Val::Px(50.0),
+                bottom: Val::Px(50.0),
+                left: Val::Px(OVERLAY_INSET),
+                right: Val::Px(OVERLAY_INSET),
                 row_gap: Val::Px(6.0),
                 ..default()
             },
@@ -611,16 +615,21 @@ fn replay_of(session: &Session, index: usize) -> Option<ReplayState> {
     }
 }
 
+/// The time left on the running turn, as the top bar shows it.
+fn countdown_text(session: &Session, clock: &Clock) -> String {
+    match session.seconds_left(clock) {
+        Some(left) if left <= 0 => "deadline passed".to_string(),
+        Some(left) => format!("deadline in {}h {:02}m", left / 3600, (left % 3600) / 60),
+        None => String::new(),
+    }
+}
+
 fn countdown(
     session: Res<Session>,
     clock: Res<Clock>,
     mut texts: Query<&mut Text, With<Countdown>>,
 ) {
-    let wanted = match session.seconds_left(&clock) {
-        Some(left) if left <= 0 => "deadline passed".to_string(),
-        Some(left) => format!("deadline in {}h {:02}m", left / 3600, (left % 3600) / 60),
-        None => String::new(),
-    };
+    let wanted = countdown_text(&session, &clock);
     for mut text in &mut texts {
         if text.0 != wanted {
             text.0 = wanted.clone();
@@ -636,6 +645,7 @@ fn refresh(
     routing: Res<Routing>,
     api: Res<Api>,
     rules: Res<Rules>,
+    clock: Res<Clock>,
     toast: Res<Toast>,
     replay: Res<Replay>,
     sounds: Res<Sounds>,
@@ -644,19 +654,15 @@ fn refresh(
 ) {
     let data = &rules.0;
     let toast_shown = !toast.lines.is_empty() && toast.seconds_left > 0.0;
+    // The guide carries the toast's lines while it is up, so the top of the
+    // map does not swap between the two; it gives way to a replay.
+    let guide_shown =
+        session.status.is_some() && !guide.hidden && !guide.help && replay.current.is_none();
     for (entity, slot, mut visibility) in &mut slots {
         let shown = match slot {
-            Slot::Toast => toast_shown,
+            Slot::Toast => toast_shown && !guide_shown,
             Slot::Replay => replay.current.is_some(),
-            // The guide shares the top of the map with the toast and the
-            // replay, and gives way to both.
-            Slot::Guide => {
-                session.status.is_some()
-                    && !guide.hidden
-                    && !guide.help
-                    && !toast_shown
-                    && replay.current.is_none()
-            }
+            Slot::Guide => guide_shown,
             Slot::Help => guide.help,
             _ => true,
         };
@@ -674,7 +680,7 @@ fn refresh(
             continue;
         }
         e.with_children(|p| match slot {
-            Slot::TopBar => top_bar(p, &session, &api, &sounds, &guide),
+            Slot::TopBar => top_bar(p, &session, &clock, &api, &sounds, &guide),
             Slot::Hideout => match &session.status {
                 Some(status) => hideout_panel(p, status, data),
                 None => muted(p, "Waiting for the server..."),
@@ -690,23 +696,30 @@ fn refresh(
                     log_panel(p, status, data);
                 }
             }
-            Slot::Toast => {
-                for (index, line) in toast.lines.iter().enumerate() {
-                    if index == 0 {
-                        p.spawn(text(line.clone(), 13.0, GOOD));
-                    } else {
-                        p.spawn(text(line.clone(), 12.0, FG));
-                    }
-                }
-            }
+            Slot::Toast => toast_lines(p, &toast),
             Slot::Replay => {
                 if let Some(state) = &replay.current {
                     replay_panel(p, state);
                 }
             }
-            Slot::Guide => guide_panel(p, &session, data),
+            Slot::Guide => guide_panel(
+                p,
+                &session,
+                if toast_shown { Some(&toast) } else { None },
+                data,
+            ),
             Slot::Help => help_panel(p, &session, data),
         });
+    }
+}
+
+fn toast_lines(p: &mut ChildSpawnerCommands, toast: &Toast) {
+    for (index, line) in toast.lines.iter().enumerate() {
+        if index == 0 {
+            p.spawn(text(line.clone(), 13.0, GOOD));
+        } else {
+            p.spawn(text(line.clone(), 12.0, FG));
+        }
     }
 }
 
@@ -770,10 +783,26 @@ fn replay_panel(p: &mut ChildSpawnerCommands, state: &ReplayState) {
 // ------------------------------------------------------------ guide
 
 /// The step the crew is on, with what to press next.
-fn guide_panel(p: &mut ChildSpawnerCommands, session: &Session, data: &GameData) {
+fn guide_panel(
+    p: &mut ChildSpawnerCommands,
+    session: &Session,
+    toast: Option<&Toast>,
+    data: &GameData,
+) {
     let Some(status) = &session.status else {
         return;
     };
+    if let Some(toast) = toast {
+        toast_lines(p, toast);
+        p.spawn((
+            Node {
+                height: Val::Px(1.0),
+                margin: UiRect::vertical(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(BORDER),
+        ));
+    }
     let steps = guide::steps(status, data, &session.draft);
     let current = guide::current(&steps);
     let step = &steps[current];
@@ -851,6 +880,7 @@ fn help_panel(p: &mut ChildSpawnerCommands, session: &Session, data: &GameData) 
 fn top_bar(
     p: &mut ChildSpawnerCommands,
     session: &Session,
+    clock: &Clock,
     api: &Api,
     sounds: &Sounds,
     guide: &GuideState,
@@ -926,7 +956,7 @@ fn top_bar(
             GOOD,
         ));
     } else {
-        p.spawn((text("", 12.0, MUTED), Countdown));
+        p.spawn((text(countdown_text(session, clock), 12.0, MUTED), Countdown));
         if let Some(end) = status.game.end_day {
             muted(p, format!("Last day {}", date(end)));
         }
