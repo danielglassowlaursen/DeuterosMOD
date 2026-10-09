@@ -134,3 +134,29 @@ pub fn story_seen() -> bool {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn remember_story_seen() {}
+
+const MUSIC_KEY: &str = "nullnet.music-off";
+
+/// Whether the player turned the music off in an earlier visit.
+#[cfg(target_arch = "wasm32")]
+pub fn music_off_preference() -> bool {
+    storage()
+        .and_then(|s| s.get_item(MUSIC_KEY).ok().flatten())
+        .is_some_and(|v| v == "1")
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn remember_music_off(off: bool) {
+    if let Some(storage) = storage() {
+        let _ = storage.set_item(MUSIC_KEY, if off { "1" } else { "0" });
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn music_off_preference() -> bool {
+    let _ = MUSIC_KEY;
+    false
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn remember_music_off(_off: bool) {}

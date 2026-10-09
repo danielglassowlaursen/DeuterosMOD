@@ -1,6 +1,7 @@
 mod guide;
 mod map;
 mod materials;
+mod music;
 mod net;
 mod notify;
 mod sound;

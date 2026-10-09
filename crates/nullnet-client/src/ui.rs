@@ -17,6 +17,7 @@ use nullnet_core::{
 use crate::Rules;
 use crate::guide;
 use crate::map::{Routing, Selected, crew_color};
+use crate::music;
 use crate::net::{self, Api, Clock, Inbox, Session};
 use crate::notify;
 use crate::sound::{Cue, Play, Sounds};
@@ -137,6 +138,7 @@ fn open_story(session: Res<Session>, mut guide: ResMut<GuideState>, mut opened: 
     *opened = true;
     if !notify::story_seen() {
         guide.story = Some(0);
+        music::duck(true);
     }
 }
 
@@ -178,6 +180,7 @@ enum Action {
     Route(VesselId),
     CancelRoute,
     ToggleMute,
+    ToggleMusic,
     RequestNotify,
     /// Replays the battle in the last turn's event at this index.
     Replay(usize),
@@ -564,6 +567,9 @@ fn press_buttons(
     // The first click is what a browser wants before a page makes sound.
     if !sounds.unlocked {
         sounds.bypass_change_detection().unlocked = true;
+        if !sounds.muted && sounds.music {
+            music::start();
+        }
     }
     for (interaction, action) in &buttons {
         if *interaction != Interaction::Pressed {
@@ -608,6 +614,18 @@ fn press_buttons(
                 notify::remember_muted(sounds.muted);
                 if sounds.muted {
                     voice::stop();
+                    music::stop();
+                } else if sounds.music {
+                    music::start();
+                }
+            }
+            Action::ToggleMusic => {
+                sounds.music = !sounds.music;
+                notify::remember_music_off(!sounds.music);
+                if !sounds.music {
+                    music::stop();
+                } else if !sounds.muted {
+                    music::start();
                 }
             }
             Action::RequestNotify => notify::request_permission(),
@@ -626,6 +644,7 @@ fn press_buttons(
             Action::StoryPage(page) => {
                 guide.story = Some(page);
                 guide.help = false;
+                music::duck(true);
                 if sounds.muted {
                     voice::stop();
                 } else {
@@ -636,6 +655,7 @@ fn press_buttons(
                 guide.story = None;
                 notify::remember_story_seen();
                 voice::stop();
+                music::duck(false);
             }
             Action::Listen => {
                 if let Some(page) = guide.story {
@@ -1073,6 +1093,14 @@ fn top_bar(
                 "Sound: on"
             },
             Action::ToggleMute,
+        ));
+        r.spawn(bar_button(
+            if sounds.music {
+                "Music: on"
+            } else {
+                "Music: off"
+            },
+            Action::ToggleMusic,
         ));
         if notify::permission() == notify::Permission::Ask {
             r.spawn(bar_button("Notify me", Action::RequestNotify));

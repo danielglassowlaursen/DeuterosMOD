@@ -27,14 +27,18 @@ mod browser {
         let Ok(audio) = HtmlAudioElement::new_with_src(url) else {
             return;
         };
+        play_quietly(&audio);
+        PLAYING.with(|playing| *playing.borrow_mut() = Some(audio));
+    }
+
+    /// Plays an audio element. A blocked or interrupted one rejects its
+    /// promise; that is expected, not an error worth a line in the console.
+    pub fn play_quietly(audio: &HtmlAudioElement) {
         if let Ok(promise) = audio.play() {
-            // A blocked or interrupted clip rejects its promise; that is
-            // expected, not an error worth a line in the console.
             let ignore = Closure::<dyn FnMut(JsValue)>::new(|_| {});
             let _ = promise.catch(&ignore);
             ignore.forget();
         }
-        PLAYING.with(|playing| *playing.borrow_mut() = Some(audio));
     }
 
     pub fn stop() {
@@ -45,6 +49,9 @@ mod browser {
         });
     }
 }
+
+#[cfg(target_arch = "wasm32")]
+pub use browser::play_quietly;
 
 /// Reads a page of the story aloud, stopping whatever was being read.
 #[cfg(target_arch = "wasm32")]

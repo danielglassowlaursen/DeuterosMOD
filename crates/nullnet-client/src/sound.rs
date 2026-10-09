@@ -45,6 +45,8 @@ pub struct Sounds {
     pub muted: bool,
     /// Whether the page has had the click a browser wants before sound.
     pub unlocked: bool,
+    /// Whether the background music plays when the sound is on.
+    pub music: bool,
     cues: HashMap<Cue, Handle<AudioSource>>,
 }
 
@@ -65,6 +67,7 @@ fn setup(mut commands: Commands, mut audio: ResMut<Assets<AudioSource>>) {
     commands.insert_resource(Sounds {
         muted: crate::notify::muted_preference(),
         unlocked: false,
+        music: !crate::notify::music_off_preference(),
         cues,
     });
 }

@@ -29,4 +29,6 @@ fi
 cp web/index.html dist/
 # The narrator's clips, one per page of the story.
 cp -r web/voice dist/
+# The background music, once a track is in place.
+if [ -d web/music ]; then cp -r web/music dist/; fi
 echo "Built dist/ ($(du -h dist/nullnet-client_bg.wasm | cut -f1) wasm). Serve it with e.g.: python3 -m http.server -d dist 8080"
