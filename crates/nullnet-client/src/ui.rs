@@ -1169,7 +1169,13 @@ fn hideout_panel(p: &mut ChildSpawnerCommands, status: &CrewStatus, data: &GameD
         ] {
             let def = &data.recruitment.courses[&kind];
             let course = me.recruitment.courses.get(&kind);
-            if course.is_some_and(|c| c.enrolled > 0) {
+            if let Some(course) = course.filter(|c| c.enrolled > 0) {
+                offered = true;
+                r.spawn(text(
+                    format!("{} {label} in training", course.enrolled),
+                    11.0,
+                    MUTED,
+                ));
                 continue;
             }
             let room = def.team_max.map_or(u32::MAX, |max| {

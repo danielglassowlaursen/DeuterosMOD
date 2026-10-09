@@ -15,6 +15,7 @@ use nullnet_core::score::{
 use nullnet_core::{
     Berth, Citadel, Command, Controller, GameData, ItemType, Module, ModuleKind, PROTECTION_TURNS,
     Player, Seat, Site, SiteRef, StaffKind, Vessel, VesselId, VesselKind, Workshop, WorkshopRef,
+    date,
 };
 
 use crate::text;
@@ -174,12 +175,31 @@ impl<'a> Crew<'a> {
         self.me().research.contains_key(&item)
     }
 
-    fn enrolled(&self, kind: StaffKind) -> u32 {
-        self.me()
-            .recruitment
-            .courses
-            .get(&kind)
-            .map_or(0, |c| c.enrolled)
+    /// The line for a course of `kind` under way, with the day it ends.
+    fn training(&self, kind: StaffKind, label: &str) -> Option<String> {
+        let course = self.me().recruitment.courses.get(&kind)?;
+        if course.enrolled == 0 {
+            return None;
+        }
+        // A course that has not started yet starts tomorrow and counts from
+        // today; one under way counts from the day before its first day.
+        let day = self.status.day;
+        let graduation = course.started.unwrap_or(day) + self.data.recruitment.courses[&kind].days;
+        Some(format!(
+            "{} {label} are in training and graduate on {} ({} days from now).",
+            course.enrolled,
+            date(graduation),
+            graduation.saturating_sub(day)
+        ))
+    }
+
+    /// What to do when a step can only wait for the days to pass.
+    fn wait_line(&self) -> String {
+        if self.status.submitted {
+            "Orders handed in; the turn runs when every crew has, or at the deadline.".into()
+        } else {
+            "Nothing else to do for this step: press 'Hand in' (no orders is fine) so the days pass.".into()
+        }
     }
 
     fn mine(&self) -> impl Iterator<Item = (VesselId, &'a Vessel)> {
@@ -349,6 +369,7 @@ impl<'a> Crew<'a> {
         let done = me.research_team.is_some() && me.workshop.coders.is_some();
         let mut hints = Vec::new();
         if !done {
+            let mut waiting = true;
             for (kind, have, label, job) in [
                 (
                     StaffKind::Analyst,
@@ -366,13 +387,10 @@ impl<'a> Crew<'a> {
                 if have {
                     continue;
                 }
-                let enrolled = self.enrolled(kind);
-                if enrolled > 0 {
-                    hints.push(format!(
-                        "{enrolled} {label} are in training; a course takes {} days.",
-                        self.data.recruitment.courses[&kind].days
-                    ));
+                if let Some(line) = self.training(kind, label) {
+                    hints.push(line);
                 } else {
+                    waiting = false;
                     hints.push(self.press(
                         move |c| matches!(c, Command::Recruit { kind: k, .. } if *k == kind),
                         "Hideout panel, RECRUIT",
@@ -381,7 +399,12 @@ impl<'a> Crew<'a> {
                     ));
                 }
             }
-            if !self.status.submitted && self.draft.is_empty() {
+            if waiting {
+                hints.push(self.wait_line());
+            } else if self.status.last_turn.is_none()
+                && !self.status.submitted
+                && self.draft.is_empty()
+            {
                 hints.push(format!(
                     "Every button queues an order in the ORDERS panel; press 'Hand in' to send them. The turn runs when every crew has handed in or the deadline passes, and {} days go by.",
                     self.status.game.turn_days
@@ -399,10 +422,11 @@ impl<'a> Crew<'a> {
         let done = self.operators_anywhere();
         let mut hints = Vec::new();
         if !done {
-            hints.push(if self.enrolled(StaffKind::Operator) > 0 {
-                "An operator team is in training; it waits in the hideout once it graduates.".into()
+            if let Some(line) = self.training(StaffKind::Operator, "operators") {
+                hints.push(line);
+                hints.push(self.wait_line());
             } else {
-                self.press(
+                hints.push(self.press(
                     |c| {
                         matches!(
                             c,
@@ -415,8 +439,8 @@ impl<'a> Crew<'a> {
                     "RECRUIT",
                     "+20 operators",
                     ". Operators pilot vessels: nothing moves without a team waiting in the hideout.",
-                )
-            });
+                ));
+            }
         }
         Step {
             title: "Recruit an operator team",
