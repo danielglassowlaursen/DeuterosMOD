@@ -315,6 +315,16 @@
       case 'VesselStopped': return 'Vessel ' + a.vessel + ' stopped: ' + a.reason;
       case 'VesselBurned': return 'Vessel ' + a.vessel + ' was traced and burned at host ' + a.host;
       case 'Unlocked': return 'Milestone: ' + a.milestone;
+      case 'WarDeclared': return 'At war with the Legacy Net';
+      case 'FleetSighted': return 'A Legacy swarm of ' + a.daemons + ' daemons is heading for host ' + a.host + ', arriving on day ' + a.arrives;
+      case 'UnderAttack': return 'Host ' + a.host + ' is under siege; it falls on day ' + a.captured_on + ' unless the swarm is driven off';
+      case 'AttackRepelled': return 'The swarm attacking host ' + a.host + ' was driven off';
+      case 'HostCaptured': return 'Crew ' + a.player + ' lost host ' + a.host + ' to the Legacy Net';
+      case 'HostFreed': return 'Crew ' + a.player + ' freed host ' + a.host;
+      case 'BattleFought': return 'Battle at host ' + a.host + ': ' + a.report.attacker.daemons + ' vs ' + a.report.defender.daemons + ' daemons, ' + a.report.outcome;
+      case 'VesselLost': return 'Vessel ' + a.vessel + ' was lost at host ' + a.host;
+      case 'CacheFound': return 'Vessel ' + a.vessel + ' found a cache of ' + a.resource + ' (size ' + a.size + ')';
+      case 'FragmentFound': return 'Vessel ' + a.vessel + ' found a fragment of the Legacy source code';
       default: return k;
     }
   }

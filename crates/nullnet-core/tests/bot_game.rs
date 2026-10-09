@@ -3,7 +3,7 @@
 //! nothing the rules promise has broken.
 
 use nullnet_core::{
-    Citadel, Command, CommandError, Controller, Event, GameData, Milestone, Module, Orders,
+    Citadel, Command, CommandError, Controller, Event, GameData, HostId, Milestone, Module, Orders,
     PlayerId, STAFF_SLOTS, Site, StaffKind, Store, TurnReport, Vessel, World, bot, resolve_turn,
 };
 
@@ -124,12 +124,21 @@ fn check_world(data: &GameData, before: &World, world: &World, report: &TurnRepo
         }
     }
 
-    // Without combat, a held host stays with its holder.
+    // A held host changes hands only through a siege or a battle.
     for (index, (old, new)) in before.hosts.iter().zip(&world.hosts).enumerate() {
         let what = format!("{} on day {}", data.hosts[index].name, world.day);
         check_site(&new.site, &what);
-        if old.controller.is_some() {
-            assert_eq!(old.controller, new.controller, "{what}");
+        if old.controller.is_some() && old.controller != new.controller {
+            let id = HostId(index as u16);
+            let fought = report.events.iter().any(|e| {
+                matches!(e, Event::HostCaptured { host, .. } | Event::HostFreed { host, .. } if *host == id)
+            });
+            assert!(fought, "{what}: changed hands without a fight");
+            assert!(
+                new.controller == Some(Controller::Legacy)
+                    || old.controller == Some(Controller::Legacy),
+                "{what}: only the Legacy Net takes and loses hosts this way"
+            );
         }
         assert!(
             new.site.citadel.modules >= old.site.citadel.modules,
@@ -200,8 +209,22 @@ fn a_lone_crew_builds_its_citadel_and_spreads_through_the_home_network() {
         world.vessels.values().any(|v| v.script.is_some()),
         "the dropper runs supplies by exfil script"
     );
+    // Six citadels bring the Legacy Net down on the crew, and a bot does
+    // not defend itself yet, so it loses hosts as fast as it claims them.
+    let lost = events
+        .iter()
+        .filter(|e| matches!(e, Event::HostCaptured { player, .. } if *player == crew))
+        .count();
+    assert!(
+        milestone_day(&events, crew, Milestone::Daemons).is_some(),
+        "war came"
+    );
+    assert!(lost > 0, "the Legacy Net struck back");
     let held = citadels(&world, crew);
-    assert!(held >= 8, "only {held} citadels by day 3000");
+    assert!(
+        held + lost >= 8,
+        "only {held} citadels and {lost} lost by day 3000"
+    );
 }
 
 #[test]
@@ -209,7 +232,13 @@ fn rival_crews_race_for_the_home_network_without_breaking_the_rules() {
     let data = GameData::classic();
     for crews in 2..=4 {
         let mut world = new_game(&data, u64::from(crews), crews);
-        play(&data, &mut world, 4000);
+        let events = play(&data, &mut world, 4000);
+        let lost = |crew: PlayerId| {
+            events
+                .iter()
+                .filter(|e| matches!(e, Event::HostCaptured { player, .. } if *player == crew))
+                .count()
+        };
 
         let home = data.host(data.hideout.host).network;
         let free = data
@@ -227,14 +256,14 @@ fn rival_crews_race_for_the_home_network_without_breaking_the_rules() {
             .players
             .keys()
             .map(|&crew| {
-                let held = citadels(&world, crew);
-                assert!(held >= 3, "{crews} crews: crew {crew:?} holds {held}");
+                let held = citadels(&world, crew) + lost(crew);
+                assert!(held >= 3, "{crews} crews: crew {crew:?} built {held}");
                 held
             })
             .sum();
         assert!(
             free == 0 || total >= 20,
-            "{crews} crews: {total} citadels, {free} hosts still free"
+            "{crews} crews: {total} citadels built, {free} hosts still free"
         );
     }
 }

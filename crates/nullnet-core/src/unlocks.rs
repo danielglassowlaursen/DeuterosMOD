@@ -24,8 +24,11 @@ pub enum Milestone {
     HideoutCitadel,
     /// The first worm core built. (IOS_Attachments)
     WormEquipment,
-    /// The Legacy exploit researched. (D_F_C_C)
+    /// The Legacy exploit researched, or war declared. (D_F_C_C)
     Daemons,
+    /// A fragment of the Legacy Net's source code brought into a store;
+    /// its exploit can be worked out. (Alien artifact)
+    SourceCode,
     /// Holding a citadel with an encrypted link, as on a freed Legacy host.
     /// (Mass_Tranceiver)
     EncryptedLinks,
@@ -55,6 +58,7 @@ impl Milestone {
                 ItemType::BackdoorKit,
             ],
             Milestone::Daemons => &[ItemType::C2Controller, ItemType::Daemon],
+            Milestone::SourceCode => &[ItemType::LegacyExploit],
             Milestone::EncryptedLinks => &[ItemType::EncryptedLink],
             Milestone::KillSwitches => &[ItemType::KillSwitch],
             Milestone::Tunnelers => &[
@@ -70,7 +74,8 @@ impl Milestone {
 /// now hold, and returns an event for each one granted.
 pub(crate) fn check(data: &GameData, world: &mut World, events: &[Event]) -> Vec<Event> {
     let mut reached: Vec<(PlayerId, Milestone)> = Vec::new();
-    for event in events {
+    let wars = crate::legacy::check_war(data, world);
+    for event in events.iter().chain(&wars) {
         match *event {
             Event::Installed {
                 player,
@@ -93,8 +98,21 @@ pub(crate) fn check(data: &GameData, world: &mut World, events: &[Event]) -> Vec
                 player,
                 item: ItemType::LegacyExploit,
                 ..
-            } => reached.push((player, Milestone::Daemons)),
+            }
+            | Event::WarDeclared { player, .. } => reached.push((player, Milestone::Daemons)),
             _ => {}
+        }
+    }
+
+    for (&player, state) in &world.players {
+        let fragment = |store: &crate::store::Store| store.get(ItemType::SourceFragment) > 0;
+        let held = world
+            .hosts
+            .iter()
+            .filter(|h| h.controller == Some(Controller::Crew(player)))
+            .any(|h| fragment(&h.site.store) || fragment(&h.site.citadel.store));
+        if held || fragment(&state.hideout.store) || fragment(&state.hideout.citadel.store) {
+            reached.push((player, Milestone::SourceCode));
         }
     }
 
@@ -129,7 +147,7 @@ pub(crate) fn check(data: &GameData, world: &mut World, events: &[Event]) -> Vec
     }
 
     let day = world.day;
-    let mut granted = Vec::new();
+    let mut granted = wars;
     for (player, milestone) in reached {
         let Some(state) = world.players.get_mut(&player) else {
             continue;

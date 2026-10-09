@@ -209,6 +209,26 @@ Den sidste regel er ny: Godot-remaken åbnede aldrig for rejser mellem stjerner,
 - **Crew mod crew.** En orm med daemons, en C2-controller og en operatør sendes mod en rivals vært. Kampen bruger samme regel som mod The Legacy Net: styrke = daemons × (operatørniveau + 4). Før afsendelsen vælges, hvad en sejr skal give: exfiltrér (stjæl fra lageret), plant tap (en del af udvindingen) eller overtag (citadellet skifter ejer). Forsvaret er automatisk med de daemons, der ligger i citadellet. Hvert angreb giver angriberen heat. Angriber to crews hinanden samme dag, kæmpes begge kampe i en rækkefølge, som seed'et bestemmer.
 - **Beskyttelse.** I de første 5 ture kan crews ikke angribe hinanden.
 
+## The Legacy Net
+
+Porteret fra originalens Methanoids (`EnemyDroneBuilder.cs`, `EnemyFleets.cs`, `BattleLogic.cs`), men pr. crew og uden klik: alt afgøres i turafviklingen med spillets egen tilfældighedsgenerator, så en tur altid kan genafspilles.
+
+**Krig.** En crew kommer i krig med The Legacy Net, når den holder 6 færdige citadeller (skjulestedets talt med), eller når den angriber først. Krigen åbner forskning i daemons og C2-controllere (milepælen *Daemons*). Krig er pr. crew: The Legacy Net går kun efter crews i krig, men bygger daemons, så snart én crew er det.
+
+**Daemons.** Hver Legacy-vært starter med 50 daemons i sit citadel-lager. Når nogen er i krig, bygger The Legacy Net hvert 7.-10. dag (afhængigt af hvor mange netværk den har mistet) 2 daemons på hver af sine værter (op til 200) og 1-2 til netværkets sværm. Et fartøj (orm eller tunnelskib) kan bære op til 200 daemons og skal have en C2-controller installeret og en operatør om bord for at bruge dem.
+
+**Sværme.** Hvert netværk har én sværm, der samler sig ved en Legacy-vært. Når den når netværkets angrebstærskel (Metro 40, Orbital 100, …, Lattice 200), vælger den et færdigt citadel hos en crew i krig: det mindst angrebne først, derefter det yderste. Crewet får besked (`FleetSighted`) med ankomstdagen: rejsetiden plus op til 63 dages nølen. Ved ankomsten møder sværmen crewets stærkeste fartøj ved værten med C2 og daemons (koblet eller lurende). Vinder fartøjet, eller mister sværmen halvdelen, giver den op, og tærsklen fordobles (højst 200). Ellers belejrer den værten i 5 dage (`UnderAttack`), hvor ingen kan koble til citadellet, og tager den så (`HostCaptured`): citadellet får krypteret link, kill switch og build-bot, lageret tømmes og fyldes med 50 daemons og 100-1123 af hver af værtens ressourcer, 0-7 taps, og alle fartøjer ved værten går tabt. Et fartøj, der lurer ved den belejrede vært, kan angribe sværmen med ordren `Attack`.
+
+**Befrielse.** En orm, der lurer ved en Legacy-vært med daemons og C2, angriber garnisonen (op til 200 daemons ad gangen). Er lageret tomt bagefter, er værten crewets med alt, hvad The Legacy Net efterlod: det krypterede link, kill switchen og build-botten, som er vejen til at forske i dem. Netværkets sværm flytter til en anden Legacy-vært i netværket. Når hjemmenettet er fri for Legacy-værter, åbnes tunnelskibene for alle.
+
+**Kamp** (`battle.rs`). Styrke = daemons × (operatørniveau + 4); The Legacy Net har niveau 0. Hver tur i kampen spiller to runder. En side, hvis tæller er løbet ud, trækker i originalens tabel, hvor mange runder dens næste daemon overlever: den stærkere side trækker i første række, den svagere i rækken for styrkeforholdet (op til 7), og ligger de inden for en faktor 2, trækker begge i den lille tabel. En sværm, der er den svagere, mister altså daemons mange gange hurtigere. Kampen gemmes som et forløb af øjebliksbilleder (daemons på hver side hver fjerde tur), så klienten kan afspille den. Piloten får erfaring af hver kamp; et fartøj uden daemons tilbage går tabt. Logikbomben (PTL) har ingen datatabel i Godot-koden og er ikke med.
+
+**Cache-felter** (`caches.rs`). Et fartøj, der lurer ved Scrapyard med en crawler eller en sniffer og en operatør, scanner hver dag: 1 ud af 5 for at finde en cache (ressource fra feltets liste, størrelse 1-8), og en fundet cache skiftes ud med 1 ud af (10 − dage). En sniffer tager en lille cache (størrelse 1-3: 50, 100 eller 250 enheder) med i en datacontainer, som originalens grapple slæbte små asteroider hjem. En crawler udvinder en stor cache (størrelse 6-8) med 16-35 enheder hver 5. dag. En sniffer finder desuden 1 ud af 40 dage et fragment af Legacy-kildekoden i et tomt værktøjsmodul; bragt hjem i et lager åbner det forskning i Legacy-exploiten (milepælen *SourceCode*), som i sin tur åbner daemons uden krig. Det er vejen til de sjældne ressourcer (zero-days, kryptovaluta, certifikater, firmware), som bagdørssæt, daemons og C2-controllere kræver, og som hjemmenettets frie værter først giver, når man har bagdøre på dem.
+
+**Fog of war.** En crew ser de sværme, der er på vej mod eller belejrer dens egne værter (`threats` i udsigten), aldrig andres. Garnisonen ved en Legacy-vært ser man først i kamprapporten.
+
+**Bot-spillet** med The Legacy Net: krigen starter omkring dag 1.600, den første sværm på 40 daemons går ca. 250 dage senere, og den tager et citadel hver 40.-60. dag. Botterne forsvarer sig ikke endnu (de kan ikke bygge daemons uden cache-udvinding og bagdøre), så de mister alle deres værter inden dag 4.000. En krigsdoktrin til botten kommer med M5 sammen med balanceringen.
+
 ## Portering af reglerne
 
 Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellerne ca. 3.900 linjer i `CoreData.cs`.
@@ -224,10 +244,11 @@ Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellern
 | Værksted og build-bots | `Factory.cs`, `Production.cs` | `workshop.rs` | ✅ |
 | Droppere, orme og tunnelskibe | `Ship.cs`, `InterStellarShip.cs`, `ShipBay.cs`, `ShipInterior.cs` | `transport.rs` | ✅ |
 | Exfil-scripts og krypterede links | `Objects/ACC.cs`, `MTX.cs` | `exfil.rs`, `links.rs` | ✅ |
-| The Legacy Net og kamp | `EnemyFleets.cs`, `EnemyDroneBuilder.cs`, `BattleLogic.cs` | | M4 |
-| Unlocks | `Platform/Unlocker.cs` | `unlocks.rs` | ✅ (krig og fund via sniffer kommer med M4) |
+| The Legacy Net og kamp | `EnemyFleets.cs`, `EnemyDroneBuilder.cs`, `BattleLogic.cs` | `legacy.rs`, `battle.rs` | ✅ |
+| Cache-felter | `Asteroid.cs`, `AMA.cs`, `Grapple.cs` | `caches.rs` | ✅ |
+| Unlocks | `Platform/Unlocker.cs` | `unlocks.rs` | ✅ |
 | Bot-spil | (nyt) | `bot.rs`, `tests/bot_game.rs`, `nullnet-sim` | ✅ |
-| Beskeder og bulletiner | `Bulletins.cs`, `AlienMessages.cs` | | M4 |
+| Beskeder og bulletiner | `Bulletins.cs`, `AlienMessages.cs` | hændelser i turrapporten | ✅ (originalens tekster genbruges ikke) |
 
 **Fejl i Godot-koden, som ikke skal kopieres:**
 
@@ -289,7 +310,7 @@ Godot-remakens kode er udgivet under CC0, så den må frit bruges. Dens grafik, 
 | **M1** | Kerneregler for én crew: datatabeller, udvinding, rekruttering, værksted, transport, exfil-scripts og krypterede links. Testes med et headless "bot-spil". ✅ |
 | **M2** | Server: opret spil, invitationslinks, aflever ordrer, afvikl tur, gem i SQLite, fog of war. ✅ |
 | **M3** | Klient i hacker-look: lobby, netværkskort, terminalpaneler for vært, citadel og transport, ordrepanel og turlog. ✅ (lobbyen er konsolsiden; krypterede links styres endnu kun fra konsollen) |
-| **M4** | The Legacy Net: AI, krig, kampafvikling med animeret genafspilning, erobring og befrielse. |
+| **M4** | The Legacy Net: AI, krig, kampafvikling med animeret genafspilning, erobring og befrielse. ✅ (kampene gemmes som forløb, der kan afspilles; selve animationen i klienten kommer med M6) |
 | **M5** | Crew mod crew: angreb, forsvar, heat, beskyttelse, sejrsbetingelser og balancering. |
 | **M6** | Finish: effekter, lyd, notifikationer og hosting. |
 
@@ -297,6 +318,7 @@ Godot-remakens kode er udgivet under CC0, så den må frit bruges. Dens grafik, 
 
 - Standard for turlængde (spildage) og frist (timer)?
 - Kapløb om en fri vært: skal den crew, hvis ordrer udføres først, vinde (som nu), eller den, hvis orm har luret der længst?
+- Handel med The Legacy Net (originalens comms pod og 16 handler før krig) er ikke med. Skal den ind som en måde at få sjældne ressourcer og tech på?
 - Sejrsbetingelse og pointtabel.
 - Skal man kunne logge ind på tværs af enheder (e-mail-login), eller er et invitationslink pr. spil nok?
 - Hosting: Fly.io, en VPS eller noget tredje?

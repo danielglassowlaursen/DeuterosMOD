@@ -6,6 +6,7 @@ use crate::data::GameData;
 use crate::exfil::{self, Route};
 use crate::ids::{HostId, PlayerId};
 use crate::items::ItemType;
+use crate::legacy;
 use crate::links::{self, LinkConfig};
 use crate::recruitment;
 use crate::site::Site;
@@ -123,6 +124,26 @@ pub enum Command {
         send: Vec<ItemType>,
         balance: Vec<ItemType>,
     },
+    /// Moves daemons from the bay's store aboard a docked vessel.
+    LoadDaemons {
+        vessel: VesselId,
+        count: u32,
+    },
+    /// Moves daemons from a docked vessel into the bay's store.
+    UnloadDaemons {
+        vessel: VesselId,
+        count: u32,
+    },
+    /// Installs a C2 controller from the bay's store into a docked vessel.
+    InstallC2 {
+        vessel: VesselId,
+    },
+    /// A lurking vessel with daemons under a C2 controller attacks the
+    /// Legacy Net at its host: a garrison, or a besieging swarm. This
+    /// declares war if the crew is not at war yet.
+    Attack {
+        vessel: VesselId,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -166,6 +187,10 @@ pub enum CommandError {
     NoScript,
     NoDataContainer,
     NoLink(HostId),
+    NoC2,
+    NoDaemons,
+    TooManyDaemons,
+    NothingToAttack,
 }
 
 impl fmt::Display for CommandError {
@@ -236,6 +261,18 @@ impl fmt::Display for CommandError {
             }
             CommandError::NoLink(id) => {
                 write!(f, "there is no linked citadel of yours at host {}", id.0)
+            }
+            CommandError::NoC2 => write!(f, "the vessel has no C2 controller"),
+            CommandError::NoDaemons => write!(f, "the vessel has no daemons for that"),
+            CommandError::TooManyDaemons => {
+                write!(
+                    f,
+                    "a vessel carries at most {} daemons",
+                    transport::Vessel::DAEMON_CAPACITY
+                )
+            }
+            CommandError::NothingToAttack => {
+                write!(f, "there is no Legacy garrison or swarm to attack here")
             }
         }
     }
@@ -345,6 +382,14 @@ impl Command {
                 };
                 links::configure(data, world, player, host, config)
             }
+            Command::LoadDaemons { vessel, count } => {
+                transport::transfer_daemons(data, world, player, vessel, count, true)
+            }
+            Command::UnloadDaemons { vessel, count } => {
+                transport::transfer_daemons(data, world, player, vessel, count, false)
+            }
+            Command::InstallC2 { vessel } => transport::install_c2(data, world, player, vessel),
+            Command::Attack { vessel } => legacy::attack(data, world, player, vessel, events),
         }
     }
 }

@@ -30,6 +30,16 @@ pub struct CrewView {
     pub hosts: Vec<HostView>,
     /// The crew's own vessels, and others' where the crew can see them.
     pub vessels: BTreeMap<VesselId, Vessel>,
+    /// Legacy swarms heading for or besieging the crew's hosts.
+    pub threats: Vec<Threat>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Threat {
+    pub host: HostId,
+    pub daemons: u32,
+    pub arrives: Option<Day>,
+    pub siege_until: Option<Day>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,11 +108,51 @@ pub fn crew_view(world: &World, player: PlayerId, home: HostId) -> Option<CrewVi
             })
             .map(|(&id, v)| (id, v.clone()))
             .collect(),
+        threats: world
+            .legacy
+            .fleets
+            .iter()
+            .filter_map(|f| {
+                let host = f.target?;
+                mine(host).then_some(Threat {
+                    host,
+                    daemons: f.daemons,
+                    arrives: f.arrives,
+                    siege_until: f.siege_until,
+                })
+            })
+            .collect(),
         me,
     })
 }
 
 impl Event {
+    /// The day the event happened.
+    pub fn day(&self) -> Day {
+        match *self {
+            Event::ResearchCompleted { day, .. }
+            | Event::StaffPromoted { day, .. }
+            | Event::RecruitsGraduated { day, .. }
+            | Event::ItemBuilt { day, .. }
+            | Event::HostClaimed { day, .. }
+            | Event::Installed { day, .. }
+            | Event::VesselArrived { day, .. }
+            | Event::VesselStopped { day, .. }
+            | Event::VesselBurned { day, .. }
+            | Event::Unlocked { day, .. }
+            | Event::WarDeclared { day, .. }
+            | Event::FleetSighted { day, .. }
+            | Event::UnderAttack { day, .. }
+            | Event::AttackRepelled { day, .. }
+            | Event::HostCaptured { day, .. }
+            | Event::HostFreed { day, .. }
+            | Event::BattleFought { day, .. }
+            | Event::VesselLost { day, .. }
+            | Event::CacheFound { day, .. }
+            | Event::FragmentFound { day, .. } => day,
+        }
+    }
+
     /// The crew the event happened to.
     pub fn player(&self) -> PlayerId {
         match *self {
@@ -115,14 +165,27 @@ impl Event {
             | Event::VesselArrived { player, .. }
             | Event::VesselStopped { player, .. }
             | Event::VesselBurned { player, .. }
-            | Event::Unlocked { player, .. } => player,
+            | Event::Unlocked { player, .. }
+            | Event::WarDeclared { player, .. }
+            | Event::FleetSighted { player, .. }
+            | Event::UnderAttack { player, .. }
+            | Event::AttackRepelled { player, .. }
+            | Event::HostCaptured { player, .. }
+            | Event::HostFreed { player, .. }
+            | Event::BattleFought { player, .. }
+            | Event::VesselLost { player, .. }
+            | Event::CacheFound { player, .. }
+            | Event::FragmentFound { player, .. } => player,
         }
     }
 
     /// Whether every crew learns of the event: a host changing hands is
     /// seen across the net.
     pub fn is_public(&self) -> bool {
-        matches!(self, Event::HostClaimed { .. })
+        matches!(
+            self,
+            Event::HostClaimed { .. } | Event::HostCaptured { .. } | Event::HostFreed { .. }
+        )
     }
 }
 
@@ -172,6 +235,9 @@ mod tests {
             destination: None,
             exposed_days: 0,
             script: None,
+            daemons: 0,
+            c2: false,
+            cache: None,
         }
     }
 

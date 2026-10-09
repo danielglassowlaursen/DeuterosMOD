@@ -172,6 +172,92 @@ fn main() -> ExitCode {
                     player,
                     format!("vessel {} stopped: {reason:?}", vessel.0),
                 )),
+                Event::WarDeclared { day, player } => {
+                    Some((day, player, "AT WAR with the Legacy Net".to_string()))
+                }
+                Event::FleetSighted {
+                    day,
+                    player,
+                    host: h,
+                    arrives,
+                    daemons,
+                } => Some((
+                    day,
+                    player,
+                    format!(
+                        "Legacy swarm of {daemons} heading for {}, arrives {}",
+                        host(h),
+                        date(arrives)
+                    ),
+                )),
+                Event::UnderAttack {
+                    day,
+                    player,
+                    host: h,
+                    captured_on,
+                } => Some((
+                    day,
+                    player,
+                    format!("{} under siege, falls {}", host(h), date(captured_on)),
+                )),
+                Event::AttackRepelled {
+                    day,
+                    player,
+                    host: h,
+                } => Some((day, player, format!("swarm driven off {}", host(h)))),
+                Event::HostCaptured {
+                    day,
+                    player,
+                    host: h,
+                } => Some((day, player, format!("LOST {} to the Legacy Net", host(h)))),
+                Event::HostFreed {
+                    day,
+                    player,
+                    host: h,
+                } => Some((day, player, format!("FREED {}", host(h)))),
+                Event::BattleFought {
+                    day,
+                    player,
+                    host: h,
+                    ref report,
+                    ..
+                } => Some((
+                    day,
+                    player,
+                    format!(
+                        "battle at {}: {} vs {} daemons, {:?}, {} vs {} left",
+                        host(h),
+                        report.attacker.daemons,
+                        report.defender.daemons,
+                        report.outcome,
+                        report.attacker_left(),
+                        report.defender_left()
+                    ),
+                )),
+                Event::VesselLost {
+                    day,
+                    player,
+                    vessel,
+                    host: h,
+                } => Some((
+                    day,
+                    player,
+                    format!("vessel {} lost at {}", vessel.0, host(h)),
+                )),
+                Event::CacheFound {
+                    day,
+                    player,
+                    resource,
+                    size,
+                    ..
+                } if options.verbose => Some((
+                    day,
+                    player,
+                    format!("cache of {resource:?} found, size {size}"),
+                )),
+                Event::FragmentFound { day, player, .. } => {
+                    Some((day, player, "source fragment found".to_string()))
+                }
                 Event::RecruitsGraduated {
                     day,
                     player,

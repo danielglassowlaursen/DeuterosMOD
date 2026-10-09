@@ -200,7 +200,8 @@
     Daemons: ['Legacy-exploit forsket', ['C2Controller', 'Daemon']],
     EncryptedLinks: ['Ejer et citadel med krypteret link', ['EncryptedLink']],
     KillSwitches: ['Ejer et citadel med kill switch', ['KillSwitch']],
-    Tunnelers: ['Hjemmenettet er fri for The Legacy Net', ['TunnelCore', 'TunnelEngine', 'OnionRoutes']]
+    Tunnelers: ['Hjemmenettet er fri for The Legacy Net', ['TunnelCore', 'TunnelEngine', 'OnionRoutes']],
+    SourceCode: ['Et fragment af Legacy-kildekoden bragt hjem', ['LegacyExploit']]
   };
   const ABORT = { NoAnonymisation: 'ingen anonymisering tilbage', NoPilot: 'ingen pilot', NoCitadel: 'intet færdigt citadel at koble til' };
 
@@ -309,12 +310,23 @@
         const m = MILESTONE[a.milestone] || [a.milestone, []];
         return ['big', 'Milepæl: ' + m[0] + (m[1].length ? '. Åbner forskning i ' + m[1].map(item).join(', ') : '')];
       }
+      case 'WarDeclared': return ['big', 'I krig med The Legacy Net'];
+      case 'FleetSighted': return ['bad', 'En Legacy-sværm på ' + a.daemons + ' daemons er på vej mod ' + hostName(a.host) + ', ankommer dag ' + a.arrives];
+      case 'UnderAttack': return ['bad', hostName(a.host) + ' er under belejring og falder dag ' + a.captured_on + ', medmindre sværmen drives væk'];
+      case 'AttackRepelled': return ['big', 'Sværmen ved ' + hostName(a.host) + ' blev drevet væk'];
+      case 'HostCaptured': return ['bad', 'Mistede ' + hostName(a.host) + ' til The Legacy Net'];
+      case 'HostFreed': return ['big', 'Befriede ' + hostName(a.host)];
+      case 'BattleFought': return ['big', 'Kamp ved ' + hostName(a.host) + ': ' + a.report.attacker.daemons + ' mod ' + a.report.defender.daemons + ' daemons, ' + a.report.outcome + ', ' + a.report.course[a.report.course.length - 1][0] + ' mod ' + a.report.course[a.report.course.length - 1][1] + ' tilbage'];
+      case 'VesselLost': return ['bad', cap(vn(a.vessel)) + ' gik tabt ved ' + hostName(a.host)];
+      case 'CacheFound': return ['', cap(vn(a.vessel)) + ' fandt en cache med ' + item(a.resource) + ' (størrelse ' + a.size + ')'];
+      case 'FragmentFound': return ['big', cap(vn(a.vessel)) + ' fandt et fragment af Legacy-kildekoden'];
       default: return ['', k];
     }
   }
   const notable = ev => {
     const k = Object.keys(ev)[0];
     return k === 'HostClaimed' || k === 'Unlocked' || k === 'ResearchCompleted' || k === 'VesselBurned' || k === 'VesselStopped'
+      || k === 'WarDeclared' || k === 'UnderAttack' || k === 'HostCaptured' || k === 'HostFreed' || k === 'BattleFought' || k === 'AttackRepelled'
       || (k === 'Installed' && ev[k].installed === 8);
   };
   const playerOf = ev => ev[Object.keys(ev)[0]].player;

@@ -193,6 +193,14 @@ pub fn command(cmd: &Command, data: &GameData, vessels: &BTreeMap<VesselId, Vess
         Command::InstallLink { host } => {
             format!("Install an encrypted link at {}", data.host(*host).name)
         }
+        Command::LoadDaemons { vessel, count } => {
+            format!("Load {count} daemons aboard {}", v(*vessel))
+        }
+        Command::UnloadDaemons { vessel, count } => {
+            format!("Unload {count} daemons from {}", v(*vessel))
+        }
+        Command::InstallC2 { vessel } => format!("Install a C2 controller in {}", v(*vessel)),
+        Command::Attack { vessel } => format!("{} attacks the Legacy Net", v(*vessel)),
         Command::ConfigureLink { host, target, .. } => match target {
             Some(target) => format!(
                 "Link {} to {}",
@@ -258,5 +266,80 @@ pub fn event(ev: &Event, data: &GameData, vessels: &BTreeMap<VesselId, Vessel>) 
         Event::Unlocked { milestone, .. } => {
             format!("Milestone: {}", spaced(&format!("{milestone:?}")))
         }
+        Event::WarDeclared { .. } => "AT WAR with the Legacy Net".into(),
+        Event::FleetSighted {
+            host: h,
+            arrives,
+            daemons,
+            ..
+        } => format!(
+            "A Legacy swarm of {daemons} daemons is heading for {}, arriving {}",
+            host(*h),
+            nullnet_core::date(*arrives)
+        ),
+        Event::UnderAttack {
+            host: h,
+            captured_on,
+            ..
+        } => format!(
+            "{} is under siege; it falls on {} unless the swarm is driven off",
+            host(*h),
+            nullnet_core::date(*captured_on)
+        ),
+        Event::AttackRepelled { host: h, .. } => {
+            format!("The swarm attacking {} was driven off", host(*h))
+        }
+        Event::HostCaptured {
+            player, host: h, ..
+        } => {
+            format!("Crew {} lost {} to the Legacy Net", player.0 + 1, host(*h))
+        }
+        Event::HostFreed {
+            player, host: h, ..
+        } => {
+            format!("Crew {} freed {}", player.0 + 1, host(*h))
+        }
+        Event::BattleFought {
+            host: h,
+            vessel: id,
+            report,
+            ..
+        } => format!(
+            "{} fought at {}: {} vs {} daemons, {}; {} vs {} left",
+            vessel(*id, vessels),
+            host(*h),
+            report.attacker.daemons,
+            report.defender.daemons,
+            outcome(report.outcome),
+            report.attacker_left(),
+            report.defender_left()
+        ),
+        Event::VesselLost {
+            vessel: id,
+            host: h,
+            ..
+        } => format!("{} was lost at {}", vessel(*id, vessels), host(*h)),
+        Event::CacheFound {
+            vessel: id,
+            resource,
+            size,
+            ..
+        } => format!(
+            "{} found a cache of {} (size {size} of 8)",
+            vessel(*id, vessels),
+            item(*resource)
+        ),
+        Event::FragmentFound { vessel: id, .. } => format!(
+            "{} found a fragment of the Legacy Net's source code",
+            vessel(*id, vessels)
+        ),
+    }
+}
+
+pub fn outcome(outcome: nullnet_core::Outcome) -> &'static str {
+    match outcome {
+        nullnet_core::Outcome::AttackerWon => "the attacker won",
+        nullnet_core::Outcome::DefenderWon => "the defender won",
+        nullnet_core::Outcome::DefenderFled => "the defender fled",
     }
 }

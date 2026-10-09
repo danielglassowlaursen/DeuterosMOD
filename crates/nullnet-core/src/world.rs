@@ -6,6 +6,7 @@ use crate::command::CommandError;
 use crate::data::GameData;
 use crate::ids::{Day, HostId, NetworkId, PlayerId};
 use crate::items::ItemType;
+use crate::legacy::Legacy;
 use crate::recruitment::Recruitment;
 use crate::research::{ResearchDef, ResearchProgress};
 use crate::rng::Rng;
@@ -29,6 +30,7 @@ pub struct World {
     pub next_handle: u32,
     pub vessels: BTreeMap<VesselId, Vessel>,
     pub next_vessel: u32,
+    pub legacy: Legacy,
 }
 
 /// Who holds a host.
@@ -42,6 +44,8 @@ pub enum Controller {
 pub struct HostState {
     pub controller: Option<Controller>,
     pub site: Site,
+    /// Times the Legacy Net has attacked it; it goes for the least attacked.
+    pub attacked: u32,
 }
 
 impl World {
@@ -56,6 +60,7 @@ impl World {
             next_handle: 0,
             vessels: BTreeMap::new(),
             next_vessel: 0,
+            legacy: Legacy::default(),
         }
     }
 
@@ -70,6 +75,7 @@ impl World {
             .map(|def| HostState {
                 controller: def.legacy.then_some(Controller::Legacy),
                 site: Site::new(def),
+                attacked: 0,
             })
             .collect();
 
@@ -102,6 +108,8 @@ impl World {
                 };
             }
         }
+
+        crate::legacy::setup(data, &mut world);
 
         for &(id, name) in crews {
             world.players.insert(id, Player::new_crew(data, name));
@@ -153,6 +161,8 @@ pub struct Player {
     /// Research the player has access to, in progress or finished.
     pub research: BTreeMap<ItemType, ResearchProgress>,
     pub milestones: Milestones,
+    /// The day the crew went to war with the Legacy Net, once it has.
+    pub war: Option<Day>,
 }
 
 impl Player {
@@ -166,6 +176,7 @@ impl Player {
             current_research: None,
             research: BTreeMap::new(),
             milestones: Milestones::new(),
+            war: None,
         }
     }
 

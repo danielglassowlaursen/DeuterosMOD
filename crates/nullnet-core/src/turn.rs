@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::battle;
 use crate::command::{Command, CommandError};
 use crate::data::GameData;
 use crate::ids::{Day, HostId, PlayerId};
@@ -11,7 +12,7 @@ use crate::transport::{self, AbortReason, Berth, VesselId};
 use crate::unlocks::{self, Milestone};
 use crate::workshop::{self, WorkshopRef};
 use crate::world::World;
-use crate::{links, mining, recruitment, research};
+use crate::{caches, legacy, links, mining, recruitment, research};
 
 /// Every player's orders for one turn.
 pub type Orders = BTreeMap<PlayerId, Vec<Command>>;
@@ -83,6 +84,71 @@ pub enum Event {
         day: Day,
         player: PlayerId,
         milestone: Milestone,
+    },
+    /// The crew is at war with the Legacy Net from now on.
+    WarDeclared { day: Day, player: PlayerId },
+    /// A Legacy swarm has set out for one of the crew's citadels.
+    FleetSighted {
+        day: Day,
+        player: PlayerId,
+        host: HostId,
+        arrives: Day,
+        daemons: u32,
+    },
+    /// A swarm is besieging the crew's citadel; it falls on `captured_on`
+    /// unless the swarm is driven off.
+    UnderAttack {
+        day: Day,
+        player: PlayerId,
+        host: HostId,
+        captured_on: Day,
+    },
+    /// The swarm attacking the crew's host gave up.
+    AttackRepelled {
+        day: Day,
+        player: PlayerId,
+        host: HostId,
+    },
+    /// The Legacy Net took the crew's host.
+    HostCaptured {
+        day: Day,
+        player: PlayerId,
+        host: HostId,
+    },
+    /// The crew destroyed a host's garrison and holds the host now.
+    HostFreed {
+        day: Day,
+        player: PlayerId,
+        host: HostId,
+    },
+    /// The crew's vessel fought the Legacy Net.
+    BattleFought {
+        day: Day,
+        player: PlayerId,
+        host: HostId,
+        vessel: VesselId,
+        report: battle::Report,
+    },
+    /// A vessel was destroyed in battle or when its host fell.
+    VesselLost {
+        day: Day,
+        player: PlayerId,
+        vessel: VesselId,
+        host: HostId,
+    },
+    /// A vessel's scanner found a cache at a cache field.
+    CacheFound {
+        day: Day,
+        player: PlayerId,
+        vessel: VesselId,
+        resource: ItemType,
+        size: u8,
+    },
+    /// A sniffer turned up a fragment of the Legacy Net's source code.
+    FragmentFound {
+        day: Day,
+        player: PlayerId,
+        vessel: VesselId,
     },
 }
 
@@ -180,7 +246,9 @@ fn step_day(data: &GameData, world: &mut World, events: &mut Vec<Event>) {
     recruitment::run_day(data, world, events);
     workshop::run_all(data, world, events);
     transport::run_day(data, world, events);
+    caches::run_day(data, world, events);
     research::run_day(data, world, events);
+    legacy::run_day(data, world, events);
     links::run_day(data, world);
 }
 

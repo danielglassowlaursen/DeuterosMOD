@@ -397,6 +397,9 @@ fn top_bar(p: &mut ChildSpawnerCommands, session: &Session, api: &Api) {
         ),
     );
     p.spawn((text("", 12.0, MUTED), Countdown));
+    if status.view.me.war.is_some() {
+        p.spawn(text("AT WAR", 12.0, WARN));
+    }
     for crew in &status.crews {
         let color = Color::Srgba(Srgba::hex(crew_color(status.player, crew.player)).unwrap());
         let held = status
@@ -712,6 +715,21 @@ fn host_status(status: &CrewStatus, data: &GameData, host: HostId) -> String {
     }
     parts.push(format!("{} resources", def.resources.len()));
     parts.push(format!("citadel {}/8", view.citadel_modules));
+    if let Some(threat) = status.view.threats.iter().find(|t| t.host == host) {
+        parts.push(match (threat.siege_until, threat.arrives) {
+            (Some(until), _) => format!(
+                "UNDER SIEGE by {} daemons, falls {}",
+                threat.daemons,
+                date(until)
+            ),
+            (None, Some(arrives)) => format!(
+                "a swarm of {} daemons arrives {}",
+                threat.daemons,
+                date(arrives)
+            ),
+            _ => "a swarm is coming".to_string(),
+        });
+    }
     parts.join(", ")
 }
 
@@ -899,6 +917,17 @@ fn vessel_panel(
         );
     }
     line(p, team_line("Pilot", vessel.pilot.as_ref()));
+    if vessel.kind != VesselKind::Dropper {
+        line(
+            p,
+            format!(
+                "Daemons {}/{}   C2 controller: {}",
+                vessel.daemons,
+                Vessel::DAEMON_CAPACITY,
+                if vessel.c2 { "installed" } else { "none" }
+            ),
+        );
+    }
     for (slot, module) in vessel.modules.iter().enumerate() {
         line(p, format!("Slot {}: {}", slot + 1, text::module(module)));
     }
@@ -976,6 +1005,33 @@ fn vessel_panel(
                     format!("Refuel +{amount}"),
                     Action::Order(Command::Refuel { vessel: id, amount }),
                 ));
+            }
+            if vessel.kind != VesselKind::Dropper {
+                if !vessel.c2 && store.get(ItemType::C2Controller) > 0 {
+                    r.spawn(button(
+                        "Install a C2 controller",
+                        Action::Order(Command::InstallC2 { vessel: id }),
+                    ));
+                }
+                let load = 50
+                    .min(store.get(ItemType::Daemon))
+                    .min(Vessel::DAEMON_CAPACITY - vessel.daemons);
+                if load > 0 {
+                    r.spawn(button(
+                        format!("Load {load} daemons"),
+                        Action::Order(Command::LoadDaemons {
+                            vessel: id,
+                            count: load,
+                        }),
+                    ));
+                }
+                if vessel.daemons > 0 {
+                    let count = vessel.daemons.min(50);
+                    r.spawn(button(
+                        format!("Unload {count} daemons"),
+                        Action::Order(Command::UnloadDaemons { vessel: id, count }),
+                    ));
+                }
             }
         });
 
@@ -1172,6 +1228,34 @@ fn vessel_panel(
     } else if berth == Berth::Lurking {
         heading(p, "Outside");
         p.spawn(row()).with_children(|r| {
+            let host = vessel.host;
+            let legacy_here =
+                status.view.hosts[usize::from(host.0)].controller == Some(Controller::Legacy);
+            let besieged = status
+                .view
+                .threats
+                .iter()
+                .any(|t| t.host == host && t.siege_until.is_some());
+            if (legacy_here || besieged) && vessel.c2 && vessel.daemons > 0 {
+                r.spawn(button(
+                    format!(
+                        "Attack {} with {} daemons",
+                        if besieged {
+                            "the swarm"
+                        } else {
+                            "the garrison"
+                        },
+                        vessel.daemons
+                    ),
+                    Action::Order(Command::Attack { vessel: id }),
+                ));
+            } else if legacy_here {
+                r.spawn(text(
+                    "A C2 controller and daemons aboard could take this host.",
+                    11.0,
+                    MUTED,
+                ));
+            }
             for (slot, module) in vessel.modules.iter().enumerate() {
                 if let Module::ToolModule(Some(cargo)) = module
                     && cargo.item == ItemType::CitadelModule
@@ -1307,18 +1391,7 @@ fn log_panel(p: &mut ChildSpawnerCommands, status: &CrewStatus, data: &GameData)
         muted(p, "Nothing to report.");
     }
     for event in turn.report.events.iter().take(40) {
-        let day = match event {
-            nullnet_core::Event::ResearchCompleted { day, .. }
-            | nullnet_core::Event::StaffPromoted { day, .. }
-            | nullnet_core::Event::RecruitsGraduated { day, .. }
-            | nullnet_core::Event::ItemBuilt { day, .. }
-            | nullnet_core::Event::HostClaimed { day, .. }
-            | nullnet_core::Event::Installed { day, .. }
-            | nullnet_core::Event::VesselArrived { day, .. }
-            | nullnet_core::Event::VesselStopped { day, .. }
-            | nullnet_core::Event::VesselBurned { day, .. }
-            | nullnet_core::Event::Unlocked { day, .. } => *day,
-        };
+        let day = event.day();
         line(
             p,
             format!(

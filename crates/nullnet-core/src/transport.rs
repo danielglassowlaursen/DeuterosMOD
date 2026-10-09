@@ -173,10 +173,17 @@ pub struct Vessel {
     pub exposed_days: u32,
     /// An installed exfil script that can run the vessel on a cargo route.
     pub script: Option<ExfilScript>,
+    /// Daemons aboard, up to [`Vessel::DAEMON_CAPACITY`], for battles.
+    pub daemons: u32,
+    /// A C2 controller installed, so the vessel can command its daemons.
+    pub c2: bool,
+    /// What its scanner is on at a cache field.
+    pub cache: Option<crate::caches::Cache>,
 }
 
 impl Vessel {
     pub const FUEL_CAPACITY: u32 = 250;
+    pub const DAEMON_CAPACITY: u32 = 200;
     /// Days a vessel can lurk without anonymisation before it is burned.
     pub const EXPOSURE_LIMIT: u32 = 5;
 
@@ -314,6 +321,9 @@ pub(crate) fn assemble(
             destination: None,
             exposed_days: 0,
             script: None,
+            daemons: 0,
+            c2: false,
+            cache: None,
         },
     );
     Ok(id)
@@ -821,6 +831,10 @@ pub(crate) fn start_step(
                 abort(world, id, day, AbortReason::NoCitadel, events);
                 return;
             }
+            if crate::legacy::under_siege(world, to.host) {
+                abort(world, id, day, AbortReason::UnderAttack, events);
+                return;
+            }
             VesselState::Connecting
         }
         (Berth::Lurking, true, Berth::Lurking) => unreachable!("handled above"),
@@ -871,6 +885,53 @@ pub enum AbortReason {
     NoAnonymisation,
     NoPilot,
     NoCitadel,
+    /// A Legacy swarm is besieging the citadel.
+    UnderAttack,
+}
+
+/// Moves daemons between a docked vessel and its bay's store.
+pub(crate) fn transfer_daemons(
+    data: &GameData,
+    world: &mut World,
+    owner: PlayerId,
+    id: VesselId,
+    count: u32,
+    aboard: bool,
+) -> Result<(), CommandError> {
+    let (vessel, store, _) = docked(data, world, owner, id)?;
+    if aboard {
+        if vessel.daemons + count > Vessel::DAEMON_CAPACITY {
+            return Err(CommandError::TooManyDaemons);
+        }
+        if !store.take(ItemType::Daemon, count) {
+            return Err(CommandError::MissingResources(ItemType::Daemon));
+        }
+        vessel.daemons += count;
+    } else {
+        if vessel.daemons < count {
+            return Err(CommandError::NoDaemons);
+        }
+        vessel.daemons -= store.add(ItemType::Daemon, count);
+    }
+    Ok(())
+}
+
+/// Installs a C2 controller from the bay's store into a docked vessel.
+pub(crate) fn install_c2(
+    data: &GameData,
+    world: &mut World,
+    owner: PlayerId,
+    id: VesselId,
+) -> Result<(), CommandError> {
+    let (vessel, store, _) = docked(data, world, owner, id)?;
+    if vessel.c2 {
+        return Err(CommandError::AlreadyComplete);
+    }
+    if !store.take(ItemType::C2Controller, 1) {
+        return Err(CommandError::MissingResources(ItemType::C2Controller));
+    }
+    vessel.c2 = true;
+    Ok(())
 }
 
 fn abort(world: &mut World, id: VesselId, day: Day, reason: AbortReason, events: &mut Vec<Event>) {
