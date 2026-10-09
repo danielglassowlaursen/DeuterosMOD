@@ -65,7 +65,9 @@ pub fn current(steps: &[Step]) -> usize {
 }
 
 /// The story a new crew is told before its first orders: a page title and
-/// its paragraphs. The client adds the day and the turn length.
+/// its paragraphs. The client adds the day and the turn length. Each page
+/// is read aloud from `web/voice/story-<page>.mp3`, recorded from this text
+/// with its numbered title; a change here needs a new recording.
 pub const STORY: &[(&str, &[&str])] = &[
     (
         "ResetN00L",

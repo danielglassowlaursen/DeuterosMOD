@@ -27,4 +27,6 @@ if command -v wasm-opt >/dev/null; then
     || echo "wasm-opt failed; keeping the unoptimised module"
 fi
 cp web/index.html dist/
+# The narrator's clips, one per page of the story.
+cp -r web/voice dist/
 echo "Built dist/ ($(du -h dist/nullnet-client_bg.wasm | cut -f1) wasm). Serve it with e.g.: python3 -m http.server -d dist 8080"

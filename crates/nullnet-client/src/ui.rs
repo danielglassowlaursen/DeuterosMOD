@@ -21,6 +21,7 @@ use crate::net::{self, Api, Clock, Inbox, Session};
 use crate::notify;
 use crate::sound::{Cue, Play, Sounds};
 use crate::text;
+use crate::voice;
 
 /// Seconds a battle replay takes from first to last snapshot.
 const REPLAY_SECONDS: f32 = 5.0;
@@ -186,6 +187,8 @@ enum Action {
     /// Opens the story at this page.
     StoryPage(usize),
     CloseStory,
+    /// Reads the story's open page aloud.
+    Listen,
 }
 
 const PANEL_BG: Color = Color::srgba(0.04, 0.07, 0.10, 0.94);
@@ -603,6 +606,9 @@ fn press_buttons(
             Action::ToggleMute => {
                 sounds.muted = !sounds.muted;
                 notify::remember_muted(sounds.muted);
+                if sounds.muted {
+                    voice::stop();
+                }
             }
             Action::RequestNotify => notify::request_permission(),
             Action::Replay(index) => {
@@ -620,10 +626,21 @@ fn press_buttons(
             Action::StoryPage(page) => {
                 guide.story = Some(page);
                 guide.help = false;
+                if sounds.muted {
+                    voice::stop();
+                } else {
+                    voice::play_story(page);
+                }
             }
             Action::CloseStory => {
                 guide.story = None;
                 notify::remember_story_seen();
+                voice::stop();
+            }
+            Action::Listen => {
+                if let Some(page) = guide.story {
+                    voice::play_story(page);
+                }
             }
         }
     }
@@ -924,14 +941,18 @@ fn story_panel(p: &mut ChildSpawnerCommands, page: usize, session: &Session) {
     let pages = guide::STORY;
     let page = page.min(pages.len().saturating_sub(1));
     let (title, paragraphs) = pages[page];
-    muted(
-        p,
-        format!(
-            "THE STORY OF NULLNET   PAGE {} OF {}",
-            page + 1,
-            pages.len()
-        ),
-    );
+    p.spawn(row()).with_children(|r| {
+        r.spawn(text(
+            format!(
+                "THE STORY OF NULLNET   PAGE {} OF {}",
+                page + 1,
+                pages.len()
+            ),
+            12.0,
+            MUTED,
+        ));
+        r.spawn(button("Listen", Action::Listen));
+    });
     p.spawn(text(title, 16.0, ACCENT));
     for paragraph in paragraphs {
         p.spawn(text(*paragraph, 13.0, FG));

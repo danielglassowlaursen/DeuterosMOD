@@ -3722,9 +3722,11 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "ehttp",
+ "js-sys",
  "nullnet-api",
  "nullnet-core",
  "serde",
+ "wasm-bindgen",
  "web-sys",
 ]
 

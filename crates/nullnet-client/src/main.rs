@@ -6,6 +6,7 @@ mod notify;
 mod sound;
 mod text;
 mod ui;
+mod voice;
 
 use bevy::prelude::*;
 use nullnet_core::GameData;
