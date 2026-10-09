@@ -229,7 +229,7 @@ fn a_defender_with_daemons_drives_the_swarm_off() {
             _ => None,
         })
         .expect("a battle was fought");
-    assert_eq!(battle.1, worm);
+    assert_eq!(battle.1, Some(worm));
     assert_eq!(battle.0.outcome, Outcome::DefenderFled);
     assert!(
         events

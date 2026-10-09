@@ -3,8 +3,8 @@
 //! font has.
 
 use nullnet_core::{
-    Berth, Command, Destination, Event, GameData, ItemType, Module, Staff, Vessel, VesselId,
-    VesselKind, VesselState, WorkshopRef,
+    Berth, Command, Destination, EndReason, Event, GameData, ItemType, Module, RaidGoal, Staff,
+    Vessel, VesselId, VesselKind, VesselState, WorkshopRef,
 };
 use std::collections::BTreeMap;
 
@@ -201,6 +201,9 @@ pub fn command(cmd: &Command, data: &GameData, vessels: &BTreeMap<VesselId, Vess
         }
         Command::InstallC2 { vessel } => format!("Install a C2 controller in {}", v(*vessel)),
         Command::Attack { vessel } => format!("{} attacks the Legacy Net", v(*vessel)),
+        Command::Raid { vessel, goal } => {
+            format!("{} raids the host to {}", v(*vessel), raid_goal(*goal))
+        }
         Command::ConfigureLink { host, target, .. } => match target {
             Some(target) => format!(
                 "Link {} to {}",
@@ -306,13 +309,63 @@ pub fn event(ev: &Event, data: &GameData, vessels: &BTreeMap<VesselId, Vessel>) 
             ..
         } => format!(
             "{} fought at {}: {} vs {} daemons, {}; {} vs {} left",
-            vessel(*id, vessels),
+            match id {
+                Some(id) => vessel(*id, vessels),
+                None => "The garrison".to_string(),
+            },
             host(*h),
             report.attacker.daemons,
             report.defender.daemons,
             outcome(report.outcome),
             report.attacker_left(),
             report.defender_left()
+        ),
+        Event::Raid {
+            player,
+            defender,
+            host: h,
+            goal,
+            report,
+            loot,
+            ..
+        } => {
+            let mut line = format!(
+                "Crew {} raided crew {}'s {} to {}: {} vs {} daemons, {}",
+                player.0 + 1,
+                defender.0 + 1,
+                host(*h),
+                raid_goal(*goal),
+                report.attacker.daemons,
+                report.defender.daemons,
+                outcome(report.outcome)
+            );
+            if !loot.is_empty() {
+                let taken: Vec<String> = loot
+                    .iter()
+                    .map(|(i, n)| format!("{n} {}", item(*i)))
+                    .collect();
+                line.push_str(&format!("; took {}", taken.join(", ")));
+            }
+            line
+        }
+        Event::HostTaken {
+            player,
+            from,
+            host: h,
+            ..
+        } => format!(
+            "Crew {} took {} from crew {}",
+            player.0 + 1,
+            host(*h),
+            from.0 + 1
+        ),
+        Event::GameOver { player, reason, .. } => format!(
+            "GAME OVER: crew {} wins {}",
+            player.0 + 1,
+            match reason {
+                EndReason::Domination => "by holding most of the home network",
+                EndReason::DayLimit => "on points at the last day",
+            }
         ),
         Event::VesselLost {
             vessel: id,
@@ -333,6 +386,14 @@ pub fn event(ev: &Event, data: &GameData, vessels: &BTreeMap<VesselId, Vessel>) 
             "{} found a fragment of the Legacy Net's source code",
             vessel(*id, vessels)
         ),
+    }
+}
+
+pub fn raid_goal(goal: RaidGoal) -> &'static str {
+    match goal {
+        RaidGoal::Exfiltrate => "exfiltrate its stores",
+        RaidGoal::PlantTap => "plant a tap",
+        RaidGoal::TakeOver => "take it over",
     }
 }
 

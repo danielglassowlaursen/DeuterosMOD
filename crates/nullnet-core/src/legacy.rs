@@ -19,6 +19,7 @@ use crate::command::CommandError;
 use crate::data::GameData;
 use crate::ids::{Day, HostId, NetworkId, PlayerId};
 use crate::items::ItemType;
+use crate::raid;
 use crate::site::Citadel;
 use crate::store::Store;
 use crate::transport::{self, Berth, VesselId, VesselState};
@@ -243,12 +244,17 @@ fn process_fleet(data: &GameData, world: &mut World, index: usize, events: &mut 
         }
     };
 
-    // A vessel of the holder's with daemons under command meets the swarm.
-    if let Some(defender) = best_defender(world, target, crew) {
-        let repelled = fleet_battle(world, index, defender, events);
-        if repelled {
-            return;
-        }
+    // A vessel of the holder's with daemons under command meets the swarm
+    // first, then the daemons stored in the citadel.
+    if let Some(defender) = best_defender(world, target, crew)
+        && fleet_battle(world, index, Defender::Vessel(defender), events)
+    {
+        return;
+    }
+    if raid::garrison(&world.hosts[usize::from(target.0)].site.citadel).daemons > 0
+        && fleet_battle(world, index, Defender::Garrison(target), events)
+    {
+        return;
     }
     world.legacy.fleets[index].siege_until = Some(day + SIEGE_DAYS);
     events.push(Event::UnderAttack {
@@ -277,22 +283,43 @@ fn best_defender(world: &World, host: HostId, crew: PlayerId) -> Option<VesselId
         .map(|(&id, _)| id)
 }
 
-/// A crew's vessel fights the swarm. Returns whether the swarm was driven
+/// Who meets a swarm at a citadel.
+#[derive(Clone, Copy)]
+enum Defender {
+    /// A crew's vessel with daemons under a C2 controller.
+    Vessel(VesselId),
+    /// The daemons stored in the citadel on this host.
+    Garrison(HostId),
+}
+
+/// A crew's defender fights the swarm. Returns whether the swarm was driven
 /// off. The swarm pulls out once it has lost half its daemons.
 fn fleet_battle(
     world: &mut World,
     index: usize,
-    vessel_id: VesselId,
+    defender: Defender,
     events: &mut Vec<Event>,
 ) -> bool {
     let day = world.day;
     let fleet = &world.legacy.fleets[index];
-    let vessel = &world.vessels[&vessel_id];
-    let attacker = Side {
-        daemons: vessel.daemons,
-        level: vessel.pilot.as_ref().map_or(0, |p| p.level()),
+    let (crew, host, owner, vessel_id) = match defender {
+        Defender::Vessel(id) => {
+            let vessel = &world.vessels[&id];
+            let side = Side {
+                daemons: vessel.daemons,
+                level: vessel.pilot.as_ref().map_or(0, |p| p.level()),
+            };
+            (side, vessel.host, vessel.owner, Some(id))
+        }
+        Defender::Garrison(host) => {
+            let state = &world.hosts[usize::from(host.0)];
+            let Some(Controller::Crew(owner)) = state.controller else {
+                return false;
+            };
+            (raid::garrison(&state.site.citadel), host, owner, None)
+        }
     };
-    let defender = Side {
+    let swarm = Side {
         daemons: fleet.daemons,
         level: 0,
     };
@@ -301,13 +328,18 @@ fn fleet_battle(
     } else {
         0
     };
-    let report = battle::fight(&mut world.rng, attacker, defender, flee_at);
-    let host = vessel.host;
-    let owner = vessel.owner;
+    let report = battle::fight(&mut world.rng, crew, swarm, flee_at);
 
     world.legacy.fleets[index].daemons = report.defender_left();
     let repelled = report.outcome != Outcome::DefenderWon;
-    settle_vessel(world, vessel_id, &report, events);
+    match defender {
+        Defender::Vessel(id) => settle_vessel(world, id, &report, events),
+        Defender::Garrison(host) => raid::settle_garrison(
+            &mut world.hosts[usize::from(host.0)].site.citadel,
+            crew.daemons,
+            report.attacker_left(),
+        ),
+    }
     events.push(Event::BattleFought {
         day,
         player: owner,
@@ -328,7 +360,7 @@ fn fleet_battle(
 
 /// Applies a battle to the crew's vessel: its losses, its operator's
 /// experience, and its end if nothing is left.
-fn settle_vessel(
+pub(crate) fn settle_vessel(
     world: &mut World,
     id: VesselId,
     report: &battle::Report,
@@ -387,6 +419,7 @@ fn capture(data: &GameData, world: &mut World, index: usize, events: &mut Vec<Ev
     state.controller = Some(Controller::Legacy);
     state.attacked = 0;
     let site = &mut state.site;
+    site.siphons.clear();
     let mut store = Store::default();
     store.add(ItemType::Daemon, GARRISON);
     for &resource in &data.host(host).resources {
@@ -432,7 +465,8 @@ fn capture(data: &GameData, world: &mut World, index: usize, events: &mut Vec<Ev
 }
 
 /// A swarm with enough daemons picks a citadel of a crew at war in its
-/// network: the least attacked first, then the farthest out.
+/// network: the hottest crew's first, then the least attacked, then the
+/// farthest out.
 fn check_trigger(data: &GameData, world: &mut World, index: usize, events: &mut Vec<Event>) {
     let day = world.day;
     let fleet = &world.legacy.fleets[index];
@@ -461,7 +495,17 @@ fn check_trigger(data: &GameData, world: &mut World, index: usize, events: &mut 
                     && matches!(state.controller, Some(Controller::Crew(crew))
                         if world.players.get(&crew).is_some_and(|p| p.war.is_some()))
             })
-            .min_by_key(|(h, _)| (world.hosts[*h].attacked, std::cmp::Reverse(*h)))
+            .min_by_key(|(h, _)| {
+                let heat = match world.hosts[*h].controller {
+                    Some(Controller::Crew(crew)) => raid::heat(world, crew),
+                    _ => 0,
+                };
+                (
+                    std::cmp::Reverse(heat),
+                    world.hosts[*h].attacked,
+                    std::cmp::Reverse(*h),
+                )
+            })
             .map(|(h, _)| HostId(h as u16));
     }
     let Some(target) = target else {
@@ -532,7 +576,7 @@ pub(crate) fn attack(
     let day = world.day;
 
     if let Some(index) = besieging {
-        fleet_battle(world, index, id, events);
+        fleet_battle(world, index, Defender::Vessel(id), events);
         return Ok(());
     }
 
@@ -556,13 +600,17 @@ pub(crate) fn attack(
         day,
         player: owner,
         host,
-        vessel: id,
+        vessel: Some(id),
         report,
     });
     if freed {
         let state = &mut world.hosts[usize::from(host.0)];
         state.controller = Some(Controller::Crew(owner));
         state.attacked = 0;
+        state.site.siphons.clear();
+        if let Some(player) = world.players.get_mut(&owner) {
+            player.freed += 1;
+        }
         // The network's swarm has lost its base here; it regroups at
         // another Legacy host in the network, or nowhere.
         let network = network_of(data, host);

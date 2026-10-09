@@ -258,6 +258,43 @@ fn main() -> ExitCode {
                 Event::FragmentFound { day, player, .. } => {
                     Some((day, player, "source fragment found".to_string()))
                 }
+                Event::Raid {
+                    day,
+                    player,
+                    defender,
+                    host: h,
+                    goal,
+                    ref report,
+                    ref loot,
+                    ..
+                } => Some((
+                    day,
+                    player,
+                    format!(
+                        "RAID on {} ({}) for {goal:?}: {} vs {} daemons, {:?}{}",
+                        host(h),
+                        name(defender),
+                        report.attacker.daemons,
+                        report.defender.daemons,
+                        report.outcome,
+                        if loot.is_empty() {
+                            String::new()
+                        } else {
+                            format!(", took {loot:?}")
+                        }
+                    ),
+                )),
+                Event::HostTaken {
+                    day,
+                    player,
+                    from,
+                    host: h,
+                } => Some((day, player, format!("TOOK {} from {}", host(h), name(from)))),
+                Event::GameOver {
+                    day,
+                    player,
+                    reason,
+                } => Some((day, player, format!("GAME OVER: wins by {reason:?}"))),
                 Event::RecruitsGraduated {
                     day,
                     player,
@@ -297,6 +334,19 @@ fn main() -> ExitCode {
 
     println!();
     println!("After {} days ({}):", world.day, date(world.day));
+    for score in nullnet_core::scores(&data, &world) {
+        println!(
+            "  {:<10}  {:>4} points: {} citadels, {} hosts, {} freed, {} taken, {} researched, heat {}",
+            name(score.player),
+            score.total,
+            score.citadels,
+            score.hosts,
+            score.freed,
+            score.taken,
+            score.research,
+            nullnet_core::heat(&world, score.player)
+        );
+    }
     for &(id, crew) in &crews {
         let player = &world.players[&id];
         let held: Vec<&str> = world
@@ -321,9 +371,26 @@ fn main() -> ExitCode {
                 .count()
         };
         let researched = player.research.values().filter(|r| r.researched).count();
+        let daemons: u32 = world
+            .vessels
+            .values()
+            .filter(|v| v.owner == id)
+            .map(|v| v.daemons)
+            .sum::<u32>()
+            + player
+                .hideout
+                .citadel
+                .store
+                .get(nullnet_core::ItemType::Daemon)
+            + world
+                .hosts
+                .iter()
+                .filter(|h| h.controller == Some(Controller::Crew(id)))
+                .map(|h| h.site.citadel.store.get(nullnet_core::ItemType::Daemon))
+                .sum::<u32>();
         println!(
             "  {crew:<10}  taps {}  citadel {}/{}  research {researched}  \
-             droppers {}  worms {}  hosts {held:?}",
+             droppers {}  worms {}  daemons {daemons}  hosts {held:?}",
             player.hideout.taps,
             player.hideout.citadel.modules,
             nullnet_core::Citadel::MODULES,
@@ -338,8 +405,73 @@ fn main() -> ExitCode {
                     .collect::<Vec<_>>()
                     .join(", ")
             };
-            println!("    hideout: {}", store(&player.hideout.store));
-            println!("    citadel: {}", store(&player.hideout.citadel.store));
+            let teams = |staff: &[nullnet_core::Staff]| {
+                staff
+                    .iter()
+                    .map(|s| format!("{:?} {} L{}", s.kind, s.count, s.level()))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            println!(
+                "    hideout: {} | staff [{}] | coders {}",
+                store(&player.hideout.store),
+                teams(&player.hideout.staff),
+                player
+                    .workshop
+                    .coders
+                    .as_ref()
+                    .map_or("none".to_string(), |c| format!(
+                        "{} L{}",
+                        c.count,
+                        c.level()
+                    ))
+            );
+            println!(
+                "    citadel: {} | staff [{}] | coders {} | bot {}",
+                store(&player.hideout.citadel.store),
+                teams(&player.hideout.citadel.staff),
+                player.hideout.citadel.workshop.coders.as_ref().map_or(
+                    "none".to_string(),
+                    |c| format!("{} L{}", c.count, c.level())
+                ),
+                player.hideout.citadel.workshop.automated
+            );
+            for (i, h) in world.hosts.iter().enumerate() {
+                if h.controller != Some(Controller::Crew(id)) {
+                    continue;
+                }
+                let site = &h.site;
+                println!(
+                    "    {}: backdoor {}/2, taps {}, coders {}, bot {}, staff [{}], inside [{}], citadel [{}]",
+                    host(nullnet_core::HostId(i as u16)),
+                    site.backdoor_parts,
+                    site.taps,
+                    site.citadel.workshop.coders.is_some(),
+                    site.citadel.workshop.automated,
+                    teams(&site.citadel.staff),
+                    store(&site.store),
+                    store(&site.citadel.store)
+                );
+            }
+            for (vid, v) in world.vessels.iter().filter(|(_, v)| v.owner == id) {
+                println!(
+                    "    vessel {} {:?} at {} {:?} fuel {} pilot {} daemons {} c2 {} script {} modules {:?}",
+                    vid.0,
+                    v.kind,
+                    host(v.host),
+                    v.state,
+                    v.fuel,
+                    v.pilot.is_some(),
+                    v.daemons,
+                    v.c2,
+                    v.script.as_ref().map_or("none", |s| if s.running() {
+                        "running"
+                    } else {
+                        "idle"
+                    }),
+                    v.modules
+                );
+            }
         }
     }
     if rejected > 0 {

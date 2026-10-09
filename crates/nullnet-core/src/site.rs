@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::data::HostDef;
 use crate::items::ItemType;
 use crate::links::LinkConfig;
+use crate::raid::Siphon;
 use crate::staff::Staff;
 use crate::store::Store;
 use crate::workshop::Workshop;
@@ -26,6 +27,10 @@ pub struct Site {
     /// Teams stationed here, up to [`STAFF_SLOTS`].
     pub staff: Vec<Staff>,
     pub citadel: Citadel,
+    /// Taps rival crews planted here; each siphons a share of what the
+    /// taps extract.
+    #[serde(default)]
+    pub siphons: Vec<Siphon>,
 }
 
 impl Site {

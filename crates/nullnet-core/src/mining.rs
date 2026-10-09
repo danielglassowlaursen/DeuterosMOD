@@ -2,12 +2,16 @@
 //! (Godot/Code/Objects/Planet.cs).
 
 use crate::data::GameData;
+use crate::ids::PlayerId;
+use crate::items::ItemType;
+use crate::raid::SIPHON_SHARE;
 use crate::rng::Rng;
 use crate::site::Site;
 use crate::world::World;
 
 /// Mines every hideout and every host with taps. Hideouts mine only on even
-/// days, as Earth did in the original.
+/// days, as Earth did in the original. A tap a rival planted on a host
+/// siphons its share of the day's extraction into that rival's hideout.
 pub(crate) fn run_day(data: &GameData, world: &mut World) {
     let even_day = world.day.is_multiple_of(2);
     for player in world.players.values_mut() {
@@ -15,8 +19,33 @@ pub(crate) fn run_day(data: &GameData, world: &mut World) {
             mine_site(data, &mut world.rng, &mut player.hideout);
         }
     }
-    for host in &mut world.hosts {
-        mine_site(data, &mut world.rng, &mut host.site);
+    for h in 0..world.hosts.len() {
+        let extracted = mine_site(data, &mut world.rng, &mut world.hosts[h].site);
+        if extracted.is_empty() {
+            continue;
+        }
+        let siphons: Vec<PlayerId> = world.hosts[h]
+            .site
+            .siphons
+            .iter()
+            .map(|s| s.player)
+            .collect();
+        for player in siphons {
+            for &(item, amount) in &extracted {
+                let share = amount.div_ceil(SIPHON_SHARE);
+                let site = &mut world.hosts[h].site;
+                let source = if site.citadel.encrypted_link {
+                    &mut site.citadel.store
+                } else {
+                    &mut site.store
+                };
+                if source.take(item, share)
+                    && let Some(rival) = world.players.get_mut(&player)
+                {
+                    rival.hideout.store.add(item, share);
+                }
+            }
+        }
     }
 }
 
@@ -26,15 +55,20 @@ pub(crate) fn run_day(data: &GameData, world: &mut World) {
 /// 0-7 days times the resource's survey multiplier; a finished survey finds
 /// a vein of up to 32,767 units; a vein with units left gives taps x rate a
 /// day. Unlike the original, a tap never takes more than the vein holds.
-pub(crate) fn mine_site(data: &GameData, rng: &mut Rng, site: &mut Site) {
+///
+/// Returns what was extracted, but only on a site with siphons on it; the
+/// list stays empty everywhere else.
+pub(crate) fn mine_site(data: &GameData, rng: &mut Rng, site: &mut Site) -> Vec<(ItemType, u32)> {
+    let mut extracted = Vec::new();
     if site.taps == 0 || !site.backdoor_complete() || site.backdoor_damaged {
-        return;
+        return extracted;
     }
     let Site {
         taps,
         veins,
         store,
         citadel,
+        siphons,
         ..
     } = site;
     for vein in veins {
@@ -50,16 +84,20 @@ pub(crate) fn mine_site(data: &GameData, rng: &mut Rng, site: &mut Site) {
                 }
             }
         } else {
-            let extracted = (*taps * data.tap_rate[&vein.resource]).min(vein.amount);
-            vein.amount -= extracted;
+            let amount = (*taps * data.tap_rate[&vein.resource]).min(vein.amount);
+            vein.amount -= amount;
             let target = if citadel.encrypted_link {
                 &mut citadel.store
             } else {
                 &mut *store
             };
-            target.add(vein.resource, extracted);
+            target.add(vein.resource, amount);
+            if !siphons.is_empty() && amount > 0 {
+                extracted.push((vein.resource, amount));
+            }
         }
     }
+    extracted
 }
 
 #[cfg(test)]

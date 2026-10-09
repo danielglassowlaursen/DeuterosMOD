@@ -11,7 +11,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::data::GameData;
 use crate::ids::{Day, HostId, PlayerId};
+use crate::score::{GameEnd, Score};
 use crate::site::Site;
 use crate::transport::{Berth, Vessel, VesselId, VesselState};
 use crate::turn::{Event, TurnReport};
@@ -32,6 +34,12 @@ pub struct CrewView {
     pub vessels: BTreeMap<VesselId, Vessel>,
     /// Legacy swarms heading for or besieging the crew's hosts.
     pub threats: Vec<Threat>,
+    /// Hosts of rivals the crew has taps planted on, and until when.
+    pub taps_planted: Vec<(HostId, Day)>,
+    /// Every crew's score, highest first.
+    pub scores: Vec<Score>,
+    /// Set once the game is over.
+    pub ended: Option<GameEnd>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,6 +55,8 @@ pub struct CrewSummary {
     pub player: PlayerId,
     pub name: String,
     pub hosts: u32,
+    /// Traces the crew has left on the net; the Legacy Net hunts the hottest.
+    pub heat: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,7 +69,8 @@ pub struct HostView {
 }
 
 /// The world as `player` sees it, or `None` if it is not in the game.
-pub fn crew_view(world: &World, player: PlayerId, home: HostId) -> Option<CrewView> {
+pub fn crew_view(data: &GameData, world: &World, player: PlayerId) -> Option<CrewView> {
+    let home = data.hideout.host;
     let me = world.players.get(&player)?.clone();
     let held = |crew: PlayerId| {
         world
@@ -82,6 +93,7 @@ pub fn crew_view(world: &World, player: PlayerId, home: HostId) -> Option<CrewVi
                 player: id,
                 name: p.name.clone(),
                 hosts: held(id),
+                heat: crate::raid::heat(world, id),
             })
             .collect(),
         hosts: world
@@ -122,6 +134,21 @@ pub fn crew_view(world: &World, player: PlayerId, home: HostId) -> Option<CrewVi
                 })
             })
             .collect(),
+        taps_planted: world
+            .hosts
+            .iter()
+            .enumerate()
+            .flat_map(|(h, state)| {
+                state
+                    .site
+                    .siphons
+                    .iter()
+                    .filter(|s| s.player == player)
+                    .map(move |s| (HostId(h as u16), s.until))
+            })
+            .collect(),
+        scores: crate::score::scores(data, world),
+        ended: world.ended.clone(),
         me,
     })
 }
@@ -149,7 +176,10 @@ impl Event {
             | Event::BattleFought { day, .. }
             | Event::VesselLost { day, .. }
             | Event::CacheFound { day, .. }
-            | Event::FragmentFound { day, .. } => day,
+            | Event::FragmentFound { day, .. }
+            | Event::Raid { day, .. }
+            | Event::HostTaken { day, .. }
+            | Event::GameOver { day, .. } => day,
         }
     }
 
@@ -175,16 +205,29 @@ impl Event {
             | Event::BattleFought { player, .. }
             | Event::VesselLost { player, .. }
             | Event::CacheFound { player, .. }
-            | Event::FragmentFound { player, .. } => player,
+            | Event::FragmentFound { player, .. }
+            | Event::Raid { player, .. }
+            | Event::HostTaken { player, .. }
+            | Event::GameOver { player, .. } => player,
         }
     }
 
-    /// Whether every crew learns of the event: a host changing hands is
-    /// seen across the net.
+    /// Whether the event happened to `player`: its own, or a raid on it.
+    pub fn involves(&self, player: PlayerId) -> bool {
+        self.player() == player
+            || matches!(self, Event::Raid { defender, .. } if *defender == player)
+    }
+
+    /// Whether every crew learns of the event: a host changing hands and
+    /// the end of the game are seen across the net.
     pub fn is_public(&self) -> bool {
         matches!(
             self,
-            Event::HostClaimed { .. } | Event::HostCaptured { .. } | Event::HostFreed { .. }
+            Event::HostClaimed { .. }
+                | Event::HostCaptured { .. }
+                | Event::HostFreed { .. }
+                | Event::HostTaken { .. }
+                | Event::GameOver { .. }
         )
     }
 }
@@ -205,7 +248,7 @@ impl TurnReport {
             events: self
                 .events
                 .iter()
-                .filter(|e| e.player() == player || e.is_public())
+                .filter(|e| e.involves(player) || e.is_public())
                 .cloned()
                 .collect(),
         }
@@ -269,7 +312,7 @@ mod tests {
             .insert(VesselId(4), vessel(RIVAL, transit, Berth::Lurking));
         resolve_turn(&data, &mut world, &Default::default(), 0);
 
-        let view = crew_view(&world, CREW, home).unwrap();
+        let view = crew_view(&data, &world, CREW).unwrap();
         assert_eq!(view.turn, 1);
         assert_eq!(view.me.name, "Crew");
         assert_eq!(
@@ -293,7 +336,7 @@ mod tests {
             view.vessels.keys().copied().collect::<Vec<_>>(),
             [VesselId(0), VesselId(2), VesselId(3)]
         );
-        assert!(crew_view(&world, PlayerId(7), home).is_none());
+        assert!(crew_view(&data, &world, PlayerId(7)).is_none());
     }
 
     #[test]

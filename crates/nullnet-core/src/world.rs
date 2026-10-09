@@ -10,6 +10,7 @@ use crate::legacy::Legacy;
 use crate::recruitment::Recruitment;
 use crate::research::{ResearchDef, ResearchProgress};
 use crate::rng::Rng;
+use crate::score::GameEnd;
 use crate::site::{Citadel, Site};
 use crate::staff::Staff;
 use crate::transport::{Vessel, VesselId};
@@ -31,6 +32,13 @@ pub struct World {
     pub vessels: BTreeMap<VesselId, Vessel>,
     pub next_vessel: u32,
     pub legacy: Legacy,
+    /// The day the game ends on if nobody has won by then; `None` for no
+    /// limit.
+    #[serde(default)]
+    pub end_day: Option<Day>,
+    /// Set once the game has ended; turns no longer change anything.
+    #[serde(default)]
+    pub ended: Option<GameEnd>,
 }
 
 /// Who holds a host.
@@ -61,6 +69,8 @@ impl World {
             vessels: BTreeMap::new(),
             next_vessel: 0,
             legacy: Legacy::default(),
+            end_day: None,
+            ended: None,
         }
     }
 
@@ -163,6 +173,15 @@ pub struct Player {
     pub milestones: Milestones,
     /// The day the crew went to war with the Legacy Net, once it has.
     pub war: Option<Day>,
+    /// Heat from the crew's raids; it cools by one a day.
+    #[serde(default)]
+    pub heat: u32,
+    /// Legacy hosts the crew has freed.
+    #[serde(default)]
+    pub freed: u32,
+    /// Hosts the crew has taken from rivals.
+    #[serde(default)]
+    pub taken: u32,
 }
 
 impl Player {
@@ -177,6 +196,9 @@ impl Player {
             research: BTreeMap::new(),
             milestones: Milestones::new(),
             war: None,
+            heat: 0,
+            freed: 0,
+            taken: 0,
         }
     }
 

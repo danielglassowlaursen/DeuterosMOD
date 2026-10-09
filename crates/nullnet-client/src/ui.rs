@@ -9,9 +9,9 @@ use bevy::prelude::*;
 use bevy::ui::{FocusPolicy, RelativeCursorPosition};
 use nullnet_api::CrewStatus;
 use nullnet_core::{
-    Berth, Command, Controller, Destination, GameData, HostId, ItemCategory, ItemType, Module,
-    ModuleKind, Route, Seat, Site, SiteRef, Staff, StaffKind, Vessel, VesselId, VesselKind,
-    WorkshopRef, date,
+    Berth, Command, Controller, Destination, EndReason, GameData, HostId, ItemCategory, ItemType,
+    Module, ModuleKind, PROTECTION_TURNS, RaidGoal, Route, Seat, Site, SiteRef, Staff, StaffKind,
+    Vessel, VesselId, VesselKind, WorkshopRef, date,
 };
 
 use crate::Rules;
@@ -396,25 +396,60 @@ fn top_bar(p: &mut ChildSpawnerCommands, session: &Session, api: &Api) {
             status.game.turn_days
         ),
     );
-    p.spawn((text("", 12.0, MUTED), Countdown));
+    if let Some(end) = &status.view.ended {
+        let winner = status
+            .crews
+            .iter()
+            .find(|c| c.player == end.winner)
+            .map_or("a crew".to_string(), |c| c.name.clone());
+        p.spawn(text(
+            format!(
+                "GAME OVER on {}: {} wins {}",
+                date(end.day),
+                winner,
+                match end.reason {
+                    EndReason::Domination => "by holding most of the home network",
+                    EndReason::DayLimit => "on points",
+                }
+            ),
+            13.0,
+            GOOD,
+        ));
+    } else {
+        p.spawn((text("", 12.0, MUTED), Countdown));
+        if let Some(end) = status.game.end_day {
+            muted(p, format!("Last day {}", date(end)));
+        }
+    }
     if status.view.me.war.is_some() {
         p.spawn(text("AT WAR", 12.0, WARN));
     }
+    if status.turn < PROTECTION_TURNS {
+        muted(
+            p,
+            format!("Crews cannot raid each other before turn {PROTECTION_TURNS}"),
+        );
+    }
     for crew in &status.crews {
         let color = Color::Srgba(Srgba::hex(crew_color(status.player, crew.player)).unwrap());
-        let held = status
+        let summary = status.view.crews.iter().find(|c| c.player == crew.player);
+        let held = summary.map_or(0, |c| c.hosts);
+        let heat = summary.map_or(0, |c| c.heat);
+        let points = status
             .view
-            .crews
+            .scores
             .iter()
-            .find(|c| c.player == crew.player)
-            .map_or(0, |c| c.hosts);
+            .find(|s| s.player == crew.player)
+            .map_or(0, |s| s.total);
         p.spawn(text(
             format!(
-                "{}{} [{}] {} hosts",
+                "{}{} [{}] {} hosts  {} pts  heat {}",
                 crew.name,
                 if crew.bot { " (bot)" } else { "" },
                 if crew.submitted { "x" } else { " " },
-                held
+                held,
+                points,
+                heat
             ),
             12.0,
             color,
@@ -729,6 +764,17 @@ fn host_status(status: &CrewStatus, data: &GameData, host: HostId) -> String {
             ),
             _ => "a swarm is coming".to_string(),
         });
+    }
+    if let Some((_, until)) = status.view.taps_planted.iter().find(|(h, _)| *h == host) {
+        parts.push(format!("your tap siphons here until {}", date(*until)));
+    }
+    if let Some(site) = site_of(status, data, host)
+        && !site.siphons.is_empty()
+    {
+        parts.push(format!(
+            "{} rival tap(s) siphon your extraction",
+            site.siphons.len()
+        ));
     }
     parts.join(", ")
 }
@@ -1252,6 +1298,36 @@ fn vessel_panel(
             } else if legacy_here {
                 r.spawn(text(
                     "A C2 controller and daemons aboard could take this host.",
+                    11.0,
+                    MUTED,
+                ));
+            }
+            let rival_here = matches!(
+                status.view.hosts[usize::from(host.0)].controller,
+                Some(Controller::Crew(crew)) if crew != status.player
+            );
+            if rival_here && vessel.c2 && vessel.daemons > 0 {
+                if status.turn < PROTECTION_TURNS {
+                    r.spawn(text(
+                        format!("Raids open on turn {PROTECTION_TURNS}."),
+                        11.0,
+                        MUTED,
+                    ));
+                } else {
+                    for (goal, label) in [
+                        (RaidGoal::Exfiltrate, "Raid: exfiltrate the stores"),
+                        (RaidGoal::PlantTap, "Raid: plant a tap"),
+                        (RaidGoal::TakeOver, "Raid: take the host"),
+                    ] {
+                        r.spawn(button(
+                            format!("{label} ({} daemons)", vessel.daemons),
+                            Action::Order(Command::Raid { vessel: id, goal }),
+                        ));
+                    }
+                }
+            } else if rival_here {
+                r.spawn(text(
+                    "A C2 controller and daemons aboard could raid this host.",
                     11.0,
                     MUTED,
                 ));

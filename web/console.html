@@ -55,6 +55,7 @@
           <label>Game name <input id="gname" type="text" value="Friday run"></label>
           <label>Days per turn <input id="gdays" type="number" value="10" min="1" max="100"></label>
           <label>Hours before a turn runs without everyone's orders <input id="ghours" type="number" value="24" min="0"></label>
+          <label>Last day (highest score wins; 0 for no limit) <input id="gend" type="number" value="3000" min="0"></label>
           <label>Seed (blank for random) <input id="gseed" type="text" placeholder="7"></label>
         </div>
         <div class="crews-form" id="crewsForm">
@@ -163,7 +164,7 @@
         bot: row.querySelector('input[type="checkbox"]').checked,
       })).filter(c => c.name);
       const seed = $('gseed').value.trim();
-      const body = { name: $('gname').value, crews, turn_days: Number($('gdays').value), deadline_hours: Number($('ghours').value) };
+      const body = { name: $('gname').value, crews, turn_days: Number($('gdays').value), deadline_hours: Number($('ghours').value), end_day: Number($('gend').value) };
       if (seed) body.seed = Number(seed);
       $('createMsg').textContent = 'Creating…';
       try {
@@ -242,6 +243,12 @@
     $('orders').value = JSON.stringify(orders, null, 1).replace(/\n\s*/g, ' ').replace(/\[ \{/g, '[\n {').replace(/\}, \{/g, '},\n {').replace(/\} \]/g, '}\n]');
   }
 
+  function endText(s) {
+    const e = s.view.ended;
+    if (!e) return 'over';
+    const winner = (s.crews.find(c => c.player === e.winner) || { name: 'crew ' + e.winner }).name;
+    return esc(winner) + ' wins ' + (e.reason === 'Domination' ? 'by holding most of the home network' : 'on points') + ' on ' + rn(e.day);
+  }
   function countdown(deadline) {
     const left = deadline - Math.floor(Date.now() / 1000);
     if (left <= 0) return 'due now';
@@ -256,9 +263,14 @@
     $('gameInfo').innerHTML =
       '<b>Turn</b><span>' + s.turn + ' · ' + rn(s.day) + '</span>' +
       '<b>Turn length</b><span>' + s.game.turn_days + ' days</span>' +
-      '<b>Deadline</b><span>' + countdown(s.deadline) + ' (' + new Date(s.deadline * 1000).toLocaleString() + ')</span>' +
-      '<b>You</b><span>' + (s.submitted ? '<span class="ok">handed in</span>' : 'orders not handed in') + '</span>';
-    $('crewList').innerHTML = s.crews.map(c => '<span class="chip' + (c.submitted ? ' on' : '') + '">' + esc(c.name) + (c.bot ? ' (bot)' : '') + (c.submitted ? ' ✓' : '') + ' · ' + (s.view.crews.find(v => v.player === c.player) || { hosts: 0 }).hosts + ' hosts</span>').join('');
+      (s.over
+        ? '<b>Game over</b><span class="ok">' + endText(s) + '</span>'
+        : '<b>Deadline</b><span>' + countdown(s.deadline) + ' (' + new Date(s.deadline * 1000).toLocaleString() + ')</span>' +
+          '<b>Last day</b><span>' + (s.game.end_day != null ? rn(s.game.end_day) : 'none') + '</span>') +
+      '<b>You</b><span>' + (s.submitted ? '<span class="ok">handed in</span>' : 'orders not handed in') + (me.war ? ' · <span class="warn">at war with the Legacy Net</span>' : '') + '</span>';
+    const scoreOf = p => (s.view.scores.find(v => v.player === p) || { total: 0 }).total;
+    const summaryOf = p => s.view.crews.find(v => v.player === p) || { hosts: 0, heat: 0 };
+    $('crewList').innerHTML = s.crews.map(c => '<span class="chip' + (c.submitted ? ' on' : '') + '">' + esc(c.name) + (c.bot ? ' (bot)' : '') + (c.submitted ? ' ✓' : '') + ' · ' + summaryOf(c.player).hosts + ' hosts · ' + scoreOf(c.player) + ' pts · heat ' + summaryOf(c.player).heat + '</span>').join('');
     if (!s.submitted && $('orders').value.trim() === '[]' && s.orders.length) $('orders').value = JSON.stringify(s.orders);
 
     const team = t => t ? esc(t.leader) + ' · ' + t.count + ' ' + t.kind.toLowerCase() + 's · level ' + level(t) : 'none';
@@ -321,7 +333,10 @@
       case 'AttackRepelled': return 'The swarm attacking host ' + a.host + ' was driven off';
       case 'HostCaptured': return 'Crew ' + a.player + ' lost host ' + a.host + ' to the Legacy Net';
       case 'HostFreed': return 'Crew ' + a.player + ' freed host ' + a.host;
-      case 'BattleFought': return 'Battle at host ' + a.host + ': ' + a.report.attacker.daemons + ' vs ' + a.report.defender.daemons + ' daemons, ' + a.report.outcome;
+      case 'BattleFought': return (a.vessel == null ? 'The garrison' : 'Vessel ' + a.vessel) + ' fought at host ' + a.host + ': ' + a.report.attacker.daemons + ' vs ' + a.report.defender.daemons + ' daemons, ' + a.report.outcome;
+      case 'Raid': return 'Crew ' + a.player + ' raided crew ' + a.defender + ' at host ' + a.host + ' (' + a.goal + '): ' + a.report.attacker.daemons + ' vs ' + a.report.defender.daemons + ' daemons, ' + a.report.outcome + (a.loot.length ? ', took ' + a.loot.map(l => l[1] + ' ' + l[0]).join(', ') : '');
+      case 'HostTaken': return 'Crew ' + a.player + ' took host ' + a.host + ' from crew ' + a.from;
+      case 'GameOver': return 'GAME OVER: crew ' + a.player + ' wins by ' + a.reason;
       case 'VesselLost': return 'Vessel ' + a.vessel + ' was lost at host ' + a.host;
       case 'CacheFound': return 'Vessel ' + a.vessel + ' found a cache of ' + a.resource + ' (size ' + a.size + ')';
       case 'FragmentFound': return 'Vessel ' + a.vessel + ' found a fragment of the Legacy source code';

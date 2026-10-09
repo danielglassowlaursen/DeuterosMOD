@@ -4,7 +4,7 @@
 //! Every crew is identified by the secret token in its invite link; its
 //! routes hang under `/api/crew/{token}`.
 
-use nullnet_core::{Command, CrewView, PlayerId, TurnReport};
+use nullnet_core::{Command, CrewView, Day, PlayerId, TurnReport};
 use serde::{Deserialize, Serialize};
 
 /// `POST /api/games`
@@ -18,6 +18,10 @@ pub struct CreateGame {
     /// Hours a turn waits for orders before it runs anyway. Default 24.
     #[serde(default)]
     pub deadline_hours: Option<u32>,
+    /// The game's last day; the highest score wins then if nobody has won
+    /// before. Default 3000; 0 for no limit.
+    #[serde(default)]
+    pub end_day: Option<Day>,
     /// The map's seed; random if left out.
     #[serde(default)]
     pub seed: Option<u64>,
@@ -37,6 +41,9 @@ pub struct GameInfo {
     pub name: String,
     pub turn_days: u32,
     pub deadline_hours: u32,
+    /// The game's last day, if it has one.
+    #[serde(default)]
+    pub end_day: Option<Day>,
 }
 
 /// The answer to `POST /api/games`.
@@ -85,6 +92,9 @@ pub struct CrewStatus {
     pub view: CrewView,
     /// The last resolved turn, as this crew may see it.
     pub last_turn: Option<CrewTurn>,
+    /// Whether the game is over; `view.ended` says how.
+    #[serde(default)]
+    pub over: bool,
 }
 
 /// `GET /api/crew/{token}/turns/{turn}`

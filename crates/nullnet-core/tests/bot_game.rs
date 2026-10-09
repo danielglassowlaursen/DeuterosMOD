@@ -3,8 +3,9 @@
 //! nothing the rules promise has broken.
 
 use nullnet_core::{
-    Citadel, Command, CommandError, Controller, Event, GameData, HostId, Milestone, Module, Orders,
-    PlayerId, STAFF_SLOTS, Site, StaffKind, Store, TurnReport, Vessel, World, bot, resolve_turn,
+    AbortReason, Citadel, CommandError, Controller, Event, GameData, HostId, Milestone, Module,
+    Orders, PlayerId, STAFF_SLOTS, Site, StaffKind, Store, TurnReport, Vessel, World, bot,
+    resolve_turn,
 };
 
 const TURN: u32 = 10;
@@ -45,9 +46,10 @@ fn play(data: &GameData, world: &mut World, days: u32) -> Vec<Event> {
     events
 }
 
-/// The bot only gives orders the rules accept. The one exception is a race:
+/// The bot only gives orders the rules accept. The exceptions are races:
 /// two crews installing on the same free host in one turn, where the crew
-/// whose orders apply first claims it.
+/// whose orders apply first claims it, or a rival's orders changing who
+/// holds a host before the bot's apply.
 fn check_orders(world: &World, orders: &Orders, report: &TurnReport) {
     for rejected in &report.rejected {
         let command = &orders[&rejected.player][rejected.index];
@@ -55,8 +57,11 @@ fn check_orders(world: &World, orders: &Orders, report: &TurnReport) {
             Some(Controller::Crew(crew)) => crew != rejected.player,
             _ => false,
         };
-        let race = matches!(command, Command::Deploy { .. })
-            && matches!(rejected.error, CommandError::HostTaken(host) if rival(host));
+        let race = match rejected.error {
+            CommandError::HostTaken(host) | CommandError::NotYourHost(host) => rival(host),
+            CommandError::NothingToAttack | CommandError::NothingToRaid => true,
+            _ => false,
+        };
         assert!(
             race && world.players.len() > 1,
             "day {}: {:?} gave {command:?}, rejected: {}",
@@ -124,21 +129,22 @@ fn check_world(data: &GameData, before: &World, world: &World, report: &TurnRepo
         }
     }
 
-    // A held host changes hands only through a siege or a battle.
+    // A held host changes hands only through a siege, a battle or a raid.
     for (index, (old, new)) in before.hosts.iter().zip(&world.hosts).enumerate() {
         let what = format!("{} on day {}", data.hosts[index].name, world.day);
         check_site(&new.site, &what);
         if old.controller.is_some() && old.controller != new.controller {
             let id = HostId(index as u16);
             let fought = report.events.iter().any(|e| {
-                matches!(e, Event::HostCaptured { host, .. } | Event::HostFreed { host, .. } if *host == id)
+                matches!(
+                    e,
+                    Event::HostCaptured { host, .. }
+                        | Event::HostFreed { host, .. }
+                        | Event::HostTaken { host, .. }
+                    if *host == id
+                )
             });
             assert!(fought, "{what}: changed hands without a fight");
-            assert!(
-                new.controller == Some(Controller::Legacy)
-                    || old.controller == Some(Controller::Legacy),
-                "{what}: only the Legacy Net takes and loses hosts this way"
-            );
         }
         assert!(
             new.site.citadel.modules >= old.site.citadel.modules,
@@ -154,11 +160,18 @@ fn check_world(data: &GameData, before: &World, world: &World, report: &TurnRepo
         assert!(world.players.contains_key(&vessel.owner));
     }
 
+    // A vessel stopped by a siege or a host lost on the way is the war's
+    // doing; one burned or stopped for want of anonymisation or a pilot is
+    // the bot's.
     for event in &report.events {
         assert!(
             !matches!(
                 event,
-                Event::VesselBurned { .. } | Event::VesselStopped { .. }
+                Event::VesselBurned { .. }
+                    | Event::VesselStopped {
+                        reason: AbortReason::NoAnonymisation | AbortReason::NoPilot,
+                        ..
+                    }
             ),
             "the bot lost control of a vessel: {event:?}"
         );
@@ -204,26 +217,56 @@ fn a_lone_crew_builds_its_citadel_and_spreads_through_the_home_network() {
 
     let player = &world.players[&crew];
     assert_eq!(player.hideout.taps, Site::MAX_TAPS);
-    assert!(player.hideout.citadel.workshop.coders.is_some());
+    let workshop = &player.hideout.citadel.workshop;
+    assert!(
+        workshop.coders.is_some() || workshop.automated,
+        "coders or a build-bot run the citadel's workshop"
+    );
     assert!(
         world.vessels.values().any(|v| v.script.is_some()),
         "the dropper runs supplies by exfil script"
     );
-    // Six citadels bring the Legacy Net down on the crew, and a bot does
-    // not defend itself yet, so it loses hosts as fast as it claims them.
-    let lost = events
-        .iter()
-        .filter(|e| matches!(e, Event::HostCaptured { player, .. } if *player == crew))
-        .count();
+    // The bot holds back from the sixth citadel until it is armed, mines
+    // the cache field for a source fragment, works a colony with a backdoor
+    // and taps, and builds daemons and a warship.
+    assert!(
+        milestone_day(&events, crew, Milestone::SourceCode).is_some(),
+        "the sniffer found a fragment"
+    );
     assert!(
         milestone_day(&events, crew, Milestone::Daemons).is_some(),
-        "war came"
+        "the exploit opened daemons"
     );
-    assert!(lost > 0, "the Legacy Net struck back");
+    assert!(player.war.is_none(), "no war before the crew is ready");
     let held = citadels(&world, crew);
+    assert!(held >= 3, "only {held} citadels by day 3000");
+    let colony = world.hosts.iter().any(|h| {
+        h.controller == Some(Controller::Crew(crew))
+            && h.site.backdoor_complete()
+            && h.site.taps == Site::MAX_TAPS
+    });
+    assert!(colony, "a colony with a backdoor and taps");
+    let daemons: u32 = world
+        .hosts
+        .iter()
+        .filter(|h| h.controller == Some(Controller::Crew(crew)))
+        .map(|h| h.site.citadel.store.get(nullnet_core::ItemType::Daemon))
+        .sum::<u32>()
+        + player
+            .hideout
+            .citadel
+            .store
+            .get(nullnet_core::ItemType::Daemon)
+        + world
+            .vessels
+            .values()
+            .filter(|v| v.owner == crew)
+            .map(|v| v.daemons)
+            .sum::<u32>();
+    assert!(daemons >= 10, "only {daemons} daemons by day 3000");
     assert!(
-        held + lost >= 8,
-        "only {held} citadels and {lost} lost by day 3000"
+        world.vessels.values().any(|v| v.owner == crew && v.c2),
+        "a warship with a C2 controller"
     );
 }
 
@@ -252,6 +295,8 @@ fn rival_crews_race_for_the_home_network_without_breaking_the_rules() {
                     && def.name != data.host(data.hideout.host).name
             })
             .count();
+        // Every crew builds its five citadels (the sixth waits on being
+        // armed), or more where the war has taken some.
         let total: usize = world
             .players
             .keys()
@@ -262,7 +307,7 @@ fn rival_crews_race_for_the_home_network_without_breaking_the_rules() {
             })
             .sum();
         assert!(
-            free == 0 || total >= 20,
+            free == 0 || total >= 3 * crews as usize,
             "{crews} crews: {total} citadels built, {free} hosts still free"
         );
     }

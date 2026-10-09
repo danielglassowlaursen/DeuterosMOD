@@ -7,12 +7,14 @@ use crate::command::{Command, CommandError};
 use crate::data::GameData;
 use crate::ids::{Day, HostId, PlayerId};
 use crate::items::ItemType;
+use crate::raid::RaidGoal;
+use crate::score::EndReason;
 use crate::staff::StaffKind;
 use crate::transport::{self, AbortReason, Berth, VesselId};
 use crate::unlocks::{self, Milestone};
 use crate::workshop::{self, WorkshopRef};
 use crate::world::World;
-use crate::{caches, legacy, links, mining, recruitment, research};
+use crate::{caches, legacy, links, mining, raid, recruitment, research, score};
 
 /// Every player's orders for one turn.
 pub type Orders = BTreeMap<PlayerId, Vec<Command>>;
@@ -121,12 +123,13 @@ pub enum Event {
         player: PlayerId,
         host: HostId,
     },
-    /// The crew's vessel fought the Legacy Net.
+    /// The crew fought the Legacy Net: with a vessel, or with the daemons
+    /// stored in the citadel at `host` when `vessel` is `None`.
     BattleFought {
         day: Day,
         player: PlayerId,
         host: HostId,
-        vessel: VesselId,
+        vessel: Option<VesselId>,
         report: battle::Report,
     },
     /// A vessel was destroyed in battle or when its host fell.
@@ -149,6 +152,31 @@ pub enum Event {
         day: Day,
         player: PlayerId,
         vessel: VesselId,
+    },
+    /// `player` raided `defender`'s host. Both crews see it; `loot` is what
+    /// an exfiltration carried off.
+    Raid {
+        day: Day,
+        player: PlayerId,
+        defender: PlayerId,
+        host: HostId,
+        vessel: VesselId,
+        goal: RaidGoal,
+        report: battle::Report,
+        loot: Vec<(ItemType, u32)>,
+    },
+    /// `player` took the host from `from` in a raid.
+    HostTaken {
+        day: Day,
+        player: PlayerId,
+        from: PlayerId,
+        host: HostId,
+    },
+    /// The game is over; `player` won.
+    GameOver {
+        day: Day,
+        player: PlayerId,
+        reason: EndReason,
     },
 }
 
@@ -178,6 +206,14 @@ pub struct TurnReport {
 /// turn. An invalid command is skipped and reported; it never aborts the
 /// turn.
 pub fn resolve_turn(data: &GameData, world: &mut World, orders: &Orders, days: u32) -> TurnReport {
+    if world.ended.is_some() {
+        return TurnReport {
+            first_day: world.day,
+            last_day: world.day,
+            rejected: Vec::new(),
+            events: Vec::new(),
+        };
+    }
     let mut rejected = Vec::new();
     let mut events = Vec::new();
     for (player, commands) in turn_order(world, orders) {
@@ -202,6 +238,7 @@ pub fn resolve_turn(data: &GameData, world: &mut World, orders: &Orders, days: u
         let granted = unlocks::check(data, world, &events[seen..]);
         events.extend(granted);
     }
+    events.extend(score::check_end(data, world));
 
     world.turn += 1;
     TurnReport {
@@ -249,6 +286,7 @@ fn step_day(data: &GameData, world: &mut World, events: &mut Vec<Event>) {
     caches::run_day(data, world, events);
     research::run_day(data, world, events);
     legacy::run_day(data, world, events);
+    raid::run_day(world);
     links::run_day(data, world);
 }
 

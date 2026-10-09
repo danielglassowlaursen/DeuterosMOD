@@ -204,10 +204,21 @@ Den sidste regel er ny: Godot-remaken åbnede aldrig for rejser mellem stjerner,
 
 - **Crews.** Hver crew har sit eget skjulested med egen forskning, træning, værksted og lager. Skjulestedet kan ikke indtages, så ingen crew kan blive slået helt ud.
 - **Værter.** Den crew, der først installerer et citadel-modul eller et bagdørssæt på en fri vært, ejer den, og udvindingen der går til ejeren.
-- **Heat.** Citadeller, taps og angreb efterlader spor. The Legacy Net går efter crewen med mest heat, så den førende bliver jaget.
-- **The Legacy Net.** Hver crew har sin egen krigstilstand med den, som i originalen: krigen starter ved 6 citadeller eller efter for meget handel.
-- **Crew mod crew.** En orm med daemons, en C2-controller og en operatør sendes mod en rivals vært. Kampen bruger samme regel som mod The Legacy Net: styrke = daemons × (operatørniveau + 4). Før afsendelsen vælges, hvad en sejr skal give: exfiltrér (stjæl fra lageret), plant tap (en del af udvindingen) eller overtag (citadellet skifter ejer). Forsvaret er automatisk med de daemons, der ligger i citadellet. Hvert angreb giver angriberen heat. Angriber to crews hinanden samme dag, kæmpes begge kampe i en rækkefølge, som seed'et bestemmer.
-- **Beskyttelse.** I de første 5 ture kan crews ikke angribe hinanden.
+- **Heat** (`raid.rs`). Et raid giver angriberen 25 heat, som køler af med 1 om dagen, og hvert færdigt citadel tæller 10, så længe man holder det. Alle kan se alle crews' heat: det er spor på nettet. The Legacy Net sender sine sværme mod den crew i krig, der har mest heat, så den førende og den mest aggressive bliver jaget først.
+- **Crew mod crew.** En orm med daemons, en C2-controller og en operatør lurer ved en rivals vært og får ordren `Raid` med ét af tre mål. Kampen bruger samme regel som mod The Legacy Net: styrke = daemons × (operatørniveau + 4). **Forsvaret er automatisk** med de daemons, der ligger i citadellets lager (højst 200 ad gangen), ført af det bedste operatørhold, der er stationeret i citadellet; uden hold kæmper de på niveau 0. Vinder angriberen, sker det, der blev valgt: **exfiltrér** fylder fartøjets datacontainere fra citadellets og værtens lagre, største beholdninger først; **plant tap** sætter et tap, der i 100 dage sender en fjerdedel (rundet op) af alt, værtens taps udvinder, hjem til angriberens skjulested; **overtag** flytter værten med citadel, lager og taps til angriberen, mens forsvarerens hold der forsvinder, dets fartøjer kastes ud på nettet, og linket nulstilles. Taber angriberen, går fartøjet tabt. Begge crews ser raidet i deres turrapport; en overtagelse (`HostTaken`) ser alle. Angriber to crews hinanden i samme tur, afgør turrækkefølgen (den roterer) hvem der går først.
+- **Beskyttelse.** I spillets første 5 ture kan crews ikke raide hinanden.
+- **The Legacy Net.** Hver crew har sin egen krigstilstand med den, som i originalen; se næste afsnit.
+
+## Point og afslutning
+
+Point (`score.rs`) tælles løbende og vises for alle: 10 pr. færdigt citadel, 3 pr. anden holdt vært, 15 pr. befriet Legacy-vært, 5 pr. vært taget fra en rival og 2 pr. færdig forskning. Skjulestedet tæller ikke.
+
+Spillet slutter på én af to måder:
+
+- **Dominans.** En crew holder færdige citadeller på mere end halvdelen af hjemmenettets værter (skjulestedets vært og cache-felter talt fra: 21 af 40 på det klassiske kort). Det kræver, at man også befrier Legacy-værter.
+- **Sidste dag.** Spillet oprettes med en sidste dag (standard 3.000, 0 for ingen). Når den er nået, vinder den højeste score; står to lige, vinder den laveste crew-id.
+
+Afslutningen rapporteres som hændelsen `GameOver`, verdenen fryser (ture ændrer intet mere), serveren afviser nye ordrer, og klienten viser vinderen og slutstillingen.
 
 ## The Legacy Net
 
@@ -217,7 +228,7 @@ Porteret fra originalens Methanoids (`EnemyDroneBuilder.cs`, `EnemyFleets.cs`, `
 
 **Daemons.** Hver Legacy-vært starter med 50 daemons i sit citadel-lager. Når nogen er i krig, bygger The Legacy Net hvert 7.-10. dag (afhængigt af hvor mange netværk den har mistet) 2 daemons på hver af sine værter (op til 200) og 1-2 til netværkets sværm. Et fartøj (orm eller tunnelskib) kan bære op til 200 daemons og skal have en C2-controller installeret og en operatør om bord for at bruge dem.
 
-**Sværme.** Hvert netværk har én sværm, der samler sig ved en Legacy-vært. Når den når netværkets angrebstærskel (Metro 40, Orbital 100, …, Lattice 200), vælger den et færdigt citadel hos en crew i krig: det mindst angrebne først, derefter det yderste. Crewet får besked (`FleetSighted`) med ankomstdagen: rejsetiden plus op til 63 dages nølen. Ved ankomsten møder sværmen crewets stærkeste fartøj ved værten med C2 og daemons (koblet eller lurende). Vinder fartøjet, eller mister sværmen halvdelen, giver den op, og tærsklen fordobles (højst 200). Ellers belejrer den værten i 5 dage (`UnderAttack`), hvor ingen kan koble til citadellet, og tager den så (`HostCaptured`): citadellet får krypteret link, kill switch og build-bot, lageret tømmes og fyldes med 50 daemons og 100-1123 af hver af værtens ressourcer, 0-7 taps, og alle fartøjer ved værten går tabt. Et fartøj, der lurer ved den belejrede vært, kan angribe sværmen med ordren `Attack`.
+**Sværme.** Hvert netværk har én sværm, der samler sig ved en Legacy-vært. Når den når netværkets angrebstærskel (Metro 40, Orbital 100, …, Lattice 200), vælger den et færdigt citadel hos en crew i krig: den crew med mest heat først, så det mindst angrebne, så det yderste. Crewet får besked (`FleetSighted`) med ankomstdagen: rejsetiden plus op til 63 dages nølen. Ved ankomsten møder sværmen først crewets stærkeste fartøj ved værten med C2 og daemons (koblet eller lurende), og dernæst de daemons, der ligger i citadellets lager, ført af det bedste operatørhold i citadellet. Vinder forsvaret, eller mister sværmen halvdelen, giver den op, og tærsklen fordobles (højst 200). Ellers belejrer den værten i 5 dage (`UnderAttack`), hvor ingen kan koble til citadellet, og tager den så (`HostCaptured`): citadellet får krypteret link, kill switch og build-bot, lageret tømmes og fyldes med 50 daemons og 100-1123 af hver af værtens ressourcer, 0-7 taps, og alle fartøjer ved værten går tabt. Et fartøj, der lurer ved den belejrede vært, kan angribe sværmen med ordren `Attack`.
 
 **Befrielse.** En orm, der lurer ved en Legacy-vært med daemons og C2, angriber garnisonen (op til 200 daemons ad gangen). Er lageret tomt bagefter, er værten crewets med alt, hvad The Legacy Net efterlod: det krypterede link, kill switchen og build-botten, som er vejen til at forske i dem. Netværkets sværm flytter til en anden Legacy-vært i netværket. Når hjemmenettet er fri for Legacy-værter, åbnes tunnelskibene for alle.
 
@@ -227,7 +238,7 @@ Porteret fra originalens Methanoids (`EnemyDroneBuilder.cs`, `EnemyFleets.cs`, `
 
 **Fog of war.** En crew ser de sværme, der er på vej mod eller belejrer dens egne værter (`threats` i udsigten), aldrig andres. Garnisonen ved en Legacy-vært ser man først i kamprapporten.
 
-**Bot-spillet** med The Legacy Net: krigen starter omkring dag 1.600, den første sværm på 40 daemons går ca. 250 dage senere, og den tager et citadel hver 40.-60. dag. Botterne forsvarer sig ikke endnu (de kan ikke bygge daemons uden cache-udvinding og bagdøre), så de mister alle deres værter inden dag 4.000. En krigsdoktrin til botten kommer med M5 sammen med balanceringen.
+**Bot-spillet** med The Legacy Net: botten venter med det sjette citadel, til den har et krigsskib med 100 daemons, og går så selv i krig ved at befri en Legacy-vært (omkring dag 4.000 i en solo-kamp). Den slår de første sværme tilbage, men sværmene vokser hurtigere, end den bygger daemons, og fra omkring dag 4.800 falder dens værter én for én. Se *Bot-spil*.
 
 ## Portering af reglerne
 
@@ -247,7 +258,9 @@ Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellern
 | The Legacy Net og kamp | `EnemyFleets.cs`, `EnemyDroneBuilder.cs`, `BattleLogic.cs` | `legacy.rs`, `battle.rs` | ✅ |
 | Cache-felter | `Asteroid.cs`, `AMA.cs`, `Grapple.cs` | `caches.rs` | ✅ |
 | Unlocks | `Platform/Unlocker.cs` | `unlocks.rs` | ✅ |
-| Bot-spil | (nyt) | `bot.rs`, `tests/bot_game.rs`, `nullnet-sim` | ✅ |
+| Crew mod crew: raids, heat, beskyttelse | (nyt) | `raid.rs`, `tests/crew_raids.rs` | ✅ |
+| Point og afslutning | (nyt) | `score.rs` | ✅ |
+| Bot-spil | (nyt) | `bot/mod.rs`, `bot/colony.rs`, `bot/war.rs`, `tests/bot_game.rs`, `nullnet-sim` | ✅ |
 | Beskeder og bulletiner | `Bulletins.cs`, `AlienMessages.cs` | hændelser i turrapporten | ✅ (originalens tekster genbruges ikke) |
 
 **Fejl i Godot-koden, som ikke skal kopieres:**
@@ -269,34 +282,45 @@ Kortlagt i Godot-koden. Selve reglerne fylder ca. 2.000 linjer, og datatabellern
 
 ## Bot-spil
 
-`bot::orders(data, world, crew)` giver de ordrer, en crew skal have denne tur, ud fra verdenen alene. Botten husker intet mellem turene, og den planlægger mod kopier af de lagre, den trækker på, så den aldrig giver en ordre, reglerne afviser. Den spiller i tre faser:
+`bot::orders(data, world, crew)` giver de ordrer, en crew skal have denne tur, ud fra verdenen alene. Botten husker intet mellem turene, og den planlægger mod kopier af de lagre, den trækker på, så den aldrig giver en ordre, reglerne afviser. Den spiller i fem faser:
 
-1. **Økonomi og citadel.** Rekrutterer analytikere, kodere og tre operatørhold, forsker i en fast rækkefølge, bygger taps op til 8, bygger en dropper og bærer citadel-moduler ud ét ad gangen, indtil citadellet over skjulestedet er færdigt.
-2. **Bemanding og forsyning.** Koderne flytter op i citadellet, når de har niveau 2, og nye rekrutter overtager værkstedet i skjulestedet. Et operatørhold følger efter. Dropperen fragter ressourcer op og kører fast rute med exfil-script, når det er bygget. Citadellet bygger orm, værktøjsmoduler og citadel-moduler.
-3. **Ekspansion.** Ormen fyldes med citadel-moduler og sendes til den nærmeste frie vært i hjemmenettet. Den bygger citadeller der, til nettet er fuldt.
+1. **Økonomi og citadel.** Rekrutterer analytikere, kodere og operatørhold, forsker i en fast rækkefølge, bygger taps op til 8, bygger en dropper og bærer citadel-moduler ud ét ad gangen, indtil citadellet over skjulestedet er færdigt.
+2. **Bemanding og forsyning.** Koderne flytter op i citadellet, når de har niveau 2, og nye rekrutter overtager værkstedet i skjulestedet. Et operatørhold følger efter. Dropperen fragter ressourcer op og kører fast rute med exfil-script; ruten peger hver tur på det, citadellet mangler mest (herunder proxykæder og båndbredde/proxyer, så citadellets værksted selv raffinerer anonymisering). Et hold, der venter på at komme op, afbryder ruten én tur. Så snart build-bots er forsket, bygger citadellet én og lader den overtage værkstedet; koderne frigives til kolonierne.
+3. **Ekspansion.** En orm (*bygger*) fyldes med citadel-moduler og sendes til den nærmeste frie vært i hjemmenettet, hvor værter med zero-days, krypto og signeringsnøgler tæller som nærmere. Med kolonier bygges en anden bygger. Det sjette færdige citadel, som udløser krigen, venter, til crewet er bevæbnet.
+4. **Kolonier** (`bot/colony.rs`). Op til tre holdte citadeller med sjældne ressourcer bliver kolonier: byggeren bringer kodere, et operatørhold, ressourcer, proxykæder, to bagdørssæt og et exfil-script derud, et par læs pr. tur. Koloniens eget værksted bygger dropper-dele, pods og taps; dropperen installerer bagdørssættene indefra, bærer taps ned og installerer dem, og kører derefter fast rute, der skifter op til citadellet i takt med, hvad skjulestedet mangler. Byggeren henter beholdninger på 200+ hjem og lader overskydende proxykæder følge med. En *miner* (orm med sniffer) lurer ved Scrapyard efter de første certifikater, krypto og firmware til bagdørssættene og efter et kildekode-fragment, der åbner daemons uden krig.
+5. **Krig** (`bot/war.rs`). Med daemons og C2-controller forsket bygger citadellet daemons (på gentag med build-bot) og en C2; en tredje orm bliver *krigsskib*. Krigsskibet lastes først (op til 200), derefter får hvert citadel en garnison på 20. Krigsskibet møder sværme på vej mod egne værter, befrier Legacy-værter i hjemmenettet, når det er mindst halvanden gang stærkere end garnisonen, og raider (overtag) en rival, der fører med to færdige citadeller eller mere, hvis dets styrke er dobbelt så stor som garnisonens. Angreb på The Legacy Net venter, til crewet er bevæbnet (krigsskib med 100 daemons, eller 250 daemons i alt).
 
-Botten bruger endnu ikke de erobrede værters citadeller, krypterede links eller tunnelskibe. Bagdørssæt og build-bots kræver ressourcer, der ikke findes i hjemmenettet (certifikater, krypto og firmware). De kommer med caches i M4.
+Orme deler citadellets ene port: en orm uden noget at gøre ved citadellet lægger sig udenfor og venter, til den har et ærinde derinde. Botten bruger endnu ikke krypterede links, tunnelskibe eller befriede værters build-bots, og den handler ikke med The Legacy Net.
 
-`nullnet-sim --json` skriver hele spillet tur for tur (ordrer, hændelser og hver crews status), og `tools/replay.py` laver en side af det, hvor man kan bladre gennem turene.
+`nullnet-sim --json` skriver hele spillet tur for tur (ordrer, hændelser og hver crews status), og `tools/replay.py` laver en side af det, hvor man kan bladre gennem turene. `nullnet-sim --verbose` slutter med hver crews lagre, hold, kolonier og fartøjer.
 
-`tests/bot_game.rs` spiller 1-4 bots i op til 4.000 dage i ture på 10 dage. Efter hver tur tjekkes, at ingen ordrer afvises (bortset fra tabte kapløb om en vært), at lagre, taps, moduler, hold og brændstof holder sig inden for grænserne, at ejede værter forbliver ejet, at forskning og milepæle aldrig går tabt, og at intet fartøj går tabt. Spillet skal være deterministisk og give samme resultat efter gem og genindlæsning. CI kører desuden `cargo run -p nullnet-sim -- --crews 4 --days 5000`, som fejler, hvis en bot får en ordre afvist.
+`tests/bot_game.rs` spiller 1-4 bots i op til 4.000 dage i ture på 10 dage. Efter hver tur tjekkes, at ingen ordrer afvises (bortset fra kapløb: en rival, hvis ordrer går først, tager eller mister en vært), at lagre, taps, moduler, hold og brændstof holder sig inden for grænserne, at ejede værter kun skifter hænder gennem belejring, kamp eller raid, at forskning og milepæle aldrig går tabt, og at intet fartøj brændes eller stoppes af mangel på anonymisering eller pilot (et fartøj stoppet af en belejring eller en vært, der faldt undervejs, er krigens skyld). Spillet skal være deterministisk og give samme resultat efter gem og genindlæsning. CI kører desuden `cargo run -p nullnet-sim -- --crews 4 --days 5000`, som fejler, hvis en bot får en ordre afvist.
 
-**Tidslinje** for 2 crews (`cargo run -p nullnet-sim -- --crews 2 --days 4000`):
+**Tidslinje** for 1 crew (`cargo run -p nullnet-sim -- --crews 1 --days 5000 --verbose`):
 
-| Dag | Begge crews |
+| Dag | Crewet |
 |---|---|
-| 350 | Første citadel-modul over skjulestedet |
 | 490 | Citadellet over skjulestedet er færdigt |
-| 776 | Første orm-kerne bygget |
-| 810-830 | Første værter indtaget (kapløb om månen) |
-| 2000 | 7 færdige citadeller hver |
-| 4000 | 17 hver, alle 34 frie værter i hjemmenettet er taget |
+| 800 | Beacon indtaget; sniffer bygget; mineren går til Scrapyard |
+| 940-965 | Kildekode-fragment hjemme; milepælen *Daemons* uden krig |
+| 1050-1360 | Beacon og Switchboard færdige og udpeget som kolonier |
+| 1700 | Build-bot overtager citadellets værksted |
+| 1840-2050 | Bagdøre færdige på Switchboard, Beacon og Mirror; taps og scripts kører |
+| 2176 | C2-controller bygget (signeringsnøgler fra Mirror); krigsskibet bemandes |
+| 4140 | Krigsskibet befrier Colossus med 102 daemons: krig |
+| 4200-4490 | Powergrid befriet; en sværm på 40 slået tilbage |
+| 4800-5000 | Sværme på 80-130 tager værterne én for én |
 
-**Fund til balanceringen (M5):**
+Med 4 crews (`--crews 4 --days 5000`) kommer det første raid på dag 2790 (en orm med 40 daemons tager et ubevogtet citadel), den første krig på dag 3990, og en rival tager citadellet tilbage på dag 4100. Efter 5.000 dage fører den crew, der befriede to Legacy-værter, med 113 point mod 78-86.
 
-- Ressourcerne hober sig op (ca. 15.000 af hver i skjulestedet efter 4.000 dage). Tempoet bestemmes af forskning, byggetid og transport, ikke af udvindingen. Derfor giver forskellige seeds samme tidslinje i hjemmenettet.
-- En dropper bærer ét citadel-modul pr. tur, mens et exfil-script fragter 250 enheder af én ressource ad gangen på skift. Til citadel-moduler er scriptet derfor halvt så hurtigt som at bære modulerne selv. Det er bekvemt, men ikke effektivt.
-- Proxykæder er den knappe ressource i skjulestedet, fordi dropperen og scriptet tanker derfra.
+**Fund til balanceringen:**
+
+- **Dropperens pendulfart sætter loftet for citadellets produktion.** Én dropper pr. vært, én container på 250 og en tur på ca. 9 dage giver ca. 28 enheder om dagen op til citadellet. En daemon koster 430 almindelige enheder plus 30 zero-days og 30 krypto, så et skjulested bygger højst én daemon hver 15.-20. dag, hvad end værkstedet kan. Udvejen er originalens: et krypteret link (udvindingen lander direkte i citadellet), befriede Legacy-værter (link, build-bot og lager) og kolonier, der selv bygger. Botten bruger dem ikke endnu; en spiller bør.
+- **Proxykæder er den bindende ressource.** Hvert værksted raffinerer 3 hver anden dag, hvis det har båndbredde og proxyer; droppere i fast rute bruger ca. 1 om dagen, orme 1 om dagen på farten. Kolonier skal raffinere selv, og skjulestedets citadel skal have båndbredde og proxyer op for at gøre det samme.
+- **Sværmene vokser hurtigere end en crew uden kolonier bygger daemons** (1-2 pr. 7-10 dage pr. netværk plus 2 pr. Legacy-vært). En garnison på 20 er en bremseklods, ikke et forsvar; krigsskibet med operatør på niveau 2-3 afgør de første sværme, men ikke dem på 100+.
+- **Tempo.** Botterne når krigen omkring dag 4.000 og alt det sjove efter dag 2.000. Med 10 dage pr. tur er det 200-400 ture; et asynkront spil med én tur om dagen tager et år. Standard-slutdagen 3.000 ender de fleste spil på point, inden krigen rigtig begynder. Turlængde og slutdag bør sættes efter, hvor meget spillerne vil igennem: 20-30 dage pr. tur og 3.000-5.000 dage er mit bud. Mennesker spiller også hurtigere end botten, som er forsigtig med vilje.
+- Ressourcerne hober sig stadig op i skjulestedet (15.000-25.000 af hver). Tempoet bestemmes af transport og værkstedstid, ikke udvinding.
+- Heat virker som tænkt: raideren og den med flest citadeller jages først. Botterne raider kun ubevogtede citadeller; en spiller, der lægger 50 daemons i et citadel med et operatørhold, er svær at raide.
 
 ## Ophavsret
 
@@ -311,14 +335,16 @@ Godot-remakens kode er udgivet under CC0, så den må frit bruges. Dens grafik, 
 | **M2** | Server: opret spil, invitationslinks, aflever ordrer, afvikl tur, gem i SQLite, fog of war. ✅ |
 | **M3** | Klient i hacker-look: lobby, netværkskort, terminalpaneler for vært, citadel og transport, ordrepanel og turlog. ✅ (lobbyen er konsolsiden; krypterede links styres endnu kun fra konsollen) |
 | **M4** | The Legacy Net: AI, krig, kampafvikling med animeret genafspilning, erobring og befrielse. ✅ (kampene gemmes som forløb, der kan afspilles; selve animationen i klienten kommer med M6) |
-| **M5** | Crew mod crew: angreb, forsvar, heat, beskyttelse, sejrsbetingelser og balancering. |
+| **M5** | Crew mod crew: angreb, forsvar, heat, beskyttelse, sejrsbetingelser og balancering. ✅ (raids med tre mål, garnisoner, heat, 5 turs beskyttelse, point, dominans og sidste dag; botten bygger kolonier, daemons og et krigsskib og raider; balancefundene står under *Bot-spil*) |
 | **M6** | Finish: effekter, lyd, notifikationer og hosting. |
 
 ## Åbne spørgsmål
 
-- Standard for turlængde (spildage) og frist (timer)?
+- Standard for turlængde (spildage), frist (timer) og sidste dag: 10 dage, 24 timer og dag 3.000 nu; se tempo-fundet under *Bot-spil*.
 - Kapløb om en fri vært: skal den crew, hvis ordrer udføres først, vinde (som nu), eller den, hvis orm har luret der længst?
 - Handel med The Legacy Net (originalens comms pod og 16 handler før krig) er ikke med. Skal den ind som en måde at få sjældne ressourcer og tech på?
-- Sejrsbetingelse og pointtabel.
+- Pointtabellen (10/3/15/5/2) og dominansgrænsen (over halvdelen af hjemmenettet) er første bud og bør justeres efter rigtige spil.
+- Skal et plantet tap kunne fejes væk af ejeren (en ordre, der koster noget), eller er 100 dage nok?
+- Skal skjulestedets citadel kunne få et krypteret link, så udvindingen lander direkte deroppe? Det ville løse dropperens flaskehals, som i originalen efter den første erobrede station.
 - Skal man kunne logge ind på tværs af enheder (e-mail-login), eller er et invitationslink pr. spil nok?
 - Hosting: Fly.io, en VPS eller noget tredje?

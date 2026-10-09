@@ -8,6 +8,7 @@ use crate::ids::{HostId, PlayerId};
 use crate::items::ItemType;
 use crate::legacy;
 use crate::links::{self, LinkConfig};
+use crate::raid::{self, RaidGoal};
 use crate::recruitment;
 use crate::site::Site;
 use crate::staff::StaffKind;
@@ -144,6 +145,13 @@ pub enum Command {
     Attack {
         vessel: VesselId,
     },
+    /// A lurking vessel with daemons under a C2 controller raids the host
+    /// it is at, which a rival crew holds, for `goal`. Not in the game's
+    /// first [`PROTECTION_TURNS`](crate::PROTECTION_TURNS) turns.
+    Raid {
+        vessel: VesselId,
+        goal: RaidGoal,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -191,6 +199,8 @@ pub enum CommandError {
     NoDaemons,
     TooManyDaemons,
     NothingToAttack,
+    NothingToRaid,
+    Protected,
 }
 
 impl fmt::Display for CommandError {
@@ -274,6 +284,12 @@ impl fmt::Display for CommandError {
             CommandError::NothingToAttack => {
                 write!(f, "there is no Legacy garrison or swarm to attack here")
             }
+            CommandError::NothingToRaid => write!(f, "no rival crew holds this host"),
+            CommandError::Protected => write!(
+                f,
+                "crews cannot raid each other in the first {} turns",
+                raid::PROTECTION_TURNS
+            ),
         }
     }
 }
@@ -281,6 +297,28 @@ impl fmt::Display for CommandError {
 impl std::error::Error for CommandError {}
 
 impl Command {
+    /// The vessel the command is about, if any.
+    pub fn vessel(&self) -> Option<VesselId> {
+        match *self {
+            Command::Refuel { vessel, .. }
+            | Command::Fit { vessel, .. }
+            | Command::Load { vessel, .. }
+            | Command::Unload { vessel, .. }
+            | Command::Board { vessel, .. }
+            | Command::Disembark { vessel, .. }
+            | Command::Dispatch { vessel, .. }
+            | Command::Deploy { vessel, .. }
+            | Command::InstallScript { vessel }
+            | Command::ConfigureScript { vessel, .. }
+            | Command::LoadDaemons { vessel, .. }
+            | Command::UnloadDaemons { vessel, .. }
+            | Command::InstallC2 { vessel }
+            | Command::Attack { vessel }
+            | Command::Raid { vessel, .. } => Some(vessel),
+            _ => None,
+        }
+    }
+
     /// Validates the command against the current state and applies it.
     /// On error the world is left unchanged.
     pub(crate) fn apply(
@@ -390,6 +428,7 @@ impl Command {
             }
             Command::InstallC2 { vessel } => transport::install_c2(data, world, player, vessel),
             Command::Attack { vessel } => legacy::attack(data, world, player, vessel, events),
+            Command::Raid { vessel, goal } => raid::raid(data, world, player, vessel, goal, events),
         }
     }
 }

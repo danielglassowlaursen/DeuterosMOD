@@ -201,6 +201,80 @@ async fn the_turn_runs_once_every_person_has_handed_in() {
 }
 
 #[tokio::test]
+async fn the_game_ends_on_its_last_day_and_takes_no_more_orders() {
+    let client = Client::in_memory();
+    let (status, created) = client
+        .call(
+            Method::POST,
+            "/api/games",
+            Some(json!({
+                "name": "Short run",
+                "crews": [{ "name": "Ghostline" }, { "name": "Bot", "bot": true }],
+                "turn_days": 10,
+                "deadline_hours": 24,
+                "end_day": 20,
+                "seed": 7
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["end_day"], 20);
+    let me = token(&created, 0);
+
+    let (_, status) = client.get(&format!("/api/crew/{me}")).await;
+    assert_eq!(status["game"]["end_day"], 20);
+    assert_eq!(status["over"], false);
+    assert_eq!(status["view"]["scores"].as_array().unwrap().len(), 2);
+    assert!(status["view"]["ended"].is_null());
+
+    for _ in 0..2 {
+        let (status, receipt) = client
+            .call(
+                Method::PUT,
+                &format!("/api/crew/{me}/orders"),
+                Some(json!([recruit("Analyst", 100)])),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{receipt}");
+        assert_eq!(receipt["resolved"], true);
+    }
+    let (_, status) = client.get(&format!("/api/crew/{me}")).await;
+    assert_eq!(status["day"], 20);
+    assert_eq!(status["over"], true);
+    assert_eq!(status["view"]["ended"]["day"], 20);
+    assert_eq!(status["view"]["ended"]["reason"], "DayLimit");
+    let events = status["last_turn"]["report"]["events"].as_array().unwrap();
+    assert!(
+        events.iter().any(|e| e.get("GameOver").is_some()),
+        "{events:?}"
+    );
+
+    let (status, error) = client
+        .call(
+            Method::PUT,
+            &format!("/api/crew/{me}/orders"),
+            Some(json!([])),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{error}");
+
+    // A last day within the first turn is refused.
+    let (status, _) = client
+        .call(
+            Method::POST,
+            "/api/games",
+            Some(json!({
+                "name": "Too short",
+                "crews": [{ "name": "Ghostline" }],
+                "turn_days": 10,
+                "end_day": 5
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn handing_in_previews_what_the_rules_refuse_and_can_be_withdrawn() {
     let client = Client::in_memory();
     let created = client

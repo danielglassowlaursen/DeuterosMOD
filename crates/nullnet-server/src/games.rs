@@ -14,6 +14,9 @@ use nullnet_core::{Command, GameData, Orders, PlayerId, World, bot, crew_view, r
 
 use crate::db::{CrewRow, GameRow, Store, TurnRow};
 
+/// The last day of a game that is set up without one.
+pub const DEFAULT_END_DAY: u32 = 3000;
+
 /// Unix time in seconds.
 pub fn now() -> i64 {
     SystemTime::now()
@@ -104,6 +107,16 @@ impl Server {
             return Err(Error::BadRequest("a turn runs 1 to 100 days".into()));
         }
         let deadline_hours = request.deadline_hours.unwrap_or(24);
+        let end_day = match request.end_day {
+            None => Some(DEFAULT_END_DAY),
+            Some(0) => None,
+            Some(day) if day < turn_days => {
+                return Err(Error::BadRequest(
+                    "the last day must be at least one turn away".into(),
+                ));
+            }
+            Some(day) => Some(day),
+        };
         let seed = request.seed.unwrap_or_else(rand::random);
 
         let id = format!("g_{}", token(8));
@@ -121,6 +134,8 @@ impl Server {
             .collect();
         let named: Vec<(PlayerId, &str)> =
             crews.iter().map(|c| (c.player, c.name.as_str())).collect();
+        let mut world = World::new_game(&self.data, seed, &named);
+        world.end_day = end_day;
         let game = GameRow {
             id: id.clone(),
             name: name.to_string(),
@@ -129,7 +144,7 @@ impl Server {
             deadline_hours,
             created_at: now,
             turn: 0,
-            world: World::new_game(&self.data, seed, &named),
+            world,
             deadline: now + i64::from(deadline_hours) * 3600,
         };
         self.store().insert_game(&game, &crews)?;
@@ -159,7 +174,7 @@ impl Server {
                 .map(|t| crew_turn(&t, row.player)),
             None => None,
         };
-        let view = crew_view(&game.world, row.player, self.data.hideout.host)
+        let view = crew_view(&self.data, &game.world, row.player)
             .ok_or_else(|| Error::Internal("the crew is not in its game".into()))?;
         Ok(CrewStatus {
             game: info(&game),
@@ -172,6 +187,7 @@ impl Server {
             submitted: orders.contains_key(&row.player),
             orders: orders.get(&row.player).cloned().unwrap_or_default(),
             crews,
+            over: game.world.ended.is_some(),
             view,
             last_turn,
         })
@@ -187,6 +203,9 @@ impl Server {
     ) -> Result<OrdersReceipt, Error> {
         let mut store = self.store();
         let Crew { row, game } = Self::crew(&store, token)?;
+        if game.world.ended.is_some() {
+            return Err(Error::BadRequest("the game is over".into()));
+        }
 
         // Try the orders on a copy so the crew hears at once what the rules
         // would refuse. The real turn may still differ: rivals go too.
@@ -257,6 +276,9 @@ impl Server {
         let game = store
             .game(game_id)?
             .ok_or_else(|| Error::NotFound("no such game".into()))?;
+        if game.world.ended.is_some() {
+            return Ok(false);
+        }
         let crews = store.crews(game_id)?;
         let handed_in = store.orders(game_id, game.turn)?;
         let everyone = crews
@@ -296,6 +318,7 @@ fn info(game: &GameRow) -> GameInfo {
         name: game.name.clone(),
         turn_days: game.turn_days,
         deadline_hours: game.deadline_hours,
+        end_day: game.world.end_day,
     }
 }
 
