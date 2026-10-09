@@ -1,9 +1,10 @@
 //! The look of the client: Deus Ex: Human Revolution's gold on black, with
 //! angular panels whose top left and bottom right corners are cut off. A
 //! shader draws the panels, so the client still ships no images. The text
-//! is Chakra Petch (SIL Open Font License) and the icons are a cut-down
-//! Lucide (ISC); both fonts are embedded in the build, with their licences
-//! beside them in `assets/fonts`.
+//! is Chakra Petch (SIL Open Font License), given a slashed zero so 0 and O
+//! differ as on a terminal (`scripts/slash-zero.py`), and the icons are a
+//! cut-down Lucide (ISC); both fonts are embedded in the build, with their
+//! licences beside them in `assets/fonts`.
 
 use bevy::asset::{AssetId, AssetPath, embedded_asset, embedded_path, uuid_handle};
 use bevy::prelude::*;
