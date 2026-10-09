@@ -317,6 +317,7 @@ fn spawn_layout(mut commands: Commands) {
             Slot::Toast,
         ),
         Visibility::Hidden,
+        GlobalZIndex(1),
     ));
     commands.spawn((
         panel(
@@ -330,6 +331,7 @@ fn spawn_layout(mut commands: Commands) {
             Slot::Replay,
         ),
         Visibility::Hidden,
+        GlobalZIndex(2),
     ));
     commands.spawn((
         panel(
@@ -342,20 +344,22 @@ fn spawn_layout(mut commands: Commands) {
             Slot::Guide,
         ),
         Visibility::Hidden,
+        GlobalZIndex(1),
     ));
     commands.spawn((
         panel(
             Node {
                 top: Val::Percent(6.0),
                 bottom: Val::Percent(6.0),
-                left: Val::Percent(20.0),
-                right: Val::Percent(20.0),
+                left: Val::Percent(23.0),
+                right: Val::Percent(23.0),
                 row_gap: Val::Px(6.0),
                 ..default()
             },
             Slot::Help,
         ),
         Visibility::Hidden,
+        GlobalZIndex(3),
     ));
 }
 
@@ -426,8 +430,15 @@ fn animate_replay(
     }
 }
 
-fn track_cursor(panels: Query<&RelativeCursorPosition, With<Panel>>, mut over: ResMut<OverUi>) {
-    let now = panels.iter().any(|c| c.cursor_over);
+/// A hidden overlay still knows where the cursor is, so only panels that
+/// are shown count as being under it.
+fn track_cursor(
+    panels: Query<(&RelativeCursorPosition, &Visibility), With<Panel>>,
+    mut over: ResMut<OverUi>,
+) {
+    let now = panels
+        .iter()
+        .any(|(c, visibility)| c.cursor_over && *visibility != Visibility::Hidden);
     if over.0 != now {
         over.0 = now;
     }
@@ -435,15 +446,15 @@ fn track_cursor(panels: Query<&RelativeCursorPosition, With<Panel>>, mut over: R
 
 fn scroll_panels(
     mut wheel: MessageReader<MouseWheel>,
-    mut panels: Query<(&RelativeCursorPosition, &mut ScrollPosition), With<Panel>>,
+    mut panels: Query<(&RelativeCursorPosition, &Visibility, &mut ScrollPosition), With<Panel>>,
 ) {
     for event in wheel.read() {
         let dy = match event.unit {
             MouseScrollUnit::Line => event.y * 24.0,
             MouseScrollUnit::Pixel => event.y,
         };
-        for (cursor, mut scroll) in &mut panels {
-            if cursor.cursor_over {
+        for (cursor, visibility, mut scroll) in &mut panels {
+            if cursor.cursor_over && *visibility != Visibility::Hidden {
                 scroll.0.y = (scroll.0.y - dy).max(0.0);
             }
         }
@@ -693,12 +704,8 @@ fn refresh(
                     replay_panel(p, state);
                 }
             }
-            Slot::Guide => {
-                if let Some(status) = &session.status {
-                    guide_panel(p, status, data);
-                }
-            }
-            Slot::Help => help_panel(p, session.status.as_ref(), data),
+            Slot::Guide => guide_panel(p, &session, data),
+            Slot::Help => help_panel(p, &session, data),
         });
     }
 }
@@ -763,8 +770,11 @@ fn replay_panel(p: &mut ChildSpawnerCommands, state: &ReplayState) {
 // ------------------------------------------------------------ guide
 
 /// The step the crew is on, with what to press next.
-fn guide_panel(p: &mut ChildSpawnerCommands, status: &CrewStatus, data: &GameData) {
-    let steps = guide::steps(status, data);
+fn guide_panel(p: &mut ChildSpawnerCommands, session: &Session, data: &GameData) {
+    let Some(status) = &session.status else {
+        return;
+    };
+    let steps = guide::steps(status, data, &session.draft);
     let current = guide::current(&steps);
     let step = &steps[current];
     p.spawn(row()).with_children(|r| {
@@ -778,6 +788,13 @@ fn guide_panel(p: &mut ChildSpawnerCommands, status: &CrewStatus, data: &GameDat
     for hint in step.hints.iter().take(5) {
         line(p, hint.clone());
     }
+    if status.submitted {
+        p.spawn(text(
+            "Orders handed in. The turn runs when every crew has handed in or the deadline passes; the guide moves on then.",
+            12.0,
+            GOOD,
+        ));
+    }
     if let Some(next) = steps.get(current + 1) {
         muted(p, format!("Next: {}", next.title));
     }
@@ -788,7 +805,7 @@ fn guide_panel(p: &mut ChildSpawnerCommands, status: &CrewStatus, data: &GameDat
 }
 
 /// Every step with its state, then the rules in brief.
-fn help_panel(p: &mut ChildSpawnerCommands, status: Option<&CrewStatus>, data: &GameData) {
+fn help_panel(p: &mut ChildSpawnerCommands, session: &Session, data: &GameData) {
     p.spawn(row()).with_children(|r| {
         r.spawn(text("HOW TO PLAY", 14.0, FG));
         r.spawn(button("Close", Action::ToggleHelp));
@@ -797,9 +814,9 @@ fn help_panel(p: &mut ChildSpawnerCommands, status: Option<&CrewStatus>, data: &
         p,
         "Scroll for the rules. The guide over the map follows your crew step by step; the steps so far:",
     );
-    if let Some(status) = status {
+    if let Some(status) = &session.status {
         heading(p, "Your steps");
-        let steps = guide::steps(status, data);
+        let steps = guide::steps(status, data, &session.draft);
         let current = guide::current(&steps);
         for (index, step) in steps.iter().enumerate() {
             let (mark, color) = if step.done {

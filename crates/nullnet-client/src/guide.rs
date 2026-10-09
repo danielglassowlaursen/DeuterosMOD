@@ -3,7 +3,9 @@
 //! opening and names the panel and the button that move it on. The steps
 //! follow the order the bot opens its game in; each is judged done from the
 //! crew's latest view, so a player who skips ahead is never nagged about a
-//! step already behind them. The help text at the end is the rules in brief.
+//! step already behind them. An order already queued or handed in is
+//! acknowledged rather than asked for again. The help text at the end is
+//! the rules in brief.
 
 use nullnet_api::CrewStatus;
 use nullnet_core::legacy::CITADELS_FOR_WAR;
@@ -11,8 +13,8 @@ use nullnet_core::score::{
     CITADEL_POINTS, FREED_POINTS, HOST_POINTS, RESEARCH_POINTS, TAKEN_POINTS,
 };
 use nullnet_core::{
-    Berth, Citadel, Controller, GameData, ItemType, Module, PROTECTION_TURNS, Player, Site,
-    StaffKind, Vessel, VesselKind, Workshop,
+    Berth, Citadel, Command, Controller, GameData, ItemType, Module, ModuleKind, PROTECTION_TURNS,
+    Player, Seat, Site, SiteRef, StaffKind, Vessel, VesselId, VesselKind, Workshop, WorkshopRef,
 };
 
 use crate::text;
@@ -25,9 +27,14 @@ pub struct Step {
     pub hints: Vec<String>,
 }
 
-/// Every step, in order, judged from the crew's latest view.
-pub fn steps(status: &CrewStatus, data: &GameData) -> Vec<Step> {
-    let crew = Crew { status, data };
+/// Every step, in order, judged from the crew's latest view and the orders
+/// it has queued (`draft`) or handed in.
+pub fn steps(status: &CrewStatus, data: &GameData, draft: &[Command]) -> Vec<Step> {
+    let crew = Crew {
+        status,
+        data,
+        draft,
+    };
     vec![
         crew.recruit_teams(),
         crew.recruit_operators(),
@@ -70,7 +77,8 @@ pub const HELP: &[(&str, &[&str])] = &[
         "The map",
         &[
             "Every dot is a host. Your hosts carry your colour, rivals theirs, free hosts a dim ring and the Legacy Net's hosts a red ring. The map pulses where a swarm is coming.",
-            "Click a host to see it in the right panel, or a vessel marker to select the vessel. Hosts in one network are a few days apart; other networks are far.",
+            "Click a host to see it in the right panel, or a vessel marker to select the vessel. Clicking does nothing to a host by itself: everything done to a host is done by a vessel sent there.",
+            "Hosts in one network are a few days apart; other networks are far.",
         ],
     ),
     (
@@ -124,10 +132,11 @@ pub const HELP: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// The crew's view and the rules, read together by every step.
+/// The crew's view, its orders and the rules, read together by every step.
 struct Crew<'a> {
     status: &'a CrewStatus,
     data: &'a GameData,
+    draft: &'a [Command],
 }
 
 fn cap(s: &str) -> String {
@@ -136,6 +145,11 @@ fn cap(s: &str) -> String {
         Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
         None => String::new(),
     }
+}
+
+/// `Dispatch` of `vessel` to `berth` on its own host.
+fn sends(c: &Command, vessel: VesselId, berth: Berth) -> bool {
+    matches!(c, Command::Dispatch { vessel: v, to } if *v == vessel && to.berth == berth)
 }
 
 impl<'a> Crew<'a> {
@@ -168,23 +182,24 @@ impl<'a> Crew<'a> {
             .map_or(0, |c| c.enrolled)
     }
 
-    fn mine(&self) -> impl Iterator<Item = &'a Vessel> {
+    fn mine(&self) -> impl Iterator<Item = (VesselId, &'a Vessel)> {
         let player = self.status.player;
         self.status
             .view
             .vessels
-            .values()
-            .filter(move |v| v.owner == player)
+            .iter()
+            .filter(move |(_, v)| v.owner == player)
+            .map(|(id, v)| (*id, v))
     }
 
     /// The crew's dropper at home, if it has one.
-    fn dropper(&self) -> Option<&'a Vessel> {
+    fn dropper(&self) -> Option<(VesselId, &'a Vessel)> {
         self.mine()
-            .find(|v| v.kind == VesselKind::Dropper && v.host == self.data.hideout.host)
+            .find(|(_, v)| v.kind == VesselKind::Dropper && v.host == self.data.hideout.host)
     }
 
-    fn worm(&self) -> Option<&'a Vessel> {
-        self.mine().find(|v| v.kind == VesselKind::Worm)
+    fn worm(&self) -> Option<(VesselId, &'a Vessel)> {
+        self.mine().find(|(_, v)| v.kind == VesselKind::Worm)
     }
 
     /// Whether any operator team exists: waiting, stationed, piloting or in a pod.
@@ -195,7 +210,7 @@ impl<'a> Crew<'a> {
             .iter()
             .chain(&hideout.citadel.staff)
             .any(|s| s.kind == StaffKind::Operator)
-            || self.mine().any(|v| {
+            || self.mine().any(|(_, v)| {
                 v.pilot.is_some()
                     || v.modules.iter().any(|m| {
                         matches!(m, Module::SessionPod(Some(t)) if t.kind == StaffKind::Operator)
@@ -210,6 +225,25 @@ impl<'a> Crew<'a> {
             .map(|(i, n)| format!("{n} {}", text::item(*i)))
             .collect::<Vec<_>>()
             .join(", ")
+    }
+
+    /// A line to press `label` at `place`, unless an order `matches` is
+    /// already queued or handed in, in which case the thing to press is
+    /// 'Hand in', or nothing at all.
+    fn press(
+        &self,
+        matches: impl Fn(&Command) -> bool,
+        place: &str,
+        label: &str,
+        rest: &str,
+    ) -> String {
+        if self.status.submitted && self.status.orders.iter().any(&matches) {
+            format!("'{label}' is handed in and takes effect when the turn runs.")
+        } else if self.draft.iter().any(matches) {
+            format!("'{label}' is in your orders. ORDERS: press 'Hand in' to send them.")
+        } else {
+            format!("{place}: press '{label}'{rest}")
+        }
     }
 
     /// The line that gets `item` built: in the hideout, or `above` in the
@@ -241,12 +275,28 @@ impl<'a> Crew<'a> {
                 "The hideout workshop has no coders yet.".into()
             };
         }
-        let place = if above {
-            format!("CITADEL (hideout panel): press 'Build {name}'")
-        } else {
-            format!("BUILD IN THE HIDEOUT: press '{name}'")
+        let queued = move |c: &Command| match c {
+            Command::Build {
+                at: WorkshopRef::Hideout,
+                item: i,
+            } => !above && *i == item,
+            Command::Build {
+                at: WorkshopRef::Citadel(SiteRef::Hideout),
+                item: i,
+            } => above && *i == item,
+            _ => false,
         };
-        format!("{place}. It takes {}.", self.recipe(item))
+        let rest = format!(". It takes {}.", self.recipe(item));
+        if above {
+            self.press(
+                queued,
+                "CITADEL (hideout panel)",
+                &format!("Build {name}"),
+                &rest,
+            )
+        } else {
+            self.press(queued, "BUILD IN THE HIDEOUT", &name, &rest)
+        }
     }
 
     /// A step done when every item is researched, hinting at the open ones.
@@ -278,7 +328,12 @@ impl<'a> Crew<'a> {
                                 cap(&name)
                             ));
                         } else {
-                            hints.push(format!("RESEARCH: press '{name}': {what}."));
+                            hints.push(self.press(
+                                move |c| matches!(c, Command::SetResearch { item: i } if *i == item),
+                                "RESEARCH",
+                                &name,
+                                &format!(": {what}."),
+                            ));
                         }
                     }
                 }
@@ -318,12 +373,15 @@ impl<'a> Crew<'a> {
                         self.data.recruitment.courses[&kind].days
                     ));
                 } else {
-                    hints.push(format!(
-                        "Hideout panel, RECRUIT: press '+100 {label}'. They {job}."
+                    hints.push(self.press(
+                        move |c| matches!(c, Command::Recruit { kind: k, .. } if *k == kind),
+                        "Hideout panel, RECRUIT",
+                        &format!("+100 {label}"),
+                        &format!(". They {job}."),
                     ));
                 }
             }
-            if !self.status.submitted {
+            if !self.status.submitted && self.draft.is_empty() {
                 hints.push(format!(
                     "Every button queues an order in the ORDERS panel; press 'Hand in' to send them. The turn runs when every crew has handed in or the deadline passes, and {} days go by.",
                     self.status.game.turn_days
@@ -344,7 +402,20 @@ impl<'a> Crew<'a> {
             hints.push(if self.enrolled(StaffKind::Operator) > 0 {
                 "An operator team is in training; it waits in the hideout once it graduates.".into()
             } else {
-                "RECRUIT: press '+20 operators'. Operators pilot vessels: nothing moves without a team waiting in the hideout.".into()
+                self.press(
+                    |c| {
+                        matches!(
+                            c,
+                            Command::Recruit {
+                                kind: StaffKind::Operator,
+                                ..
+                            }
+                        )
+                    },
+                    "RECRUIT",
+                    "+20 operators",
+                    ". Operators pilot vessels: nothing moves without a team waiting in the hideout.",
+                )
             });
         }
         Step {
@@ -366,7 +437,20 @@ impl<'a> Crew<'a> {
                 self.home()
             ));
             if hideout.store.get(ItemType::Tap) > 0 {
-                hints.push("Hideout panel: press 'Install a tap'.".into());
+                hints.push(self.press(
+                    |c| {
+                        matches!(
+                            c,
+                            Command::InstallTaps {
+                                site: SiteRef::Hideout,
+                                ..
+                            }
+                        )
+                    },
+                    "Hideout panel",
+                    "Install a tap",
+                    ".",
+                ));
             } else if self.me().workshop.coders.is_none() {
                 hints.push("Taps are built by coders: recruit them first.".into());
             } else {
@@ -397,7 +481,7 @@ impl<'a> Crew<'a> {
     }
 
     fn assemble_dropper(&self) -> Step {
-        let done = self.mine().any(|v| v.kind == VesselKind::Dropper);
+        let done = self.mine().any(|(_, v)| v.kind == VesselKind::Dropper);
         let mut hints = Vec::new();
         if !done {
             let store = &self.hideout().store;
@@ -405,9 +489,22 @@ impl<'a> Crew<'a> {
             if !parts.iter().all(|&p| self.researched(p)) {
                 hints.push("Research the dropper first.".into());
             } else if parts.iter().all(|&p| store.get(p) > 0) {
-                hints.push(format!(
-                    "Click {} on the map (the host your hideout is on). ASSEMBLE: press 'Assemble a dropper inside'.",
-                    self.home()
+                hints.push(self.press(
+                    |c| {
+                        matches!(
+                            c,
+                            Command::Assemble {
+                                kind: VesselKind::Dropper,
+                                ..
+                            }
+                        )
+                    },
+                    &format!(
+                        "Click {} on the map (the host your hideout is on). ASSEMBLE",
+                        self.home()
+                    ),
+                    "Assemble a dropper inside",
+                    ".",
                 ));
             } else {
                 for part in parts {
@@ -446,12 +543,12 @@ impl<'a> Crew<'a> {
 
     fn crew_dropper(&self) -> Step {
         let dropper = self.dropper();
-        let done = dropper.is_some_and(|d| d.pilot.is_some() && d.fuel > 0);
+        let done = dropper.is_some_and(|(_, d)| d.pilot.is_some() && d.fuel > 0);
         let mut hints = Vec::new();
         if !done {
             match dropper {
                 None => hints.push("Assemble the dropper first.".into()),
-                Some(d) => {
+                Some((id, d)) => {
                     hints.push(format!(
                         "Click {} on the map, then 'Select' next to the dropper under VESSELS HERE.",
                         self.home()
@@ -463,9 +560,14 @@ impl<'a> Crew<'a> {
                             .iter()
                             .find(|s| s.kind == StaffKind::Operator)
                         {
-                            Some(team) => {
-                                hints.push(format!("CREW: press 'Pilot: {}'.", team.leader))
-                            }
+                            Some(team) => hints.push(self.press(
+                                move |c| {
+                                    matches!(c, Command::Board { vessel, seat: Seat::Pilot, .. } if *vessel == id)
+                                },
+                                "CREW",
+                                &format!("Pilot: {}", team.leader),
+                                ".",
+                            )),
                             None => hints.push(
                                 "No operator team is waiting in the hideout: RECRUIT '+20 operators'.".into(),
                             ),
@@ -473,9 +575,12 @@ impl<'a> Crew<'a> {
                     }
                     if d.fuel == 0 {
                         if self.hideout().store.get(ItemType::ProxyChains) > 0 {
-                            hints.push(
-                                "CREW: press 'Refuel'. A trip outside and back burns anonymisation, so refuel between trips.".into(),
-                            );
+                            hints.push(self.press(
+                                move |c| matches!(c, Command::Refuel { vessel, .. } if *vessel == id),
+                                "CREW",
+                                "Refuel",
+                                ". A trip outside and back burns anonymisation, so refuel between trips.",
+                            ));
                         } else if !self.researched(ItemType::ProxyChains) {
                             hints.push(
                                 "No anonymisation yet: research 'proxy chains'; the hideout refines them on its own afterwards.".into(),
@@ -498,7 +603,7 @@ impl<'a> Crew<'a> {
 
     /// Where the dropper is on its run with a citadel module, and what to press.
     fn module_run(&self, hints: &mut Vec<String>) {
-        let Some(d) = self.dropper() else {
+        let Some((id, d)) = self.dropper() else {
             hints.push("Assemble and crew the dropper first.".into());
             return;
         };
@@ -510,25 +615,44 @@ impl<'a> Crew<'a> {
         match d.modules.first() {
             Some(Module::ToolModule(Some(cargo))) if cargo.item == ItemType::CitadelModule => {
                 match berth {
-                    Some(Berth::Lurking) => hints.push(
-                        "Select the dropper. OUTSIDE: press 'Install citadel module (slot 1)', then SEND 'Go inside' for the next one.".into(),
-                    ),
-                    Some(_) => hints.push(
-                        "Select the dropper. SEND: press 'Go outside' and hand in; next turn it can install the module from there.".into(),
-                    ),
+                    Some(Berth::Lurking) => hints.push(self.press(
+                        move |c| matches!(c, Command::Deploy { vessel, .. } if *vessel == id),
+                        "Select the dropper. OUTSIDE",
+                        "Install citadel module (slot 1)",
+                        ", then SEND 'Go inside' for the next one.",
+                    )),
+                    Some(_) => hints.push(self.press(
+                        move |c| sends(c, id, Berth::Lurking),
+                        "Select the dropper. SEND",
+                        "Go outside",
+                        " and hand in; next turn it can install the module from there.",
+                    )),
                     None => hints.push("The dropper is on its way; orders wait until it arrives.".into()),
                 }
             }
-            Some(Module::ToolModule(Some(_))) => hints.push(
-                "Select the dropper. SLOT 1: press 'Unload' to make room for a citadel module.".into(),
-            ),
+            Some(Module::ToolModule(Some(_))) => hints.push(self.press(
+                move |c| matches!(c, Command::Unload { vessel, .. } if *vessel == id),
+                "Select the dropper. SLOT 1",
+                "Unload",
+                " to make room for a citadel module.",
+            )),
             Some(Module::ToolModule(None)) => {
                 if berth != Some(Berth::Planted) {
-                    hints.push(
-                        "Select the dropper. SEND: press 'Go inside' to load from the hideout store.".into(),
-                    );
+                    hints.push(self.press(
+                        move |c| sends(c, id, Berth::Planted),
+                        "Select the dropper. SEND",
+                        "Go inside",
+                        " to load from the hideout store.",
+                    ));
                 } else if store.get(ItemType::CitadelModule) > 0 {
-                    hints.push("Select the dropper. SLOT 1: press 'Load 1 citadel module'.".into());
+                    hints.push(self.press(
+                        move |c| {
+                            matches!(c, Command::Load { vessel, item: ItemType::CitadelModule, .. } if *vessel == id)
+                        },
+                        "Select the dropper. SLOT 1",
+                        "Load 1 citadel module",
+                        ".",
+                    ));
                 } else {
                     hints.push(self.build_hint(ItemType::CitadelModule, false));
                 }
@@ -537,11 +661,21 @@ impl<'a> Crew<'a> {
                 if store.get(ItemType::ToolModule) == 0 {
                     hints.push(self.build_hint(ItemType::ToolModule, false));
                 } else if berth == Some(Berth::Planted) {
-                    hints.push("Select the dropper. SLOT 1: press 'Fit tool module'.".into());
+                    hints.push(self.press(
+                        move |c| {
+                            matches!(c, Command::Fit { vessel, module: Some(ModuleKind::ToolModule), .. } if *vessel == id)
+                        },
+                        "Select the dropper. SLOT 1",
+                        "Fit tool module",
+                        ".",
+                    ));
                 } else {
-                    hints.push(
-                        "Select the dropper. SEND: 'Go inside', then fit the tool module from the store.".into(),
-                    );
+                    hints.push(self.press(
+                        move |c| sends(c, id, Berth::Planted),
+                        "Select the dropper. SEND",
+                        "Go inside",
+                        ", then fit the tool module from the store.",
+                    ));
                 }
                 if store.get(ItemType::CitadelModule) == 0 {
                     hints.push(self.build_hint(ItemType::CitadelModule, false));
@@ -622,46 +756,88 @@ impl<'a> Crew<'a> {
                     "Finish the citadel first. Worm parts, daemons and most advanced items can only be built in a citadel's workshop.".into(),
                 );
             } else if let Some(team) = citadel.staff.iter().find(|s| s.kind == StaffKind::Coder) {
-                hints.push(format!(
-                    "CITADEL (hideout panel): press 'Put the coders to work' so {} runs the citadel workshop.",
-                    team.leader
+                hints.push(self.press(
+                    |c| {
+                        matches!(
+                            c,
+                            Command::AssignCoders {
+                                at: WorkshopRef::Citadel(SiteRef::Hideout),
+                                ..
+                            }
+                        )
+                    },
+                    "CITADEL (hideout panel)",
+                    "Put the coders to work",
+                    &format!(" so {} runs the citadel workshop.", team.leader),
                 ));
-            } else if let Some(d) = self.dropper()
+            } else if let Some((id, d)) = self.dropper()
                 && let Some(team) = pod_coders(d)
             {
                 match d.berth() {
-                    Some(Berth::Connected) => hints.push(format!(
-                        "Select the dropper. SLOT 1: press 'Disembark' so {} joins the citadel, then 'Put the coders to work'.",
-                        team.leader
+                    Some(Berth::Connected) => hints.push(self.press(
+                        move |c| {
+                            matches!(c, Command::Disembark { vessel, seat: Seat::Pod(_) } if *vessel == id)
+                        },
+                        "Select the dropper. SLOT 1",
+                        "Disembark",
+                        &format!(
+                            " so {} joins the citadel, then 'Put the coders to work'.",
+                            team.leader
+                        ),
                     )),
-                    Some(_) => {
-                        hints.push("Select the dropper. SEND: press 'Go to the citadel'.".into())
-                    }
+                    Some(_) => hints.push(self.press(
+                        move |c| sends(c, id, Berth::Connected),
+                        "Select the dropper. SEND",
+                        "Go to the citadel",
+                        ".",
+                    )),
                     None => hints.push("The dropper is on its way to the citadel.".into()),
                 }
             } else if let Some(team) = hideout.staff.iter().find(|s| s.kind == StaffKind::Coder) {
                 match self.dropper() {
                     None => hints.push("Assemble a dropper to carry the coders up.".into()),
-                    Some(d) => match d.modules.first() {
+                    Some((id, d)) => match d.modules.first() {
                         Some(Module::SessionPod(None)) if d.berth() == Some(Berth::Planted) => {
-                            hints.push(format!(
-                                "Select the dropper. SLOT 1: press 'Board: {}', then SEND 'Go to the citadel'.",
-                                team.leader
+                            hints.push(self.press(
+                                move |c| {
+                                    matches!(c, Command::Board { vessel, seat: Seat::Pod(_), .. } if *vessel == id)
+                                },
+                                "Select the dropper. SLOT 1",
+                                &format!("Board: {}", team.leader),
+                                ", then SEND 'Go to the citadel'.",
                             ))
                         }
-                        Some(Module::SessionPod(None)) => hints.push(
-                            "Select the dropper. SEND: 'Go inside' to pick the coders up.".into(),
-                        ),
-                        _ if hideout.store.get(ItemType::SessionPod) > 0 => hints.push(
-                            "Select the dropper. SLOT 1: 'Remove pod' if one is fitted, then 'Fit session pod'.".into(),
-                        ),
+                        Some(Module::SessionPod(None)) => hints.push(self.press(
+                            move |c| sends(c, id, Berth::Planted),
+                            "Select the dropper. SEND",
+                            "Go inside",
+                            " to pick the coders up.",
+                        )),
+                        _ if hideout.store.get(ItemType::SessionPod) > 0 => hints.push(self.press(
+                            move |c| {
+                                matches!(c, Command::Fit { vessel, module: Some(ModuleKind::SessionPod), .. } if *vessel == id)
+                            },
+                            "Select the dropper. SLOT 1",
+                            "Fit session pod",
+                            " ('Remove pod' first if another pod is fitted).",
+                        )),
                         _ => hints.push(self.build_hint(ItemType::SessionPod, false)),
                     },
                 }
             } else {
-                hints.push(
-                    "Coders have to move up to the citadel's workshop. CITADEL (hideout panel): press 'Release the hideout coders'; they wait in the hideout for the dropper. Then RECRUIT '+100 coders' as the new hideout team.".into(),
-                );
+                hints.push(self.press(
+                    |c| {
+                        matches!(
+                            c,
+                            Command::ReleaseCoders {
+                                at: WorkshopRef::Hideout
+                            }
+                        )
+                    },
+                    "Coders have to move up to the citadel's workshop. CITADEL (hideout panel)",
+                    "Release the hideout coders",
+                    "; they wait in the hideout for the dropper. Then RECRUIT '+100 coders' as the new hideout team.",
+                ));
                 if self.me().workshop.jobs.iter().any(|j| j.active) {
                     hints.push("Coders can only be released while nothing is being built.".into());
                 }
@@ -719,7 +895,7 @@ impl<'a> Crew<'a> {
                     None => {
                         hints.push("A dropper carries resources up: assemble one first.".into())
                     }
-                    Some(d) => self.supply_run(d, &short, &mut hints),
+                    Some((id, d)) => self.supply_run(id, d, &short, &mut hints),
                 }
             }
         }
@@ -731,7 +907,13 @@ impl<'a> Crew<'a> {
     }
 
     /// What to press to get resources from the hideout store up to the citadel.
-    fn supply_run(&self, d: &Vessel, short: &[(ItemType, u32)], hints: &mut Vec<String>) {
+    fn supply_run(
+        &self,
+        id: VesselId,
+        d: &Vessel,
+        short: &[(ItemType, u32)],
+        hints: &mut Vec<String>,
+    ) {
         let store = &self.hideout().store;
         match &d.script {
             Some(script) if script.running() => {
@@ -742,15 +924,23 @@ impl<'a> Crew<'a> {
                 return;
             }
             Some(_) => {
-                hints.push(
-                    "Select the dropper. EXFIL SCRIPT: press 'Run supplies inside -> citadel' and it shuttles everything on its own.".into(),
-                );
+                hints.push(self.press(
+                    move |c| {
+                        matches!(c, Command::ConfigureScript { vessel, route: Some(_) } if *vessel == id)
+                    },
+                    "Select the dropper. EXFIL SCRIPT",
+                    "Run supplies inside -> citadel",
+                    " and it shuttles everything on its own.",
+                ));
                 return;
             }
             None if store.get(ItemType::ExfilScript) > 0 && d.berth() == Some(Berth::Planted) => {
-                hints.push(
-                    "Select the dropper. EXFIL SCRIPT: press 'Install an exfil script'.".into(),
-                );
+                hints.push(self.press(
+                    move |c| matches!(c, Command::InstallScript { vessel } if *vessel == id),
+                    "Select the dropper. EXFIL SCRIPT",
+                    "Install an exfil script",
+                    ".",
+                ));
                 return;
             }
             None => {}
@@ -758,17 +948,30 @@ impl<'a> Crew<'a> {
         let wanted = short.iter().max_by_key(|(_, n)| *n).map(|(i, _)| *i);
         match d.modules.first() {
             Some(Module::DataContainer(Some(_))) => match d.berth() {
-                Some(Berth::Connected) => hints.push(
-                    "Select the dropper. SLOT 1: press 'Unload' into the citadel store, then SEND 'Go inside' for the next load.".into(),
-                ),
-                Some(_) => hints.push("Select the dropper. SEND: press 'Go to the citadel'.".into()),
+                Some(Berth::Connected) => hints.push(self.press(
+                    move |c| matches!(c, Command::Unload { vessel, .. } if *vessel == id),
+                    "Select the dropper. SLOT 1",
+                    "Unload",
+                    " into the citadel store, then SEND 'Go inside' for the next load.",
+                )),
+                Some(_) => hints.push(self.press(
+                    move |c| sends(c, id, Berth::Connected),
+                    "Select the dropper. SEND",
+                    "Go to the citadel",
+                    ".",
+                )),
                 None => hints.push("The dropper is on its way.".into()),
             },
             Some(Module::DataContainer(None)) if d.berth() == Some(Berth::Planted) => match wanted {
-                Some(item) if store.get(item) > 0 => hints.push(format!(
-                    "Select the dropper. SLOT 1: press 'Load {} {}', then SEND 'Go to the citadel'.",
-                    store.get(item).min(Module::CONTAINER_CAPACITY),
-                    text::item(item)
+                Some(item) if store.get(item) > 0 => hints.push(self.press(
+                    move |c| matches!(c, Command::Load { vessel, item: i, .. } if *vessel == id && *i == item),
+                    "Select the dropper. SLOT 1",
+                    &format!(
+                        "Load {} {}",
+                        store.get(item).min(Module::CONTAINER_CAPACITY),
+                        text::item(item)
+                    ),
+                    ", then SEND 'Go to the citadel'.",
                 )),
                 Some(item) => hints.push(format!(
                     "The hideout store has no {} yet; the taps bring more every day.",
@@ -776,12 +979,20 @@ impl<'a> Crew<'a> {
                 )),
                 None => {}
             },
-            Some(Module::DataContainer(None)) => hints.push(
-                "Select the dropper. SEND: press 'Go inside' to load from the hideout store.".into(),
-            ),
-            _ if store.get(ItemType::DataContainer) > 0 => hints.push(
-                "Select the dropper. SLOT 1: 'Remove pod' if one is fitted, then 'Fit data container' (it holds 250 units of one resource).".into(),
-            ),
+            Some(Module::DataContainer(None)) => hints.push(self.press(
+                move |c| sends(c, id, Berth::Planted),
+                "Select the dropper. SEND",
+                "Go inside",
+                " to load from the hideout store.",
+            )),
+            _ if store.get(ItemType::DataContainer) > 0 => hints.push(self.press(
+                move |c| {
+                    matches!(c, Command::Fit { vessel, module: Some(ModuleKind::DataContainer), .. } if *vessel == id)
+                },
+                "Select the dropper. SLOT 1",
+                "Fit data container",
+                " (it holds 250 units of one resource; 'Remove pod' first if another is fitted).",
+            )),
             _ => hints.push(self.build_hint(ItemType::DataContainer, false)),
         }
         if self.open(ItemType::ExfilScript) {
@@ -802,9 +1013,19 @@ impl<'a> Crew<'a> {
             } else if citadel.workshop.coders.is_none() && !citadel.workshop.automated {
                 hints.push("Staff the citadel with coders first.".into());
             } else if parts.iter().all(|&p| citadel.store.get(p) > 0) {
-                hints.push(format!(
-                    "Click {} on the map. ASSEMBLE: press 'Assemble a worm at the citadel'.",
-                    self.home()
+                hints.push(self.press(
+                    |c| {
+                        matches!(
+                            c,
+                            Command::Assemble {
+                                kind: VesselKind::Worm,
+                                ..
+                            }
+                        )
+                    },
+                    &format!("Click {} on the map. ASSEMBLE", self.home()),
+                    "Assemble a worm at the citadel",
+                    ".",
                 ));
             } else {
                 for part in parts {
@@ -834,7 +1055,7 @@ impl<'a> Crew<'a> {
         if !done {
             match self.worm() {
                 None => hints.push("Build a worm first.".into()),
-                Some(w) => {
+                Some((id, w)) => {
                     let citadel = &self.hideout().citadel;
                     hints.push(format!(
                         "Select the worm: click it on the map, or click {} and press 'Select'.",
@@ -845,18 +1066,26 @@ impl<'a> Crew<'a> {
                     );
                     if w.pilot.is_none() {
                         match citadel.staff.iter().find(|s| s.kind == StaffKind::Operator) {
-                            Some(team) => {
-                                hints.push(format!("CREW: press 'Pilot: {}'.", team.leader))
-                            }
+                            Some(team) => hints.push(self.press(
+                                move |c| {
+                                    matches!(c, Command::Board { vessel, seat: Seat::Pilot, .. } if *vessel == id)
+                                },
+                                "CREW",
+                                &format!("Pilot: {}", team.leader),
+                                ".",
+                            )),
                             None => hints.push(
                                 "CREW: the worm needs an operator team in the citadel: carry one up in the dropper's session pod ('Board', 'Go to the citadel', 'Disembark').".into(),
                             ),
                         }
                     }
                     if w.fuel < 50 {
-                        hints.push(
-                            "CREW: press 'Refuel'; the citadel refines proxy chains from the bandwidth and proxies in its store.".into(),
-                        );
+                        hints.push(self.press(
+                            move |c| matches!(c, Command::Refuel { vessel, .. } if *vessel == id),
+                            "CREW",
+                            "Refuel",
+                            "; the citadel refines proxy chains from the bandwidth and proxies in its store.",
+                        ));
                     }
                     if !loaded {
                         if w.modules
@@ -864,27 +1093,49 @@ impl<'a> Crew<'a> {
                             .any(|m| matches!(m, Module::ToolModule(None)))
                         {
                             if citadel.store.get(ItemType::CitadelModule) > 0 {
-                                hints.push("SLOT: press 'Load 1 citadel module'.".into());
+                                hints.push(self.press(
+                                    move |c| {
+                                        matches!(c, Command::Load { vessel, item: ItemType::CitadelModule, .. } if *vessel == id)
+                                    },
+                                    "SLOT",
+                                    "Load 1 citadel module",
+                                    ".",
+                                ));
                             } else {
                                 hints.push(
                                     "Get a citadel module into the citadel store: CITADEL 'Build citadel module', or carry one up in the dropper.".into(),
                                 );
                             }
                         } else if citadel.store.get(ItemType::ToolModule) > 0 {
-                            hints.push("SLOT 1: press 'Fit tool module'.".into());
+                            hints.push(self.press(
+                                move |c| {
+                                    matches!(c, Command::Fit { vessel, module: Some(ModuleKind::ToolModule), .. } if *vessel == id)
+                                },
+                                "SLOT 1",
+                                "Fit tool module",
+                                ".",
+                            ));
                         } else {
                             hints.push(
                                 "The citadel store needs a tool module: CITADEL 'Build tool module', or carry one up in the dropper.".into(),
                             );
                         }
                     } else if w.berth() == Some(Berth::Lurking) && w.host != home {
-                        hints.push(
-                            "OUTSIDE: press 'Install citadel module'. The host is yours from then on.".into(),
-                        );
+                        hints.push(self.press(
+                            move |c| matches!(c, Command::Deploy { vessel, .. } if *vessel == id),
+                            "OUTSIDE",
+                            "Install citadel module",
+                            ". The host is yours from then on.",
+                        ));
                     } else if w.pilot.is_some() && w.fuel > 0 {
-                        hints.push(
-                            "SEND: press 'Route to another host...' and click a free host (dim ring) on the map, ideally in the same network. The worm arrives outside it; press 'Install citadel module' there.".into(),
-                        );
+                        hints.push(self.press(
+                            move |c| {
+                                matches!(c, Command::Dispatch { vessel, to } if *vessel == id && to.host != home)
+                            },
+                            "SEND",
+                            "Route to another host...",
+                            " and click a free host (dim ring) on the map, ideally in the same network. The worm arrives outside it; press 'Install citadel module' there.",
+                        ));
                     }
                     hints.push(
                         "Eight modules make a citadel there; two backdoor kits and taps make it extract. Red rings are the Legacy Net's hosts, which only force can take.".into(),
@@ -903,7 +1154,7 @@ impl<'a> Crew<'a> {
         let me = self.me();
         let player = self.status.player;
         let home = usize::from(self.data.hideout.host.0);
-        let armed = self.mine().any(|v| v.c2 && v.daemons > 0)
+        let armed = self.mine().any(|(_, v)| v.c2 && v.daemons > 0)
             || self.hideout().citadel.store.get(ItemType::Daemon) > 0
             || self.status.view.hosts.iter().any(|h| {
                 h.site
@@ -936,7 +1187,12 @@ impl<'a> Crew<'a> {
             } else {
                 for item in [ItemType::Daemon, ItemType::C2Controller] {
                     if !self.researched(item) {
-                        hints.push(format!("RESEARCH: press '{}'.", text::item(item)));
+                        hints.push(self.press(
+                            move |c| matches!(c, Command::SetResearch { item: i } if *i == item),
+                            "RESEARCH",
+                            &text::item(item),
+                            ".",
+                        ));
                     }
                 }
                 if self.researched(ItemType::Daemon) {
