@@ -13,6 +13,7 @@ use nullnet_api::{
 use nullnet_core::{Command, GameData, Orders, PlayerId, World, bot, crew_view, resolve_turn};
 
 use crate::db::{CrewRow, GameRow, Store, TurnRow};
+use crate::notify::Notice;
 
 /// The last day of a game that is set up without one.
 pub const DEFAULT_END_DAY: u32 = 3000;
@@ -28,6 +29,8 @@ pub fn now() -> i64 {
 pub struct Server {
     data: GameData,
     db: Mutex<Store>,
+    /// Webhook posts waiting to be sent, queued as turns run.
+    outbox: Mutex<Vec<Notice>>,
 }
 
 #[derive(Debug)]
@@ -63,7 +66,17 @@ impl Server {
         Ok(Server {
             data: GameData::classic(),
             db: Mutex::new(Store::open(path)?),
+            outbox: Mutex::new(Vec::new()),
         })
+    }
+
+    /// Takes the webhook posts queued since the last call.
+    pub fn take_notices(&self) -> Vec<Notice> {
+        let mut outbox = self
+            .outbox
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        std::mem::take(&mut *outbox)
     }
 
     pub fn data(&self) -> &GameData {
@@ -118,6 +131,17 @@ impl Server {
             Some(day) => Some(day),
         };
         let seed = request.seed.unwrap_or_else(rand::random);
+        let notify_url = match request.notify_url.as_deref().map(str::trim) {
+            None | Some("") => None,
+            Some(url) if url.starts_with("https://") || url.starts_with("http://") => {
+                Some(url.to_string())
+            }
+            Some(_) => {
+                return Err(Error::BadRequest(
+                    "the webhook must be an http(s) URL".into(),
+                ));
+            }
+        };
 
         let id = format!("g_{}", token(8));
         let crews: Vec<CrewRow> = request
@@ -146,6 +170,7 @@ impl Server {
             turn: 0,
             world,
             deadline: now + i64::from(deadline_hours) * 3600,
+            notify_url,
         };
         self.store().insert_game(&game, &crews)?;
         Ok(GameCreated {
@@ -308,6 +333,16 @@ impl Server {
         };
         let deadline = now + i64::from(game.deadline_hours) * 3600;
         store.finish_turn(game_id, &record, &world, deadline)?;
+        if let Some(url) = &game.notify_url {
+            let text = crate::notify::turn_text(&game.name, game.turn, &world, &crews);
+            self.outbox
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(Notice {
+                    url: url.clone(),
+                    text,
+                });
+        }
         Ok(true)
     }
 }
@@ -319,6 +354,7 @@ fn info(game: &GameRow) -> GameInfo {
         turn_days: game.turn_days,
         deadline_hours: game.deadline_hours,
         end_day: game.world.end_day,
+        notifies: game.notify_url.is_some(),
     }
 }
 

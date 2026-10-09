@@ -1,0 +1,14 @@
+# A NullNet server on any machine with Docker: `docker compose up -d`, then
+# open http://<host>:8080/console. Put it behind a reverse proxy with HTTPS
+# (Caddy, nginx) for use over the internet.
+services:
+  nullnet:
+    build: .
+    image: nullnet
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - nullnet-data:/data
+volumes:
+  nullnet-data:

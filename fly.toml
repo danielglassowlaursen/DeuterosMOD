@@ -1,0 +1,32 @@
+# NullNet on Fly.io: one small machine, a volume for the SQLite file, HTTPS
+# from Fly's edge. Set `app` and `primary_region` to your own, then
+#   fly launch --no-deploy   (once, to register the app)
+#   fly volumes create nullnet_data --size 1
+#   fly deploy
+app = "nullnet"
+primary_region = "arn"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  NULLNET_DB = "/data/nullnet.db"
+  NULLNET_WEB = "/app/dist"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # The server keeps games in one SQLite file, so it runs as one machine
+  # that never stops.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[mounts]]
+  source = "nullnet_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

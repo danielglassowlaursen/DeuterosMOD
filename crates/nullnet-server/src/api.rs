@@ -19,6 +19,7 @@ use tower_http::services::ServeDir;
 use nullnet_api::{CreateGame, CrewStatus, CrewTurn, GameCreated, OrdersReceipt, TurnSummary};
 
 use crate::games::{self, Error, Server};
+use crate::notify;
 
 const CONSOLE: &str = include_str!("../../../web/console.html");
 
@@ -92,7 +93,13 @@ async fn submit_orders(
     Path(token): Path<String>,
     Json(orders): Json<Vec<Command>>,
 ) -> Result<Json<OrdersReceipt>, Error> {
-    Ok(Json(server.submit_orders(&token, orders, games::now())?))
+    let receipt = server.submit_orders(&token, orders, games::now())?;
+    // A hand-in that ran the turn may have queued a webhook post.
+    let notices = server.take_notices();
+    if !notices.is_empty() {
+        tokio::spawn(notify::deliver(notices));
+    }
+    Ok(Json(receipt))
 }
 
 async fn withdraw_orders(

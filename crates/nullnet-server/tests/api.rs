@@ -275,6 +275,92 @@ async fn the_game_ends_on_its_last_day_and_takes_no_more_orders() {
 }
 
 #[tokio::test]
+async fn a_turn_that_ran_is_posted_to_the_game_webhook() {
+    use axum::Json;
+    use axum::routing::post;
+    use std::sync::Mutex;
+
+    // A webhook of our own, on a free local port.
+    let received: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&received);
+    let hook = Router::new().route(
+        "/hook",
+        post(move |Json(body): Json<Value>| {
+            let sink = Arc::clone(&sink);
+            async move {
+                sink.lock().unwrap().push(body);
+                StatusCode::NO_CONTENT
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, hook).await.unwrap() });
+
+    let client = Client::in_memory();
+    let (status, created) = client
+        .call(
+            Method::POST,
+            "/api/games",
+            Some(json!({
+                "name": "Hooked run",
+                "crews": [{ "name": "Ghostline" }, { "name": "Bot", "bot": true }],
+                "turn_days": 10,
+                "end_day": 10,
+                "notify_url": format!("http://{address}/hook"),
+                "seed": 7
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["notifies"], true);
+    let me = token(&created, 0);
+    assert!(client.server.take_notices().is_empty());
+
+    let (_, receipt) = client
+        .call(
+            Method::PUT,
+            &format!("/api/crew/{me}/orders"),
+            Some(json!([])),
+        )
+        .await;
+    assert_eq!(receipt["resolved"], true);
+    // The handler spawned the delivery; take and deliver the queue here to
+    // wait for it, or find it already sent.
+    let notices = client.server.take_notices();
+    nullnet_server::notify::deliver(notices).await;
+    for _ in 0..50 {
+        if !received.lock().unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let posts = received.lock().unwrap().clone();
+    assert_eq!(posts.len(), 1, "{posts:?}");
+    let text = posts[0]["content"].as_str().unwrap();
+    assert_eq!(posts[0]["text"], posts[0]["content"]);
+    assert!(text.contains("Hooked run"), "{text}");
+    assert!(
+        text.contains("is over") && text.contains("Ghostline wins"),
+        "{text}"
+    );
+
+    // A webhook that is not a URL is refused.
+    let (status, _) = client
+        .call(
+            Method::POST,
+            "/api/games",
+            Some(json!({
+                "name": "Bad hook",
+                "crews": [{ "name": "Ghostline" }],
+                "notify_url": "discord.com/api/webhooks/1"
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn handing_in_previews_what_the_rules_refuse_and_can_be_withdrawn() {
     let client = Client::in_memory();
     let created = client

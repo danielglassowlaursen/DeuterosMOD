@@ -5,6 +5,7 @@
 pub mod api;
 pub mod db;
 pub mod games;
+pub mod notify;
 
 pub use api::router;
 pub use games::{Server, now};

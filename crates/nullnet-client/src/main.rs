@@ -1,6 +1,8 @@
 mod map;
 mod materials;
 mod net;
+mod notify;
+mod sound;
 mod text;
 mod ui;
 
@@ -29,6 +31,7 @@ fn main() {
         }))
         .add_plugins((
             materials::MaterialsPlugin,
+            sound::SoundPlugin,
             net::NetPlugin,
             map::MapPlugin,
             ui::UiPlugin,

@@ -56,6 +56,7 @@
           <label>Days per turn <input id="gdays" type="number" value="10" min="1" max="100"></label>
           <label>Hours before a turn runs without everyone's orders <input id="ghours" type="number" value="24" min="0"></label>
           <label>Last day (highest score wins; 0 for no limit) <input id="gend" type="number" value="3000" min="0"></label>
+          <label>Webhook for turn notices (Discord or Slack URL, optional) <input id="ghook" type="url" placeholder="https://discord.com/api/webhooks/..."></label>
           <label>Seed (blank for random) <input id="gseed" type="text" placeholder="7"></label>
         </div>
         <div class="crews-form" id="crewsForm">
@@ -76,6 +77,7 @@
 
   <div id="play" hidden>
     <div id="banner" class="banner" hidden></div>
+    <div class="row"><button type="button" id="notify" hidden>Notify me when a turn runs</button><span id="notifyState" class="muted"></span></div>
     <div class="grid">
       <div class="panel">
         <h2>Game</h2>
@@ -165,6 +167,7 @@
       })).filter(c => c.name);
       const seed = $('gseed').value.trim();
       const body = { name: $('gname').value, crews, turn_days: Number($('gdays').value), deadline_hours: Number($('ghours').value), end_day: Number($('gend').value) };
+      if ($('ghook').value.trim()) body.notify_url = $('ghook').value.trim();
       if (seed) body.seed = Number(seed);
       $('createMsg').textContent = 'Creating…';
       try {
@@ -204,7 +207,15 @@
         $('banner').hidden = false;
         document.title = '● NullNet console';
         $('orders').value = '[]';
+        if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+          const events = status.last_turn ? status.last_turn.report.events : [];
+          const notable = events.filter(ev => ['WarDeclared', 'FleetSighted', 'UnderAttack', 'HostCaptured', 'HostFreed', 'HostTaken', 'Raid', 'GameOver'].includes(Object.keys(ev)[0]));
+          new Notification('NullNet: turn ' + knownTurn + ' of ' + status.game.name + ' has run', {
+            body: notable.length ? notable.slice(0, 5).map(eventText).join('\n') : 'Your orders are open.',
+          });
+        }
       }
+      renderNotifyButton();
       knownTurn = status.turn;
       render();
     };
@@ -232,8 +243,20 @@
     $('addBuild').addEventListener('click', () => { if ($('buildItem').value) addOrder({ Build: { at: 'Hideout', item: $('buildItem').value } }); });
     $('addTaps').addEventListener('click', () => addOrder({ InstallTaps: { site: 'Hideout', count: 1 } }));
     document.addEventListener('visibilitychange', () => { if (!document.hidden) document.title = 'NullNet console'; });
+    $('notify').addEventListener('click', async () => {
+      if (!('Notification' in window)) return;
+      await Notification.requestPermission();
+      renderNotifyButton();
+    });
     await refresh();
     setInterval(refresh, 15000);
+  }
+
+  function renderNotifyButton() {
+    const button = $('notify');
+    if (!('Notification' in window)) { button.hidden = true; return; }
+    button.hidden = Notification.permission !== 'default';
+    $('notifyState').textContent = Notification.permission === 'granted' ? 'Browser notifications are on when this tab is in the background.' : Notification.permission === 'denied' ? 'Browser notifications are blocked for this site.' : '';
   }
 
   function addOrder(order) {

@@ -9,21 +9,30 @@ use bevy::prelude::*;
 use bevy::ui::{FocusPolicy, RelativeCursorPosition};
 use nullnet_api::CrewStatus;
 use nullnet_core::{
-    Berth, Command, Controller, Destination, EndReason, GameData, HostId, ItemCategory, ItemType,
-    Module, ModuleKind, PROTECTION_TURNS, RaidGoal, Route, Seat, Site, SiteRef, Staff, StaffKind,
-    Vessel, VesselId, VesselKind, WorkshopRef, date,
+    BattleReport, Berth, Command, Controller, Destination, EndReason, Event, GameData, HostId,
+    ItemCategory, ItemType, Module, ModuleKind, PROTECTION_TURNS, RaidGoal, Route, Seat, Site,
+    SiteRef, Staff, StaffKind, Vessel, VesselId, VesselKind, WorkshopRef, date,
 };
 
 use crate::Rules;
 use crate::map::{Routing, Selected, crew_color};
 use crate::net::{self, Api, Clock, Inbox, Session};
+use crate::notify;
+use crate::sound::{Cue, Play, Sounds};
 use crate::text;
+
+/// Seconds a battle replay takes from first to last snapshot.
+const REPLAY_SECONDS: f32 = 5.0;
+/// Seconds the turn toast stays up.
+const TOAST_SECONDS: f32 = 14.0;
 
 pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<OverUi>()
+            .init_resource::<Toast>()
+            .init_resource::<Replay>()
             .add_systems(Startup, spawn_layout)
             .add_systems(
                 Update,
@@ -33,16 +42,59 @@ impl Plugin for UiPlugin {
                     style_buttons,
                     scroll_panels,
                     countdown,
+                    fade_toast,
+                    animate_replay,
                     refresh.run_if(
                         resource_changed::<Session>
                             .or_else(resource_changed::<Selected>)
-                            .or_else(resource_changed::<Routing>),
+                            .or_else(resource_changed::<Routing>)
+                            .or_else(resource_changed::<Toast>)
+                            .or_else(resource_changed::<Replay>)
+                            .or_else(resource_changed::<Sounds>),
                     ),
                 )
                     .chain(),
             );
     }
 }
+
+/// What happened in the turn that just ran, shown for a while over the map.
+#[derive(Resource, Default)]
+pub struct Toast {
+    pub lines: Vec<String>,
+    pub seconds_left: f32,
+}
+
+impl Toast {
+    pub fn show(&mut self, lines: Vec<String>) {
+        self.lines = lines;
+        self.seconds_left = TOAST_SECONDS;
+    }
+}
+
+/// A battle being replayed from its course of snapshots.
+#[derive(Resource, Default)]
+pub struct Replay {
+    pub current: Option<ReplayState>,
+}
+
+pub struct ReplayState {
+    pub title: String,
+    pub attacker: String,
+    pub defender: String,
+    pub report: BattleReport,
+    pub elapsed: f32,
+}
+
+/// The bar of one side in the replay: `true` for the attacker.
+#[derive(Component)]
+struct ReplayBar(bool);
+
+#[derive(Component)]
+struct ReplayCount(bool);
+
+#[derive(Component)]
+struct ReplayOutcome;
 
 /// Whether the cursor is over a panel, so the map leaves the click alone.
 #[derive(Resource, Default)]
@@ -60,6 +112,8 @@ enum Slot {
     Selection,
     Orders,
     Log,
+    Toast,
+    Replay,
 }
 
 #[derive(Component)]
@@ -76,6 +130,11 @@ enum Action {
     SelectVessel(VesselId),
     Route(VesselId),
     CancelRoute,
+    ToggleMute,
+    RequestNotify,
+    /// Replays the battle in the last turn's event at this index.
+    Replay(usize),
+    CloseReplay,
 }
 
 const PANEL_BG: Color = Color::srgba(0.04, 0.07, 0.10, 0.94);
@@ -223,6 +282,98 @@ fn spawn_layout(mut commands: Commands) {
         },
         Slot::Log,
     ));
+    commands.spawn((
+        panel(
+            Node {
+                top: Val::Px(50.0),
+                left: Val::Percent(24.0),
+                right: Val::Percent(24.0),
+                ..default()
+            },
+            Slot::Toast,
+        ),
+        Visibility::Hidden,
+    ));
+    commands.spawn((
+        panel(
+            Node {
+                top: Val::Percent(22.0),
+                left: Val::Percent(30.0),
+                right: Val::Percent(30.0),
+                row_gap: Val::Px(8.0),
+                ..default()
+            },
+            Slot::Replay,
+        ),
+        Visibility::Hidden,
+    ));
+}
+
+fn fade_toast(time: Res<Time>, mut toast: ResMut<Toast>) {
+    if toast.seconds_left <= 0.0 {
+        return;
+    }
+    // Ticking is not a change worth rebuilding the panels for; clearing is.
+    let inner = toast.bypass_change_detection();
+    inner.seconds_left -= time.delta_secs();
+    if inner.seconds_left <= 0.0 {
+        toast.lines.clear();
+    }
+}
+
+/// Moves the replay's bars along the battle's course.
+fn animate_replay(
+    time: Res<Time>,
+    mut replay: ResMut<Replay>,
+    mut bars: Query<(&ReplayBar, &mut Node)>,
+    mut counts: Query<(&ReplayCount, &mut Text)>,
+    mut outcome: Query<&mut Visibility, With<ReplayOutcome>>,
+) {
+    let Some(state) = replay.bypass_change_detection().current.as_mut() else {
+        return;
+    };
+    if state.elapsed >= REPLAY_SECONDS {
+        return;
+    }
+    state.elapsed += time.delta_secs();
+    let progress = (state.elapsed / REPLAY_SECONDS).min(1.0);
+    let course = &state.report.course;
+    let (attacker, defender) = if course.len() < 2 {
+        let last = course.last().copied().unwrap_or((0, 0));
+        (last.0 as f32, last.1 as f32)
+    } else {
+        let position = progress * (course.len() - 1) as f32;
+        let index = (position.floor() as usize).min(course.len() - 2);
+        let fraction = position - index as f32;
+        let (a0, d0) = course[index];
+        let (a1, d1) = course[index + 1];
+        (
+            a0 as f32 + (a1 as f32 - a0 as f32) * fraction,
+            d0 as f32 + (d1 as f32 - d0 as f32) * fraction,
+        )
+    };
+    let most = state
+        .report
+        .attacker
+        .daemons
+        .max(state.report.defender.daemons)
+        .max(1) as f32;
+    for (bar, mut node) in &mut bars {
+        let left = if bar.0 { attacker } else { defender };
+        node.width = Val::Percent(left / most * 100.0);
+    }
+    for (count, mut text) in &mut counts {
+        let left = if count.0 { attacker } else { defender };
+        let wanted = format!("{}", left.round() as u32);
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
+    }
+    if progress >= 1.0 {
+        for mut visibility in &mut outcome {
+            *visibility = Visibility::Inherited;
+        }
+    }
 }
 
 fn track_cursor(panels: Query<&RelativeCursorPosition, With<Panel>>, mut over: ResMut<OverUi>) {
@@ -260,6 +411,7 @@ fn style_buttons(mut buttons: Query<(&Interaction, &mut BackgroundColor), Change
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn press_buttons(
     mouse: Res<ButtonInput<MouseButton>>,
     buttons: Query<(&Interaction, &Action), Changed<Interaction>>,
@@ -268,14 +420,22 @@ fn press_buttons(
     mut session: ResMut<Session>,
     mut selected: ResMut<Selected>,
     mut routing: ResMut<Routing>,
+    mut sounds: ResMut<Sounds>,
+    mut play: MessageWriter<Play>,
+    mut replay: ResMut<Replay>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
         return;
+    }
+    // The first click is what a browser wants before a page makes sound.
+    if !sounds.unlocked {
+        sounds.bypass_change_detection().unlocked = true;
     }
     for (interaction, action) in &buttons {
         if *interaction != Interaction::Pressed {
             continue;
         }
+        play.write(Play(Cue::Click));
         match action.clone() {
             Action::Order(command) => {
                 session.draft.push(command);
@@ -309,7 +469,78 @@ fn press_buttons(
             }
             Action::Route(id) => routing.0 = Some(id),
             Action::CancelRoute => routing.0 = None,
+            Action::ToggleMute => {
+                sounds.muted = !sounds.muted;
+                notify::remember_muted(sounds.muted);
+            }
+            Action::RequestNotify => notify::request_permission(),
+            Action::Replay(index) => {
+                if let Some(state) = replay_of(&session, index) {
+                    replay.current = Some(state);
+                    play.write(Play(Cue::Battle));
+                }
+            }
+            Action::CloseReplay => replay.current = None,
         }
+    }
+}
+
+/// The replay of the battle in the last turn's event at `index`.
+fn replay_of(session: &Session, index: usize) -> Option<ReplayState> {
+    let status = session.status.as_ref()?;
+    let turn = status.last_turn.as_ref()?;
+    let crew = |player: nullnet_core::PlayerId| {
+        status
+            .crews
+            .iter()
+            .find(|c| c.player == player)
+            .map_or(format!("crew {}", player.0 + 1), |c| c.name.clone())
+    };
+    let host = |h: HostId| {
+        status
+            .view
+            .hosts
+            .get(usize::from(h.0))
+            .map(|_| h)
+            .map_or(String::new(), |_| format!("host {}", h.0))
+    };
+    let _ = host;
+    match turn.report.events.get(index)? {
+        Event::BattleFought {
+            player,
+            vessel,
+            report,
+            day,
+            ..
+        } => Some(ReplayState {
+            title: format!("Battle on {}", date(*day)),
+            attacker: match vessel {
+                Some(id) => format!(
+                    "{} ({})",
+                    text::vessel(*id, &status.view.vessels),
+                    crew(*player)
+                ),
+                None => format!("Garrison ({})", crew(*player)),
+            },
+            defender: "The Legacy Net".into(),
+            report: report.clone(),
+            elapsed: 0.0,
+        }),
+        Event::Raid {
+            player,
+            defender,
+            report,
+            day,
+            goal,
+            ..
+        } => Some(ReplayState {
+            title: format!("Raid on {} to {}", date(*day), text::raid_goal(*goal)),
+            attacker: crew(*player),
+            defender: format!("Garrison ({})", crew(*defender)),
+            report: report.clone(),
+            elapsed: 0.0,
+        }),
+        _ => None,
     }
 }
 
@@ -330,6 +561,7 @@ fn countdown(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn refresh(
     mut commands: Commands,
     session: Res<Session>,
@@ -337,14 +569,33 @@ fn refresh(
     routing: Res<Routing>,
     api: Res<Api>,
     rules: Res<Rules>,
-    slots: Query<(Entity, &Slot)>,
+    toast: Res<Toast>,
+    replay: Res<Replay>,
+    sounds: Res<Sounds>,
+    mut slots: Query<(Entity, &Slot, &mut Visibility)>,
 ) {
     let data = &rules.0;
-    for (entity, slot) in &slots {
+    for (entity, slot, mut visibility) in &mut slots {
+        let shown = match slot {
+            Slot::Toast => !toast.lines.is_empty() && toast.seconds_left > 0.0,
+            Slot::Replay => replay.current.is_some(),
+            _ => true,
+        };
+        let wanted = if shown {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *visibility != wanted {
+            *visibility = wanted;
+        }
         let mut e = commands.entity(entity);
         e.despawn_children();
+        if !shown {
+            continue;
+        }
         e.with_children(|p| match slot {
-            Slot::TopBar => top_bar(p, &session, &api),
+            Slot::TopBar => top_bar(p, &session, &api, &sounds),
             Slot::Hideout => match &session.status {
                 Some(status) => hideout_panel(p, status, data),
                 None => muted(p, "Waiting for the server..."),
@@ -360,14 +611,96 @@ fn refresh(
                     log_panel(p, status, data);
                 }
             }
+            Slot::Toast => {
+                for (index, line) in toast.lines.iter().enumerate() {
+                    if index == 0 {
+                        p.spawn(text(line.clone(), 13.0, GOOD));
+                    } else {
+                        p.spawn(text(line.clone(), 12.0, FG));
+                    }
+                }
+            }
+            Slot::Replay => {
+                if let Some(state) = &replay.current {
+                    replay_panel(p, state);
+                }
+            }
         });
     }
 }
 
+fn replay_panel(p: &mut ChildSpawnerCommands, state: &ReplayState) {
+    heading(p, &state.title);
+    for (attacker, name, side) in [
+        (true, &state.attacker, state.report.attacker),
+        (false, &state.defender, state.report.defender),
+    ] {
+        line(
+            p,
+            format!(
+                "{name}: {} daemons, operator level {}",
+                side.daemons, side.level
+            ),
+        );
+        p.spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(16.0),
+                border: UiRect::all(Val::Px(1.0)),
+                ..default()
+            },
+            BorderColor::all(BORDER),
+        ))
+        .with_children(|bar| {
+            bar.spawn((
+                ReplayBar(attacker),
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    ..default()
+                },
+                BackgroundColor(if attacker { ACCENT } else { WARN }),
+            ));
+        });
+        p.spawn((
+            text(format!("{}", side.daemons), 12.0, FG),
+            ReplayCount(attacker),
+        ));
+    }
+    p.spawn((
+        text(
+            format!(
+                "{}: {} vs {} daemons left",
+                text::outcome(state.report.outcome),
+                state.report.attacker_left(),
+                state.report.defender_left()
+            ),
+            12.0,
+            GOOD,
+        ),
+        ReplayOutcome,
+        Visibility::Hidden,
+    ));
+    p.spawn(row()).with_children(|r| {
+        r.spawn(button("Close", Action::CloseReplay));
+    });
+}
+
 // ------------------------------------------------------------ top bar
 
-fn top_bar(p: &mut ChildSpawnerCommands, session: &Session, api: &Api) {
+fn top_bar(p: &mut ChildSpawnerCommands, session: &Session, api: &Api, sounds: &Sounds) {
     p.spawn(text("NULLNET", 18.0, FG));
+    p.spawn(button(
+        if sounds.muted {
+            "Sound: off"
+        } else {
+            "Sound: on"
+        },
+        Action::ToggleMute,
+    ));
+    if notify::permission() == notify::Permission::Ask {
+        p.spawn(button("Notify me", Action::RequestNotify));
+    }
     let Some(status) = &session.status else {
         if api.token.is_none() {
             muted(
@@ -1466,15 +1799,20 @@ fn log_panel(p: &mut ChildSpawnerCommands, status: &CrewStatus, data: &GameData)
     if turn.report.events.is_empty() {
         muted(p, "Nothing to report.");
     }
-    for event in turn.report.events.iter().take(40) {
+    for (index, event) in turn.report.events.iter().enumerate().take(60) {
         let day = event.day();
-        line(
-            p,
-            format!(
-                "{}  {}",
-                date(day),
-                text::event(event, data, &status.view.vessels)
-            ),
+        let entry = format!(
+            "{}  {}",
+            date(day),
+            text::event(event, data, &status.view.vessels)
         );
+        if matches!(event, Event::BattleFought { .. } | Event::Raid { .. }) {
+            p.spawn(row()).with_children(|r| {
+                r.spawn(text(entry, 12.0, FG));
+                r.spawn(button("Replay", Action::Replay(index)));
+            });
+        } else {
+            line(p, entry);
+        }
     }
 }

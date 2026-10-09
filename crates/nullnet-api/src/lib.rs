@@ -22,6 +22,10 @@ pub struct CreateGame {
     /// before. Default 3000; 0 for no limit.
     #[serde(default)]
     pub end_day: Option<Day>,
+    /// A webhook (Discord or Slack style) the server posts to when a turn
+    /// has run and when the game ends.
+    #[serde(default)]
+    pub notify_url: Option<String>,
     /// The map's seed; random if left out.
     #[serde(default)]
     pub seed: Option<u64>,
@@ -44,6 +48,9 @@ pub struct GameInfo {
     /// The game's last day, if it has one.
     #[serde(default)]
     pub end_day: Option<Day>,
+    /// Whether the game posts to a webhook when turns run.
+    #[serde(default)]
+    pub notifies: bool,
 }
 
 /// The answer to `POST /api/games`.

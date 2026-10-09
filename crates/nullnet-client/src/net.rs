@@ -8,7 +8,13 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 
 use bevy::prelude::*;
 use nullnet_api::{CrewStatus, OrdersReceipt, crew_path};
-use nullnet_core::Command;
+use nullnet_core::{Citadel, Command, Event, ItemType, PlayerId};
+
+use crate::Rules;
+use crate::notify;
+use crate::sound::{Cue, Play};
+use crate::text;
+use crate::ui::Toast;
 
 /// Seconds between status polls while nothing else is going on.
 const POLL_SECONDS: f32 = 15.0;
@@ -201,11 +207,98 @@ fn connect(api: Res<Api>, inbox: Res<Inbox>, mut session: ResMut<Session>) {
     }
 }
 
+/// Whether an event is worth a line in the toast of the turn that ran.
+fn notable(event: &Event, me: PlayerId) -> bool {
+    match event {
+        Event::HostClaimed { player, .. } => *player == me,
+        Event::Installed {
+            item: ItemType::CitadelModule,
+            installed,
+            ..
+        } => *installed == Citadel::MODULES,
+        Event::ResearchCompleted { .. }
+        | Event::Unlocked { .. }
+        | Event::VesselBurned { .. }
+        | Event::VesselStopped { .. }
+        | Event::WarDeclared { .. }
+        | Event::FleetSighted { .. }
+        | Event::UnderAttack { .. }
+        | Event::AttackRepelled { .. }
+        | Event::HostCaptured { .. }
+        | Event::HostFreed { .. }
+        | Event::BattleFought { .. }
+        | Event::VesselLost { .. }
+        | Event::FragmentFound { .. }
+        | Event::Raid { .. }
+        | Event::HostTaken { .. }
+        | Event::GameOver { .. } => true,
+        _ => false,
+    }
+}
+
+/// The cue for the turn that ran: an alarm when the crew is under threat,
+/// a fanfare when the game is over, a chime otherwise.
+fn cue_for(events: &[Event], me: PlayerId) -> Cue {
+    if events.iter().any(|e| matches!(e, Event::GameOver { .. })) {
+        return Cue::GameOver;
+    }
+    let threatened = events.iter().any(|e| match e {
+        Event::FleetSighted { player, .. }
+        | Event::UnderAttack { player, .. }
+        | Event::HostCaptured { player, .. } => *player == me,
+        Event::Raid { defender, .. } | Event::HostTaken { from: defender, .. } => *defender == me,
+        _ => false,
+    });
+    if threatened { Cue::Alarm } else { Cue::TurnRan }
+}
+
+/// Tells the player a turn has run: a toast over the map, a cue, and a
+/// browser notification when the tab is in the background.
+fn announce(
+    status: &CrewStatus,
+    previous: u32,
+    rules: &Rules,
+    toast: &mut Toast,
+    play: &mut MessageWriter<Play>,
+) {
+    let mut lines = vec![format!(
+        "Turn {previous} has run. It is now {}.",
+        nullnet_core::date(status.day)
+    )];
+    let events: &[Event] = status
+        .last_turn
+        .as_ref()
+        .map_or(&[], |t| t.report.events.as_slice());
+    let me = status.player;
+    lines.extend(events.iter().filter(|e| notable(e, me)).take(8).map(|e| {
+        format!(
+            "{}  {}",
+            nullnet_core::date(e.day()),
+            text::event(e, &rules.0, &status.view.vessels)
+        )
+    }));
+    let cue = cue_for(events, me);
+    play.write(Play(cue));
+    let body = lines[1..].join("\n");
+    notify::notify(
+        &format!("NullNet: turn {previous} of {} has run", status.game.name),
+        if body.is_empty() {
+            "Your orders are open."
+        } else {
+            &body
+        },
+    );
+    toast.show(lines);
+}
+
 fn receive(
     api: Res<Api>,
     inbox: Res<Inbox>,
+    rules: Res<Rules>,
     mut session: ResMut<Session>,
     mut clock: ResMut<Clock>,
+    mut toast: ResMut<Toast>,
+    mut play: MessageWriter<Play>,
 ) {
     let replies: Vec<Reply> = {
         let rx = inbox.rx.lock().unwrap_or_else(|p| p.into_inner());
@@ -225,6 +318,7 @@ fn receive(
                     ));
                     session.draft.clear();
                     session.receipt = None;
+                    announce(&status, previous, &rules, &mut toast, &mut play);
                 }
                 if !status.submitted && session.draft.is_empty() && !status.orders.is_empty() {
                     session.draft = status.orders.clone();

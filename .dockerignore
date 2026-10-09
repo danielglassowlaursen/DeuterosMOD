@@ -1,0 +1,11 @@
+target
+dist
+Godot
+SourceData
+SourceMaterials
+docs
+tools
+.git
+*.db
+*.db-wal
+*.db-shm

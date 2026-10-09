@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS games (
     created_at INTEGER NOT NULL,
     turn INTEGER NOT NULL,
     world TEXT NOT NULL,
-    deadline INTEGER NOT NULL
+    deadline INTEGER NOT NULL,
+    notify_url TEXT
 );
 CREATE TABLE IF NOT EXISTS crews (
     game_id TEXT NOT NULL REFERENCES games(id),
@@ -68,6 +69,8 @@ pub struct GameRow {
     /// Unix time the running turn resolves whether or not everyone has
     /// handed in orders.
     pub deadline: i64,
+    /// A webhook to post to when a turn has run.
+    pub notify_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -89,6 +92,18 @@ pub struct TurnRow {
     pub resolved_at: i64,
 }
 
+/// Brings a store made by an earlier version up to the current schema.
+fn migrate(conn: &Connection) -> DbResult<()> {
+    let mut columns = conn.prepare("PRAGMA table_info(games)")?;
+    let names: Vec<String> = columns
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<_, _>>()?;
+    if !names.iter().any(|n| n == "notify_url") {
+        conn.execute_batch("ALTER TABLE games ADD COLUMN notify_url TEXT")?;
+    }
+    Ok(())
+}
+
 fn json<T: Serialize>(value: &T) -> String {
     serde_json::to_string(value).expect("game state serialises")
 }
@@ -105,14 +120,15 @@ impl Store {
         let conn = Connection::open(path)?;
         conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
         conn.execute_batch(SCHEMA)?;
+        migrate(&conn)?;
         Ok(Store { conn })
     }
 
     pub fn insert_game(&mut self, game: &GameRow, crews: &[CrewRow]) -> DbResult<()> {
         let tx = self.conn.transaction()?;
         tx.execute(
-            "INSERT INTO games (id, name, seed, turn_days, deadline_hours, created_at, turn, world, deadline)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO games (id, name, seed, turn_days, deadline_hours, created_at, turn, world, deadline, notify_url)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 game.id,
                 game.name,
@@ -122,7 +138,8 @@ impl Store {
                 game.created_at,
                 game.turn,
                 json(&game.world),
-                game.deadline
+                game.deadline,
+                game.notify_url
             ],
         )?;
         for crew in crews {
@@ -137,7 +154,7 @@ impl Store {
     pub fn game(&self, id: &str) -> DbResult<Option<GameRow>> {
         self.conn
             .query_row(
-                "SELECT id, name, seed, turn_days, deadline_hours, created_at, turn, world, deadline
+                "SELECT id, name, seed, turn_days, deadline_hours, created_at, turn, world, deadline, notify_url
                  FROM games WHERE id = ?1",
                 params![id],
                 |row| {
@@ -151,6 +168,7 @@ impl Store {
                         turn: row.get(6)?,
                         world: parse(row.get(7)?)?,
                         deadline: row.get(8)?,
+                        notify_url: row.get(9)?,
                     })
                 },
             )

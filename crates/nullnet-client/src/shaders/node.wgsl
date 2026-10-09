@@ -16,7 +16,8 @@ struct NodeParams {
     ring: vec4<f32>,
     // x: kind, y: seed, z: hover highlight, w: pulse rate.
     shape: vec4<f32>,
-    // x: quad half extent in node radii, y: height over width.
+    // x: quad half extent in node radii, y: height over width, z: flash
+    // (1 just after the host changed hands, fading to 0).
     quad: vec4<f32>,
 }
 
@@ -61,6 +62,7 @@ fn over(dst: vec4<f32>, src: vec4<f32>) -> vec4<f32> {
 fn node_body(p: vec2<f32>, d: f32, t: f32) -> vec4<f32> {
     let seed = node.shape.y;
     let highlight = node.shape.z;
+    let flash = node.quad.z;
     let extent = node.quad.x;
     let pulse = 0.5 + 0.5 * sin(t * node.shape.w + seed * 6.0);
     let aa = fwidth(d) * 1.5;
@@ -68,7 +70,7 @@ fn node_body(p: vec2<f32>, d: f32, t: f32) -> vec4<f32> {
 
     // Firewall glow in the holder's colour, faded out well before the
     // quad's edge so it never shows a seam.
-    let strength = node.ring.a * (0.6 + 0.4 * pulse) * (1.0 + 0.8 * highlight);
+    let strength = node.ring.a * (0.6 + 0.4 * pulse) * (1.0 + 0.8 * highlight + 1.5 * flash);
     if d > -aa && strength > 0.0 {
         let fade = smoothstep(extent, extent * 0.55, length(p));
         let glow = exp(-max(d, 0.0) * 3.2) * strength * fade;
@@ -82,7 +84,7 @@ fn node_body(p: vec2<f32>, d: f32, t: f32) -> vec4<f32> {
         // Activity drifting across the interior, in the firewall colour.
         let traffic = smoothstep(0.55, 0.85, fbm(vec3<f32>(p * 4.0 + seed * 3.0, t * 0.35)));
         color = color + node.ring.rgb * traffic * 0.35;
-        color = color * (1.0 + 0.25 * highlight);
+        color = color * (1.0 + 0.25 * highlight + 0.8 * flash);
         out = over(out, vec4<f32>(color, smoothstep(aa, -aa, d)));
     }
 
@@ -91,10 +93,16 @@ fn node_body(p: vec2<f32>, d: f32, t: f32) -> vec4<f32> {
     let edge_color = mix(node.fill.rgb * 2.5, node.ring.rgb, 0.7);
     out = over(out, vec4<f32>(edge_color, edge * (0.75 + 0.25 * highlight)));
 
-    // Selection halo.
+    // Selection halo, and a ring that spreads out from a host that just
+    // changed hands.
     if highlight > 0.0 {
         let halo = smoothstep(0.045, 0.0, abs(d - 0.28)) * highlight * 0.8;
         out = over(out, vec4<f32>(0.75, 0.93, 1.0, halo));
+    }
+    if flash > 0.0 {
+        let radius = 0.1 + (1.0 - flash) * 0.9;
+        let ring = smoothstep(0.06, 0.0, abs(d - radius)) * flash;
+        out = over(out, vec4<f32>(1.0, 1.0, 1.0, ring * 0.9));
     }
     return out;
 }

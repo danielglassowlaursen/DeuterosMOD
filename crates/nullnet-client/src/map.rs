@@ -14,8 +14,8 @@ use bevy::prelude::*;
 use bevy::sprite::Anchor;
 use bevy::window::PrimaryWindow;
 use nullnet_core::{
-    Berth, Command, Controller, CrewView, Destination, GameData, HostDef, HostId, NetworkDef,
-    PlayerId, VesselId, VesselState,
+    Berth, Citadel, Command, Controller, CrewView, Destination, Event, GameData, HostDef, HostId,
+    ItemType, NetworkDef, PlayerId, VesselId, VesselState,
 };
 
 use crate::Rules;
@@ -63,6 +63,7 @@ impl Plugin for MapPlugin {
                     update_hover,
                     click,
                     animate_highlight,
+                    decay_flash,
                     parallax,
                     (recolor, place_vessels).run_if(resource_changed::<Session>),
                     place_vessels.run_if(resource_changed::<Selected>),
@@ -382,17 +383,46 @@ fn spawn_scene(
     }
 }
 
-/// Recolours every host by whoever holds it in the latest view.
+/// The usual pulse of a node's glow, and the faster ones of a host with a
+/// swarm on its way or at its gate.
+const PULSE: f32 = 1.6;
+const PULSE_SIGHTED: f32 = 4.5;
+const PULSE_SIEGE: f32 = 9.0;
+
+/// Recolours every host by whoever holds it in the latest view, makes the
+/// threatened ones pulse, and flashes those that changed hands in the turn
+/// that just ran.
 fn recolor(
     session: Res<Session>,
     rules: Res<Rules>,
     nodes: Query<(&MapNode, &MeshMaterial2d<NodeMaterial>)>,
     mut materials: ResMut<Assets<NodeMaterial>>,
+    mut flashed_turn: Local<Option<u32>>,
 ) {
     let Some(status) = &session.status else {
         return;
     };
     let data = &rules.0;
+    let flash_now = *flashed_turn != Some(status.turn);
+    *flashed_turn = Some(status.turn);
+    let changed: Vec<HostId> = status
+        .last_turn
+        .iter()
+        .flat_map(|t| &t.report.events)
+        .filter_map(|e| match e {
+            Event::HostClaimed { host, .. }
+            | Event::HostCaptured { host, .. }
+            | Event::HostFreed { host, .. }
+            | Event::HostTaken { host, .. } => Some(*host),
+            Event::Installed {
+                host,
+                item: ItemType::CitadelModule,
+                installed,
+                ..
+            } if *installed == Citadel::MODULES => Some(*host),
+            _ => None,
+        })
+        .collect();
     for (node, material) in &nodes {
         let Target::Host(id) = node.target else {
             continue;
@@ -401,10 +431,42 @@ fn recolor(
         if def.cache_field {
             continue;
         }
-        let (fill, ring) = controller_colors(data, Some(&status.view), id, def);
+        let (fill, mut ring) = controller_colors(data, Some(&status.view), id, def);
+        let threat = status.view.threats.iter().find(|t| t.host == id);
+        let pulse = match threat {
+            Some(t) if t.siege_until.is_some() => {
+                ring = linear(LEGACY_RING);
+                ring.w = 1.3;
+                PULSE_SIEGE
+            }
+            Some(_) => {
+                ring.w += 0.3;
+                PULSE_SIGHTED
+            }
+            None => PULSE,
+        };
         if let Some(mut material) = materials.get_mut(material.id()) {
             material.params.fill = fill;
             material.params.ring = ring;
+            material.params.shape.w = pulse;
+            if flash_now && changed.contains(&id) {
+                material.params.quad.z = 1.0;
+            }
+        }
+    }
+}
+
+/// Lets a flash die down over a couple of seconds.
+fn decay_flash(time: Res<Time>, mut materials: ResMut<Assets<NodeMaterial>>) {
+    let step = time.delta_secs() * 0.4;
+    let flashing: Vec<AssetId<NodeMaterial>> = materials
+        .iter()
+        .filter(|(_, m)| m.params.quad.z > 0.0)
+        .map(|(id, _)| id)
+        .collect();
+    for id in flashing {
+        if let Some(mut material) = materials.get_mut(id) {
+            material.params.quad.z = (material.params.quad.z - step).max(0.0);
         }
     }
 }

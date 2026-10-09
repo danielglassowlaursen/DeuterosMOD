@@ -9,7 +9,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
-use nullnet_server::{Server, now, router};
+use nullnet_server::{Server, notify, now, router};
 
 struct Options {
     db: PathBuf,
@@ -17,11 +17,17 @@ struct Options {
     web: Option<PathBuf>,
 }
 
+/// Defaults come from the environment where a host sets them (`PORT`,
+/// `NULLNET_DB`, `NULLNET_WEB`); the arguments override them.
 fn parse(mut args: impl Iterator<Item = String>) -> Result<Options, String> {
+    let env = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
     let mut options = Options {
-        db: PathBuf::from("nullnet.db"),
-        port: 8080,
-        web: None,
+        db: env("NULLNET_DB").map_or_else(|| PathBuf::from("nullnet.db"), PathBuf::from),
+        port: match env("PORT") {
+            Some(port) => port.parse().map_err(|e| format!("PORT: {e}"))?,
+            None => 8080,
+        },
+        web: env("NULLNET_WEB").map(PathBuf::from),
     };
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or(format!("{arg} needs a value"));
@@ -44,7 +50,9 @@ async fn main() -> ExitCode {
         Ok(options) => options,
         Err(error) => {
             eprintln!("{error}");
-            eprintln!("usage: nullnet-server [--db FILE] [--port N] [--web DIR]");
+            eprintln!(
+                "usage: nullnet-server [--db FILE] [--port N] [--web DIR] (or NULLNET_DB, PORT, NULLNET_WEB)"
+            );
             return ExitCode::FAILURE;
         }
     };
@@ -65,6 +73,10 @@ async fn main() -> ExitCode {
                 Ok(0) => {}
                 Ok(ran) => println!("ran {ran} turn(s) whose deadline had passed"),
                 Err(error) => eprintln!("deadline check failed: {error}"),
+            }
+            let notices = ticker.take_notices();
+            if !notices.is_empty() {
+                notify::deliver(notices).await;
             }
         }
     });

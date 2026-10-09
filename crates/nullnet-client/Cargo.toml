@@ -7,10 +7,18 @@ publish.workspace = true
 
 [dependencies]
 nullnet-core.workspace = true
-bevy = { version = "0.19.1", default-features = false, features = ["2d", "ui"] }
+bevy = { version = "0.19.1", default-features = false, features = ["2d", "ui", "bevy_audio", "wav"] }
 ehttp = { version = "0.7.1", features = ["json"] }
 nullnet-api.workspace = true
 serde = { workspace = true, features = ["derive"] }
 
 [target.wasm32-unknown-unknown.dependencies]
-web-sys = { version = "0.3.106", features = ["Window", "Location"] }
+web-sys = { version = "0.3.106", features = [
+    "Window",
+    "Location",
+    "Document",
+    "Storage",
+    "Notification",
+    "NotificationOptions",
+    "NotificationPermission",
+] }

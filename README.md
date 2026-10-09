@@ -11,6 +11,7 @@ Et strategispil i et hacker-univers med asynkron, turbaseret online-multiplayer,
 | `crates/nullnet-server` | Spilserveren: axum + SQLite. Invitationer, ordrer, turafvikling og web-klienten i én binærfil |
 | `web/` | HTML-siden til Bevy-klienten og konsollen (`console.html`), som serveren serverer |
 | `scripts/` | Build-script til browser-klienten |
+| `Dockerfile`, `docker-compose.yml`, `fly.toml` | Hosting: ét image med server og klient, se [docs/HOSTING.md](docs/HOSTING.md) |
 | `Godot/` | Godot-remaken [DeuterosOrg/Deuteros-Resurrected](https://github.com/DeuterosOrg/Deuteros-Resurrected), brugt som opslagsværk for regler og data |
 
 ## Kom i gang
@@ -41,6 +42,17 @@ python3 -m http.server -d dist 8080                # åbn http://localhost:8080
 ```
 
 Klienten kan også køre som desktop-app: `cargo run -p nullnet-client -- --server http://localhost:8080 --token <token>`.
+
+## Sådan spiller man
+
+1. Opret et spil på `/console`: navn, crews (en bot kan spille et sæde), dage pr. tur, frist i timer, sidste dag og eventuelt en Discord- eller Slack-webhook, der får besked, når turene kører.
+2. Send hvert crew sit invitationslink. Linket åbner kortet; `/console#<token>` er den rå konsol med alle ordrer som JSON.
+3. Hver tur: læg ordrer med panelerne og tryk *Hand in*. Turen kører, når alle har afleveret, eller når fristen udløber. Loggen, en toast og en lyd fortæller, hvad der skete; kampe kan afspilles.
+4. Spillet slutter, når en crew holder det meste af hjemmenettet, eller på den sidste dag, hvor flest point vinder.
+
+## Hosting
+
+`docker compose up -d --build` starter en server med web-klienten på port 8080 og databasen i en volume. `fly.toml` gør det samme på Fly.io. Se [docs/HOSTING.md](docs/HOSTING.md) for indstillinger, HTTPS, backup og notifikationer.
 
 Sådan henter du ændringer fra Godot-remaken:
 

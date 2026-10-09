@@ -322,6 +322,18 @@ Med 4 crews (`--crews 4 --days 5000`) kommer det første raid på dag 2790 (en o
 - Ressourcerne hober sig stadig op i skjulestedet (15.000-25.000 af hver). Tempoet bestemmes af transport og værkstedstid, ikke udvinding.
 - Heat virker som tænkt: raideren og den med flest citadeller jages først. Botterne raider kun ubevogtede citadeller; en spiller, der lægger 50 daemons i et citadel med et operatørhold, er svær at raide.
 
+## Finish
+
+Det, der gør spillet til et spil, man kan sende til nogen (M6):
+
+- **Effekter** (`map.rs`, `node.wgsl`). En vært med en sværm på vej pulserer hurtigere; en belejret vært pulserer rødt. En vært, der skiftede hænder i den tur, der lige kørte, blinker op og sender en ring ud. Når en tur er kørt, viser en *toast* over kortet de vigtigste hændelser i et kvart minut.
+- **Kampafspilning** (`ui.rs`). Hver kamp og hvert raid i loggen har en *Replay*-knap. Den åbner et panel, hvor to bjælker følger kampens forløb (`BattleReport.course`, et øjebliksbillede hver fjerde runde) over fem sekunder, med tal på begge sider og udfaldet til sidst. Det er den "animerede genafspilning", M4 lovede.
+- **Lyd** (`sound.rs`). Fem korte lyde syntetiseres ved start (klik, tur kørt, alarm, kamp, spillet slut), så klienten ikke bærer lydfiler, og ingen af originalens lyde bruges. Browseren tillader først lyd efter et klik, så intet spiller før det første. En knap i toplinjen slår lyden fra; valget gemmes i browseren.
+- **Notifikationer.** Tre lag: en webhook pr. spil (Discord eller Slack), som serveren poster til, hver gang en tur er kørt, og når spillet er slut (`notify.rs` i serveren, kø i `Server.outbox`, afsendt af den handler eller det tik, der kørte turen); browser-notifikationer fra kortklienten og konsollen, når en tur kører, mens fanen er i baggrunden; og toast plus lyd, når fanen er åben.
+- **Hosting.** `Dockerfile` bygger server og web-klient i ét image, `docker-compose.yml` kører det med en volume, `fly.toml` gør det samme på Fly.io, og serveren tager `PORT`, `NULLNET_DB` og `NULLNET_WEB` fra miljøet. `docs/HOSTING.md` har resten.
+
+Ikke med: push-notifikationer, når ingen fane er åben (kræver service worker og push-tjeneste), e-mail, og konti på tværs af enheder. Webhooken dækker det første for de fleste.
+
 ## Ophavsret
 
 Godot-remakens kode er udgivet under CC0, så den må frit bruges. Dens grafik, lyd, skrifttyper og tekster stammer derimod fra originalspillet (© Activision 1991). NullNet bruger derfor procedurel grafik og egne tekster og genbruger ikke originalens materiale. Spilmekanik er ikke beskyttet af ophavsret, og navnet NullNet undgår originalens titel.
@@ -336,7 +348,7 @@ Godot-remakens kode er udgivet under CC0, så den må frit bruges. Dens grafik, 
 | **M3** | Klient i hacker-look: lobby, netværkskort, terminalpaneler for vært, citadel og transport, ordrepanel og turlog. ✅ (lobbyen er konsolsiden; krypterede links styres endnu kun fra konsollen) |
 | **M4** | The Legacy Net: AI, krig, kampafvikling med animeret genafspilning, erobring og befrielse. ✅ (kampene gemmes som forløb, der kan afspilles; selve animationen i klienten kommer med M6) |
 | **M5** | Crew mod crew: angreb, forsvar, heat, beskyttelse, sejrsbetingelser og balancering. ✅ (raids med tre mål, garnisoner, heat, 5 turs beskyttelse, point, dominans og sidste dag; botten bygger kolonier, daemons og et krigsskib og raider; balancefundene står under *Bot-spil*) |
-| **M6** | Finish: effekter, lyd, notifikationer og hosting. |
+| **M6** | Finish: effekter, lyd, notifikationer og hosting. ✅ (kampafspilning, toast og lyd i klienten, webhooks og browser-notifikationer, Docker og Fly.io; se *Finish*) |
 
 ## Åbne spørgsmål
 
@@ -347,4 +359,5 @@ Godot-remakens kode er udgivet under CC0, så den må frit bruges. Dens grafik, 
 - Skal et plantet tap kunne fejes væk af ejeren (en ordre, der koster noget), eller er 100 dage nok?
 - Skal skjulestedets citadel kunne få et krypteret link, så udvindingen lander direkte deroppe? Det ville løse dropperens flaskehals, som i originalen efter den første erobrede station.
 - Skal man kunne logge ind på tværs af enheder (e-mail-login), eller er et invitationslink pr. spil nok?
-- Hosting: Fly.io, en VPS eller noget tredje?
+- Push-notifikationer uden en åben fane: service worker og en push-tjeneste, eller er webhooken nok?
+- Konsollen kan oprette spil for alle, der kan nå serveren. Skal den have en adgangskode, eller er det proxyens opgave?
