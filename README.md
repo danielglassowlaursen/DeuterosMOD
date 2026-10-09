@@ -37,7 +37,7 @@ cargo run -p nullnet-server -- --db nullnet.db --port 8080 --web dist
 # Web-klienten (første build tager et stykke tid)
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.129   # skal matche Cargo.lock
-scripts/build-web.sh
+scripts/build-web.sh                              # eller: scripts/build-web.sh web-lite på en maskine med lidt hukommelse
 python3 -m http.server -d dist 8080                # åbn http://localhost:8080
 ```
 

@@ -28,9 +28,21 @@ opt-level = 1
 opt-level = 3
 
 # Size-oriented profile for the browser build (see scripts/build-web.sh).
+# Fat LTO over one codegen unit gives the smallest module but needs 5-6 GB
+# of memory to link.
 [profile.web]
 inherits = "release"
 opt-level = "s"
 lto = "fat"
 codegen-units = 1
+strip = true
+
+# The same build for machines with less memory, such as a Docker build on a
+# laptop: thin LTO over several units links in about a third of the memory
+# and makes a module a few megabytes bigger.
+[profile.web-lite]
+inherits = "release"
+opt-level = "s"
+lto = "thin"
+codegen-units = 8
 strip = true

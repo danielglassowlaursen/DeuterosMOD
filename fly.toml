@@ -8,6 +8,9 @@ primary_region = "arn"
 
 [build]
   dockerfile = "Dockerfile"
+  # Fly's builders have the memory for the smallest web module.
+  [build.args]
+    WEB_PROFILE = "web"
 
 [env]
   PORT = "8080"

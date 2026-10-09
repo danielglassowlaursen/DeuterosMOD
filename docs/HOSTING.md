@@ -15,9 +15,11 @@ Argumenterne vinder over miljøvariablerne.
 ## Docker (en VPS eller egen maskine)
 
 ```bash
-docker compose up -d --build     # bygger billedet (første gang 10-20 minutter) og starter
+docker compose up -d --build     # bygger billedet (første gang 20-30 minutter) og starter
 docker compose logs -f           # "NullNet server on http://localhost:8080/console"
 ```
+
+Buildet kompilerer web-klienten til WebAssembly inde i containeren. Som standard bruger det profilen `web-lite`, der linker i ca. 2,5 GB hukommelse (giv Docker mindst 4 GB). Har Docker 6 GB eller mere (Docker Desktop: Settings, Resources, Memory), giver `docker compose build --build-arg WEB_PROFILE=web` et modul, der er nogle megabyte mindre. Dør buildet med `SIGKILL` eller `cannot allocate memory`, er det hukommelsen: giv Docker mere, eller bliv ved `web-lite`.
 
 Databasen ligger i volumen `nullnet-data`. Opdatering: `git pull && docker compose up -d --build`. Backup: `docker compose cp nullnet:/data/nullnet.db ./backup.db`.
 
