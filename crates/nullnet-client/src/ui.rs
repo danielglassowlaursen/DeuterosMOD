@@ -32,6 +32,8 @@ const TOP_BAR: f32 = 58.0;
 const SIDE_PANEL: f32 = 312.0;
 /// Where the overlays over the map start and end, clear of the side panels.
 const OVERLAY_INSET: f32 = SIDE_PANEL + 12.0;
+/// Least height of the story panel.
+const STORY_HEIGHT: f32 = 360.0;
 
 pub struct UiPlugin;
 
@@ -413,9 +415,12 @@ fn spawn_layout(mut commands: Commands) {
         panel(
             Node {
                 top: Val::Px(TOP_BAR + 10.0),
-                bottom: Val::Px(50.0),
                 left: Val::Px(OVERLAY_INSET),
                 right: Val::Px(OVERLAY_INSET),
+                // Tall enough for the longest page, so the buttons pinned
+                // to the bottom stay put from page to page.
+                min_height: Val::Px(STORY_HEIGHT),
+                max_height: Val::Percent(85.0),
                 row_gap: Val::Px(10.0),
                 padding: UiRect::all(Val::Px(18.0)),
                 ..default()
@@ -946,7 +951,11 @@ fn story_panel(p: &mut ChildSpawnerCommands, page: usize, session: &Session) {
             ));
         }
     }
-    p.spawn(row()).with_children(|r| {
+    p.spawn(Node {
+        margin: UiRect::top(Val::Auto),
+        ..row()
+    })
+    .with_children(|r| {
         if page > 0 {
             r.spawn(button("Back", Action::StoryPage(page - 1)));
         }

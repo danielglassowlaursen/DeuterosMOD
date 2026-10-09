@@ -101,7 +101,7 @@ pub const STORY: &[(&str, &[&str])] = &[
         &[
             "Your hideout is on the Exchange, the one Metro host every crew shares. It cannot be taken, and it cannot win on its own.",
             "Every turn you queue orders with the panels and hand them in. When every crew has, or the deadline passes, the turn's days go by at once and the log tells you what happened.",
-            "The guide over the map walks you through the first weeks step by step and names the buttons to press. Playing again? Press Skip here; 'Hide guide' in the top bar keeps the guide away for good. The story and the rules stay under Help.",
+            "The guide over the map walks you through the first weeks step by step and names the buttons to press. Playing again? 'Skip' on any earlier page jumps past the story, and 'Hide guide' in the top bar keeps the guide away for good. The story and the rules stay under Help.",
         ],
     ),
 ];
