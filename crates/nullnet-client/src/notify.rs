@@ -82,3 +82,29 @@ pub fn muted_preference() -> bool {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn remember_muted(_muted: bool) {}
+
+const GUIDE_KEY: &str = "nullnet.guide-hidden";
+
+/// Whether the player hid the guide in an earlier visit.
+#[cfg(target_arch = "wasm32")]
+pub fn guide_hidden() -> bool {
+    storage()
+        .and_then(|s| s.get_item(GUIDE_KEY).ok().flatten())
+        .is_some_and(|v| v == "1")
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn remember_guide_hidden(hidden: bool) {
+    if let Some(storage) = storage() {
+        let _ = storage.set_item(GUIDE_KEY, if hidden { "1" } else { "0" });
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn guide_hidden() -> bool {
+    let _ = GUIDE_KEY;
+    false
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn remember_guide_hidden(_hidden: bool) {}

@@ -15,6 +15,7 @@ use nullnet_core::{
 };
 
 use crate::Rules;
+use crate::guide;
 use crate::map::{Routing, Selected, crew_color};
 use crate::net::{self, Api, Clock, Inbox, Session};
 use crate::notify;
@@ -33,6 +34,7 @@ impl Plugin for UiPlugin {
         app.init_resource::<OverUi>()
             .init_resource::<Toast>()
             .init_resource::<Replay>()
+            .init_resource::<GuideState>()
             .add_systems(Startup, spawn_layout)
             .add_systems(
                 Update,
@@ -50,7 +52,8 @@ impl Plugin for UiPlugin {
                             .or_else(resource_changed::<Routing>)
                             .or_else(resource_changed::<Toast>)
                             .or_else(resource_changed::<Replay>)
-                            .or_else(resource_changed::<Sounds>),
+                            .or_else(resource_changed::<Sounds>)
+                            .or_else(resource_changed::<GuideState>),
                     ),
                 )
                     .chain(),
@@ -96,6 +99,23 @@ struct ReplayCount(bool);
 #[derive(Component)]
 struct ReplayOutcome;
 
+/// The guide over the map: whether the player hid it, and whether the help
+/// overlay is open.
+#[derive(Resource)]
+pub struct GuideState {
+    pub hidden: bool,
+    pub help: bool,
+}
+
+impl Default for GuideState {
+    fn default() -> Self {
+        GuideState {
+            hidden: notify::guide_hidden(),
+            help: false,
+        }
+    }
+}
+
 /// Whether the cursor is over a panel, so the map leaves the click alone.
 #[derive(Resource, Default)]
 pub struct OverUi(pub bool);
@@ -114,6 +134,8 @@ enum Slot {
     Log,
     Toast,
     Replay,
+    Guide,
+    Help,
 }
 
 #[derive(Component)]
@@ -135,6 +157,8 @@ enum Action {
     /// Replays the battle in the last turn's event at this index.
     Replay(usize),
     CloseReplay,
+    ToggleGuide,
+    ToggleHelp,
 }
 
 const PANEL_BG: Color = Color::srgba(0.04, 0.07, 0.10, 0.94);
@@ -307,6 +331,32 @@ fn spawn_layout(mut commands: Commands) {
         ),
         Visibility::Hidden,
     ));
+    commands.spawn((
+        panel(
+            Node {
+                top: Val::Px(50.0),
+                left: Val::Percent(27.0),
+                right: Val::Percent(27.0),
+                ..default()
+            },
+            Slot::Guide,
+        ),
+        Visibility::Hidden,
+    ));
+    commands.spawn((
+        panel(
+            Node {
+                top: Val::Percent(6.0),
+                bottom: Val::Percent(6.0),
+                left: Val::Percent(20.0),
+                right: Val::Percent(20.0),
+                row_gap: Val::Px(6.0),
+                ..default()
+            },
+            Slot::Help,
+        ),
+        Visibility::Hidden,
+    ));
 }
 
 fn fade_toast(time: Res<Time>, mut toast: ResMut<Toast>) {
@@ -423,6 +473,7 @@ fn press_buttons(
     mut sounds: ResMut<Sounds>,
     mut play: MessageWriter<Play>,
     mut replay: ResMut<Replay>,
+    mut guide: ResMut<GuideState>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
         return;
@@ -481,6 +532,11 @@ fn press_buttons(
                 }
             }
             Action::CloseReplay => replay.current = None,
+            Action::ToggleGuide => {
+                guide.hidden = !guide.hidden;
+                notify::remember_guide_hidden(guide.hidden);
+            }
+            Action::ToggleHelp => guide.help = !guide.help,
         }
     }
 }
@@ -572,13 +628,25 @@ fn refresh(
     toast: Res<Toast>,
     replay: Res<Replay>,
     sounds: Res<Sounds>,
+    guide: Res<GuideState>,
     mut slots: Query<(Entity, &Slot, &mut Visibility)>,
 ) {
     let data = &rules.0;
+    let toast_shown = !toast.lines.is_empty() && toast.seconds_left > 0.0;
     for (entity, slot, mut visibility) in &mut slots {
         let shown = match slot {
-            Slot::Toast => !toast.lines.is_empty() && toast.seconds_left > 0.0,
+            Slot::Toast => toast_shown,
             Slot::Replay => replay.current.is_some(),
+            // The guide shares the top of the map with the toast and the
+            // replay, and gives way to both.
+            Slot::Guide => {
+                session.status.is_some()
+                    && !guide.hidden
+                    && !guide.help
+                    && !toast_shown
+                    && replay.current.is_none()
+            }
+            Slot::Help => guide.help,
             _ => true,
         };
         let wanted = if shown {
@@ -595,7 +663,7 @@ fn refresh(
             continue;
         }
         e.with_children(|p| match slot {
-            Slot::TopBar => top_bar(p, &session, &api, &sounds),
+            Slot::TopBar => top_bar(p, &session, &api, &sounds, &guide),
             Slot::Hideout => match &session.status {
                 Some(status) => hideout_panel(p, status, data),
                 None => muted(p, "Waiting for the server..."),
@@ -625,6 +693,12 @@ fn refresh(
                     replay_panel(p, state);
                 }
             }
+            Slot::Guide => {
+                if let Some(status) = &session.status {
+                    guide_panel(p, status, data);
+                }
+            }
+            Slot::Help => help_panel(p, session.status.as_ref(), data),
         });
     }
 }
@@ -686,10 +760,96 @@ fn replay_panel(p: &mut ChildSpawnerCommands, state: &ReplayState) {
     });
 }
 
+// ------------------------------------------------------------ guide
+
+/// The step the crew is on, with what to press next.
+fn guide_panel(p: &mut ChildSpawnerCommands, status: &CrewStatus, data: &GameData) {
+    let steps = guide::steps(status, data);
+    let current = guide::current(&steps);
+    let step = &steps[current];
+    p.spawn(row()).with_children(|r| {
+        r.spawn(text(
+            format!("GUIDE  STEP {} OF {}", current + 1, steps.len()),
+            11.0,
+            MUTED,
+        ));
+        r.spawn(text(step.title, 13.0, ACCENT));
+    });
+    for hint in step.hints.iter().take(5) {
+        line(p, hint.clone());
+    }
+    if let Some(next) = steps.get(current + 1) {
+        muted(p, format!("Next: {}", next.title));
+    }
+    p.spawn(row()).with_children(|r| {
+        r.spawn(button("Help", Action::ToggleHelp));
+        r.spawn(button("Hide guide", Action::ToggleGuide));
+    });
+}
+
+/// Every step with its state, then the rules in brief.
+fn help_panel(p: &mut ChildSpawnerCommands, status: Option<&CrewStatus>, data: &GameData) {
+    p.spawn(row()).with_children(|r| {
+        r.spawn(text("HOW TO PLAY", 14.0, FG));
+        r.spawn(button("Close", Action::ToggleHelp));
+    });
+    muted(
+        p,
+        "Scroll for the rules. The guide over the map follows your crew step by step; the steps so far:",
+    );
+    if let Some(status) = status {
+        heading(p, "Your steps");
+        let steps = guide::steps(status, data);
+        let current = guide::current(&steps);
+        for (index, step) in steps.iter().enumerate() {
+            let (mark, color) = if step.done {
+                ("[x]", GOOD)
+            } else if index == current {
+                ("[>]", ACCENT)
+            } else {
+                ("[ ]", FG)
+            };
+            p.spawn(text(
+                format!("{mark} {}. {}", index + 1, step.title),
+                12.0,
+                color,
+            ));
+            if index == current {
+                for hint in &step.hints {
+                    muted(p, format!("      {hint}"));
+                }
+            }
+        }
+    }
+    for (title, lines) in guide::HELP {
+        heading(p, title);
+        for l in *lines {
+            line(p, *l);
+        }
+    }
+}
+
 // ------------------------------------------------------------ top bar
 
-fn top_bar(p: &mut ChildSpawnerCommands, session: &Session, api: &Api, sounds: &Sounds) {
+fn top_bar(
+    p: &mut ChildSpawnerCommands,
+    session: &Session,
+    api: &Api,
+    sounds: &Sounds,
+    guide: &GuideState,
+) {
     p.spawn(text("NULLNET", 18.0, FG));
+    p.spawn(button("Help", Action::ToggleHelp));
+    if session.status.is_some() {
+        p.spawn(button(
+            if guide.hidden {
+                "Show guide"
+            } else {
+                "Hide guide"
+            },
+            Action::ToggleGuide,
+        ));
+    }
     p.spawn(button(
         if sounds.muted {
             "Sound: off"

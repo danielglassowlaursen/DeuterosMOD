@@ -1,3 +1,4 @@
+mod guide;
 mod map;
 mod materials;
 mod net;
