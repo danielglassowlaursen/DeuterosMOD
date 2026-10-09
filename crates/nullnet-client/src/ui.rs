@@ -1272,6 +1272,49 @@ fn host_status(status: &CrewStatus, data: &GameData, host: HostId) -> String {
     parts.join(", ")
 }
 
+/// What a host offers and how to act on it. Clicking a host only shows it;
+/// everything done to a host is done by a vessel, so say which.
+fn host_hints(p: &mut ChildSpawnerCommands, status: &CrewStatus, data: &GameData, host: HostId) {
+    let def = data.host(host);
+    let view = &status.view.hosts[usize::from(host.0)];
+    if !def.resources.is_empty() {
+        muted(
+            p,
+            format!(
+                "Resources: {}",
+                def.resources
+                    .iter()
+                    .map(|r| text::item(*r))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        );
+    }
+    if host != data.hideout.host {
+        let days = nullnet_core::transport::latency(data, data.hideout.host, host);
+        muted(p, format!("{days} day(s) from your hideout."));
+    }
+    let own = host == data.hideout.host || view.controller == Some(Controller::Crew(status.player));
+    if own {
+        return;
+    }
+    heading(p, "What you can do here");
+    let hint = match view.controller {
+        None if def.cache_field => {
+            "Dig here: a worm with a sniffer fitted turns up source fragments, and a crawler mines the caches.".to_string()
+        }
+        None => "Claim it: select a worm carrying a citadel module, press 'Route to another host...' and click this host. Once the worm is outside it, press 'Install citadel module'. Eight modules make a citadel; backdoor kits and taps make it extract.".to_string(),
+        Some(Controller::Legacy) => format!(
+            "Only force takes it: a worm with a C2 controller and daemons outside it can 'Attack the garrison'. Freeing a Legacy host scores {} points.",
+            nullnet_core::score::FREED_POINTS
+        ),
+        Some(Controller::Crew(_)) => format!(
+            "A rival's. From turn {PROTECTION_TURNS} a worm with a C2 controller and daemons outside it can raid it: exfiltrate its store, plant a tap, or take the host."
+        ),
+    };
+    muted(p, hint);
+}
+
 fn selection_panel(
     p: &mut ChildSpawnerCommands,
     status: &CrewStatus,
@@ -1292,6 +1335,7 @@ fn selection_panel(
     };
     heading(p, &data.host(host).name);
     muted(p, host_status(status, data, host));
+    host_hints(p, status, data, host);
 
     if let Some(site) = site_of(status, data, host)
         && host != data.hideout.host
