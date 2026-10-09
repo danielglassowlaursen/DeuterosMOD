@@ -1,41 +1,69 @@
-//! The terminal panels over the map: the top bar, the hideout, whatever is
-//! selected, the orders being put together, and the log of the last turn.
-//! Every panel is rebuilt from the crew's latest view whenever that view,
-//! the selection or the draft orders change.
+//! The game's screen over the map, laid out the way Stellaris lays out its
+//! own: a bar of resources along the top, a rail of menu icons down the
+//! left that opens one window beside it, an outliner of the crew's hosts,
+//! vessels and threats down the right, and the turn's orders with the Hand
+//! in button under it. The guide sits at the foot of the map; the story,
+//! the help and battle replays open over it. The look is Deus Ex's, from
+//! [`crate::theme`]. Every panel is rebuilt from the crew's latest view
+//! whenever that view, the selection, the orders or the open menu change.
 
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 use bevy::ui::{FocusPolicy, RelativeCursorPosition};
+use bevy::window::PrimaryWindow;
 use nullnet_api::CrewStatus;
 use nullnet_core::{
-    BattleReport, Berth, Command, Controller, Destination, EndReason, Event, GameData, HostId,
-    ItemCategory, ItemType, Module, ModuleKind, PROTECTION_TURNS, RaidGoal, Route, Seat, Site,
-    SiteRef, Staff, StaffKind, Vessel, VesselId, VesselKind, WorkshopRef, date,
+    BattleReport, Berth, Citadel, Command, Controller, Destination, EndReason, Event, GameData,
+    HostId, ItemCategory, ItemType, Module, ModuleKind, PROTECTION_TURNS, RaidGoal, Route, Seat,
+    Site, SiteRef, Staff, StaffKind, Vessel, VesselId, VesselKind, WorkshopRef, date,
 };
 
 use crate::Rules;
 use crate::guide;
-use crate::map::{Routing, Selected, crew_color};
+use crate::icons;
+use crate::map::{MapInsets, Routing, Selected, crew_color};
 use crate::music;
 use crate::net::{self, Api, Clock, Inbox, Session};
 use crate::notify;
 use crate::sound::{Cue, Play, Sounds};
 use crate::text;
+use crate::theme::{self, PanelMaterial};
 use crate::voice;
 
 /// Seconds a battle replay takes from first to last snapshot.
 const REPLAY_SECONDS: f32 = 5.0;
 /// Seconds the turn toast stays up.
 const TOAST_SECONDS: f32 = 14.0;
-/// Height of the top bar: two rows of text.
-const TOP_BAR: f32 = 58.0;
-/// Width of a side panel plus its margins.
-const SIDE_PANEL: f32 = 312.0;
-/// Where the overlays over the map start and end, clear of the side panels.
-const OVERLAY_INSET: f32 = SIDE_PANEL + 12.0;
+/// The layout, in logical pixels: the gap between panels, the top bar's
+/// height, the rail's width, the window's and the outliner's widths, and
+/// the turn box's height.
+const GAP: f32 = 8.0;
+const TOP_BAR: f32 = 48.0;
+const RAIL: f32 = 52.0;
+const WINDOW: f32 = 340.0;
+const OUTLINER: f32 = 268.0;
+const TURN_BOX: f32 = 214.0;
+/// Where the window starts, right of the rail, and where the map's free
+/// area starts while the window is open.
+const WINDOW_LEFT: f32 = GAP + RAIL + GAP;
+const PAST_WINDOW: f32 = WINDOW_LEFT + WINDOW + GAP;
+/// The room the map leaves at its foot for the guide.
+const GUIDE_ROOM: f32 = 150.0;
 /// Least height of the story panel.
 const STORY_HEIGHT: f32 = 360.0;
+/// The resources the top bar shows from the hideout's store.
+const BAR_RESOURCES: [ItemType; 9] = [
+    ItemType::Compute,
+    ItemType::Storage,
+    ItemType::Memory,
+    ItemType::Code,
+    ItemType::Credentials,
+    ItemType::Bandwidth,
+    ItemType::ExitNodes,
+    ItemType::Proxies,
+    ItemType::ProxyChains,
+];
 
 pub struct UiPlugin;
 
@@ -45,12 +73,14 @@ impl Plugin for UiPlugin {
             .init_resource::<Toast>()
             .init_resource::<Replay>()
             .init_resource::<GuideState>()
+            .init_resource::<OpenMenu>()
             .add_systems(Startup, spawn_layout)
             .add_systems(
                 Update,
                 (
                     track_cursor,
                     press_buttons,
+                    open_selection,
                     style_buttons,
                     scroll_panels,
                     countdown,
@@ -64,8 +94,10 @@ impl Plugin for UiPlugin {
                             .or_else(resource_changed::<Toast>)
                             .or_else(resource_changed::<Replay>)
                             .or_else(resource_changed::<Sounds>)
-                            .or_else(resource_changed::<GuideState>),
+                            .or_else(resource_changed::<GuideState>)
+                            .or_else(resource_changed::<OpenMenu>),
                     ),
+                    show_tip,
                 )
                     .chain(),
             );
@@ -129,19 +161,6 @@ impl Default for GuideState {
     }
 }
 
-/// Opens the story the first time a crew's status arrives, unless this
-/// browser has read it before.
-fn open_story(session: Res<Session>, mut guide: ResMut<GuideState>, mut opened: Local<bool>) {
-    if *opened || session.status.is_none() {
-        return;
-    }
-    *opened = true;
-    if !notify::story_seen() {
-        guide.story = Some(0);
-        music::duck(true);
-    }
-}
-
 /// Whether the cursor is over a panel, so the map leaves the click alone.
 #[derive(Resource, Default)]
 pub struct OverUi(pub bool);
@@ -150,23 +169,126 @@ pub struct OverUi(pub bool);
 #[derive(Component)]
 struct Panel;
 
+/// A menu on the rail, or the selection: what the window beside the rail
+/// shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Menu {
+    Hideout,
+    Research,
+    Recruit,
+    Workshop,
+    Citadel,
+    Orders,
+    Log,
+    Crews,
+    Selection,
+}
+
+impl Menu {
+    /// The menus on the rail, top to bottom.
+    const RAIL: [Menu; 8] = [
+        Menu::Hideout,
+        Menu::Research,
+        Menu::Recruit,
+        Menu::Workshop,
+        Menu::Citadel,
+        Menu::Orders,
+        Menu::Log,
+        Menu::Crews,
+    ];
+
+    fn icon(self) -> char {
+        match self {
+            Menu::Hideout => icons::HOUSE,
+            Menu::Research => icons::FLASK,
+            Menu::Recruit => icons::USER_PLUS,
+            Menu::Workshop => icons::WRENCH,
+            Menu::Citadel => icons::CASTLE,
+            Menu::Orders => icons::LIST,
+            Menu::Log => icons::SCROLL,
+            Menu::Crews => icons::CROWN,
+            Menu::Selection => icons::TARGET,
+        }
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            Menu::Hideout => "Hideout",
+            Menu::Research => "Research",
+            Menu::Recruit => "Recruit",
+            Menu::Workshop => "Workshop",
+            Menu::Citadel => "Citadel",
+            Menu::Orders => "Orders",
+            Menu::Log => "Log",
+            Menu::Crews => "Crews",
+            Menu::Selection => "Selection",
+        }
+    }
+
+    fn tip(self) -> &'static str {
+        match self {
+            Menu::Hideout => "Hideout: your teams, what they are doing, and the store",
+            Menu::Research => "Research: what the analysts work on",
+            Menu::Recruit => "Recruit: train analysts, coders and operators",
+            Menu::Workshop => "Workshop: build in the hideout and install taps",
+            Menu::Citadel => "Citadel: the workshop above the hideout",
+            Menu::Orders => "Orders: everything queued for this turn",
+            Menu::Log => "Log: what happened in the last turn",
+            Menu::Crews => "Crews: points, heat and who has handed in",
+            Menu::Selection => "",
+        }
+    }
+}
+
+/// The menu open in the window beside the rail, if any.
+#[derive(Resource, Default, PartialEq, Eq)]
+pub struct OpenMenu(pub Option<Menu>);
+
 /// A container whose children are rebuilt on every refresh.
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 enum Slot {
     TopBar,
-    Hideout,
-    Selection,
-    Orders,
-    Log,
+    Rail,
+    Window,
+    Outliner,
+    TurnBox,
+    Guide,
     Toast,
     Replay,
-    Guide,
     Help,
     Story,
 }
 
+/// A see-through box over the map's free area that holds a panel in place:
+/// the guide at its foot, the toast at its head, the overlays in its
+/// middle. Its left edge moves aside when the window opens.
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
+enum Frame {
+    Foot,
+    Head,
+    Middle,
+}
+
 #[derive(Component)]
 struct Countdown;
+
+/// A line shown by the cursor while it rests on the node.
+#[derive(Component)]
+struct Tip(String);
+
+/// The box the tip is shown in, and its text.
+#[derive(Component)]
+struct TipBox;
+
+#[derive(Component)]
+struct TipText;
+
+/// How a button looks at rest and under the cursor.
+#[derive(Component, Clone)]
+struct Look {
+    rest: Handle<PanelMaterial>,
+    hover: Handle<PanelMaterial>,
+}
 
 /// What a button does when pressed.
 #[derive(Component, Clone)]
@@ -177,6 +299,7 @@ enum Action {
     HandIn,
     Withdraw,
     SelectVessel(VesselId),
+    SelectHost(HostId),
     Route(VesselId),
     CancelRoute,
     ToggleMute,
@@ -192,78 +315,177 @@ enum Action {
     CloseStory,
     /// Reads the story's open page aloud.
     Listen,
+    /// Opens a menu in the window, or closes it if it is open.
+    OpenMenu(Menu),
+    CloseWindow,
 }
 
-const PANEL_BG: Color = Color::srgba(0.04, 0.07, 0.10, 0.94);
-const BORDER: Color = Color::srgba(0.17, 0.25, 0.33, 1.0);
-const BUTTON_BG: Color = Color::srgba(0.08, 0.13, 0.18, 1.0);
-const BUTTON_HOVER: Color = Color::srgba(0.12, 0.2, 0.27, 1.0);
-const FG: Color = Color::srgb(0.85, 0.9, 0.95);
-const MUTED: Color = Color::srgba(0.6, 0.7, 0.8, 0.85);
-const ACCENT: Color = Color::srgb(0.37, 0.79, 0.85);
-const WARN: Color = Color::srgb(0.94, 0.55, 0.35);
-const GOOD: Color = Color::srgb(0.48, 0.83, 0.54);
+const FG: Color = theme::FG;
+const MUTED: Color = theme::MUTED;
+const ACCENT: Color = theme::GOLD;
+const WARN: Color = theme::WARN;
+const GOOD: Color = theme::GOOD;
+const BORDER: Color = theme::GOLD_DIM;
 
 fn text(s: impl Into<String>, size: f32, color: Color) -> impl Bundle {
-    (
-        Text::new(s),
-        TextFont::from_font_size(size),
-        TextColor(color),
-    )
+    theme::text(s, size, color)
 }
 
 fn line(p: &mut ChildSpawnerCommands, s: impl Into<String>) {
-    p.spawn(text(s, 12.0, FG));
+    p.spawn(text(s, 13.0, FG));
 }
 
 fn muted(p: &mut ChildSpawnerCommands, s: impl Into<String>) {
-    p.spawn(text(s, 12.0, MUTED));
+    p.spawn(text(s, 12.5, MUTED));
 }
 
+/// A section heading: a gold tick and the name in capitals.
 fn heading(p: &mut ChildSpawnerCommands, s: &str) {
-    p.spawn((
-        text(s.to_uppercase(), 11.0, MUTED),
-        Node {
-            margin: UiRect::top(Val::Px(6.0)),
-            ..default()
-        },
-    ));
+    p.spawn(Node {
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        column_gap: Val::Px(6.0),
+        margin: UiRect::top(Val::Px(8.0)),
+        flex_shrink: 0.0,
+        ..default()
+    })
+    .with_children(|r| {
+        r.spawn((
+            Node {
+                width: Val::Px(3.0),
+                height: Val::Px(11.0),
+                ..default()
+            },
+            BackgroundColor(theme::GOLD),
+        ));
+        r.spawn(theme::bold(s.to_uppercase(), 12.0, theme::GOLD));
+    });
 }
 
-/// Text that never breaks across lines, for the top bar.
-fn nowrap(s: impl Into<String>, size: f32, color: Color) -> impl Bundle {
-    (text(s, size, color), TextLayout::no_wrap())
-}
-
-/// A button whose label never breaks across lines, for the top bar.
-fn bar_button(label: impl Into<String>, action: Action) -> impl Bundle {
+/// A pressable node with a look at rest and under the cursor.
+fn looked(
+    action: Action,
+    rest: Handle<PanelMaterial>,
+    hover: Handle<PanelMaterial>,
+    node: Node,
+) -> impl Bundle {
     (
         Button,
         action,
-        Node {
-            padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
-            border: UiRect::all(Val::Px(1.0)),
-            flex_shrink: 0.0,
-            ..default()
+        Look {
+            rest: rest.clone(),
+            hover,
         },
-        BackgroundColor(BUTTON_BG),
-        BorderColor::all(BORDER),
-        children![nowrap(label, 12.0, ACCENT)],
+        node,
+        MaterialNode(rest),
     )
 }
 
 fn button(label: impl Into<String>, action: Action) -> impl Bundle {
     (
-        Button,
+        looked(
+            action,
+            theme::BUTTON,
+            theme::BUTTON_HOVER,
+            Node {
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(4.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+        ),
+        children![theme::bold(label, 13.0, ACCENT)],
+    )
+}
+
+/// The button that moves the turn on.
+fn primary(label: impl Into<String>, action: Action) -> impl Bundle {
+    (
+        looked(
+            action,
+            theme::PRIMARY,
+            theme::PRIMARY_HOVER,
+            Node {
+                padding: UiRect::axes(Val::Px(14.0), Val::Px(7.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                width: Val::Percent(100.0),
+                flex_shrink: 0.0,
+                ..default()
+            },
+        ),
+        children![
+            theme::icon(icons::SEND, 15.0, theme::INK),
+            theme::bold(label, 15.0, theme::INK)
+        ],
+    )
+}
+
+/// A square icon button, as on the rail; `on` while its menu is open.
+fn icon_button(
+    glyph: char,
+    tip: impl Into<String>,
+    action: Action,
+    on: bool,
+    color: Color,
+) -> impl Bundle {
+    let rest = if on { theme::BUTTON_ON } else { theme::BUTTON };
+    (
+        looked(
+            action,
+            rest,
+            theme::BUTTON_HOVER,
+            Node {
+                width: Val::Px(40.0),
+                height: Val::Px(40.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                flex_shrink: 0.0,
+                ..default()
+            },
+        ),
+        Tip(tip.into()),
+        children![theme::icon(glyph, 19.0, color)],
+    )
+}
+
+/// A small icon button inside a panel: close, undo, clear.
+fn small_icon_button(glyph: char, tip: impl Into<String>, action: Action) -> impl Bundle {
+    (
+        looked(
+            action,
+            theme::BUTTON,
+            theme::BUTTON_HOVER,
+            Node {
+                width: Val::Px(26.0),
+                height: Val::Px(26.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                flex_shrink: 0.0,
+                ..default()
+            },
+        ),
+        Tip(tip.into()),
+        children![theme::icon(glyph, 14.0, ACCENT)],
+    )
+}
+
+/// A row in the outliner that selects what it shows.
+fn list_row(action: Action, on: bool) -> impl Bundle {
+    let rest = if on { theme::ROW_ON } else { theme::ROW };
+    looked(
         action,
+        rest,
+        theme::ROW_HOVER,
         Node {
-            padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
-            border: UiRect::all(Val::Px(1.0)),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(7.0),
+            padding: UiRect::axes(Val::Px(6.0), Val::Px(4.0)),
+            width: Val::Percent(100.0),
+            flex_shrink: 0.0,
             ..default()
         },
-        BackgroundColor(BUTTON_BG),
-        BorderColor::all(BORDER),
-        children![text(label, 12.0, ACCENT)],
     )
 }
 
@@ -274,28 +496,141 @@ fn row() -> Node {
         column_gap: Val::Px(6.0),
         row_gap: Val::Px(6.0),
         align_items: AlignItems::Center,
+        flex_shrink: 0.0,
         ..default()
     }
 }
 
-fn panel(node: Node, slot: Slot) -> impl Bundle {
+/// Space that pushes what follows in a row to its far end.
+fn spacer() -> Node {
+    Node {
+        flex_grow: 1.0,
+        ..default()
+    }
+}
+
+/// An icon and a value with a tip, as the top bar shows its numbers.
+fn stat(
+    p: &mut ChildSpawnerCommands,
+    glyph: char,
+    value: impl Into<String>,
+    tip: impl Into<String>,
+    color: Color,
+) {
+    p.spawn((
+        Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(5.0),
+            flex_shrink: 0.0,
+            ..default()
+        },
+        Interaction::default(),
+        Tip(tip.into()),
+    ))
+    .with_children(|s| {
+        s.spawn(theme::icon(glyph, 14.0, theme::GOLD));
+        s.spawn(theme::bold(value, 13.0, color));
+    });
+}
+
+/// A line with an icon in front of it.
+fn icon_line(p: &mut ChildSpawnerCommands, glyph: char, s: impl Into<String>, color: Color) {
+    p.spawn(Node {
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        column_gap: Val::Px(7.0),
+        flex_shrink: 0.0,
+        ..default()
+    })
+    .with_children(|r| {
+        r.spawn(theme::icon(glyph, 13.0, theme::GOLD));
+        r.spawn(text(s, 13.0, color));
+    });
+}
+
+/// Deus Ex's segmented bar: `fraction` of its segments lit.
+fn progress(p: &mut ChildSpawnerCommands, fraction: f32) {
+    const SEGMENTS: usize = 20;
+    let lit = (fraction.clamp(0.0, 1.0) * SEGMENTS as f32).round() as usize;
+    p.spawn(Node {
+        flex_direction: FlexDirection::Row,
+        column_gap: Val::Px(2.0),
+        height: Val::Px(7.0),
+        width: Val::Percent(100.0),
+        flex_shrink: 0.0,
+        ..default()
+    })
+    .with_children(|b| {
+        for segment in 0..SEGMENTS {
+            b.spawn((
+                Node {
+                    flex_grow: 1.0,
+                    height: Val::Percent(100.0),
+                    ..default()
+                },
+                BackgroundColor(if segment < lit {
+                    theme::GOLD
+                } else {
+                    theme::GOLD.with_alpha(0.14)
+                }),
+            ));
+        }
+    });
+}
+
+fn cap(s: impl Into<String>) -> String {
+    let s = s.into();
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => s,
+    }
+}
+
+fn panel_with(node: Node, slot: Slot, material: Handle<PanelMaterial>) -> impl Bundle {
     (
         Panel,
         slot,
         Node {
-            position_type: PositionType::Absolute,
             flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(5.0),
-            padding: UiRect::all(Val::Px(10.0)),
-            border: UiRect::all(Val::Px(1.0)),
+            row_gap: Val::Px(6.0),
+            padding: UiRect::all(Val::Px(12.0)),
             overflow: Overflow::scroll_y(),
             ..node
         },
         ScrollPosition::default(),
-        BackgroundColor(PANEL_BG),
-        BorderColor::all(BORDER),
+        MaterialNode(material),
         RelativeCursorPosition::default(),
         FocusPolicy::Block,
+    )
+}
+
+fn panel(node: Node, slot: Slot) -> impl Bundle {
+    panel_with(node, slot, theme::PANEL)
+}
+
+/// The see-through box a [`Frame`] holds its panel in.
+fn frame(kind: Frame) -> impl Bundle {
+    let justify = match kind {
+        Frame::Foot => JustifyContent::FlexEnd,
+        Frame::Head => JustifyContent::FlexStart,
+        Frame::Middle => JustifyContent::Center,
+    };
+    (
+        kind,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(WINDOW_LEFT),
+            right: Val::Px(OUTLINER + 2.0 * GAP),
+            top: Val::Px(TOP_BAR + GAP),
+            bottom: Val::Px(GAP),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            justify_content: justify,
+            ..default()
+        },
+        FocusPolicy::Pass,
     )
 }
 
@@ -309,133 +644,251 @@ fn spawn_layout(mut commands: Commands) {
             left: Val::Px(0.0),
             right: Val::Px(0.0),
             height: Val::Px(TOP_BAR),
-            flex_direction: FlexDirection::Column,
-            justify_content: JustifyContent::Center,
-            row_gap: Val::Px(3.0),
-            padding: UiRect::axes(Val::Px(16.0), Val::Px(4.0)),
-            border: UiRect::bottom(Val::Px(1.0)),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(18.0),
+            padding: UiRect::axes(Val::Px(14.0), Val::Px(0.0)),
             overflow: Overflow::clip(),
             ..default()
         },
-        BackgroundColor(PANEL_BG),
-        BorderColor::all(BORDER),
+        MaterialNode(theme::BAR),
         RelativeCursorPosition::default(),
         FocusPolicy::Block,
     ));
-    commands.spawn(panel(
+    commands.spawn((
+        Panel,
+        Slot::Rail,
         Node {
-            left: Val::Px(12.0),
-            top: Val::Px(TOP_BAR + 10.0),
-            width: Val::Px(SIDE_PANEL - 12.0),
-            bottom: Val::Px(196.0),
+            position_type: PositionType::Absolute,
+            left: Val::Px(GAP),
+            top: Val::Px(TOP_BAR + GAP),
+            bottom: Val::Px(GAP),
+            width: Val::Px(RAIL),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            row_gap: Val::Px(6.0),
+            padding: UiRect::vertical(Val::Px(12.0)),
+            overflow: Overflow::clip(),
             ..default()
         },
-        Slot::Hideout,
+        MaterialNode(theme::PANEL),
+        RelativeCursorPosition::default(),
+        FocusPolicy::Block,
+    ));
+    commands.spawn((
+        panel(
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(WINDOW_LEFT),
+                top: Val::Px(TOP_BAR + GAP),
+                bottom: Val::Px(GAP),
+                width: Val::Px(WINDOW),
+                ..default()
+            },
+            Slot::Window,
+        ),
+        Visibility::Hidden,
     ));
     commands.spawn(panel(
         Node {
-            right: Val::Px(12.0),
-            top: Val::Px(TOP_BAR + 10.0),
-            width: Val::Px(SIDE_PANEL - 12.0),
-            bottom: Val::Px(196.0),
+            position_type: PositionType::Absolute,
+            right: Val::Px(GAP),
+            top: Val::Px(TOP_BAR + GAP),
+            bottom: Val::Px(TURN_BOX + 2.0 * GAP),
+            width: Val::Px(OUTLINER),
+            row_gap: Val::Px(3.0),
             ..default()
         },
-        Slot::Selection,
+        Slot::Outliner,
     ));
     commands.spawn(panel(
         Node {
-            left: Val::Px(12.0),
-            bottom: Val::Px(12.0),
-            width: Val::Percent(49.0),
-            height: Val::Px(176.0),
+            position_type: PositionType::Absolute,
+            right: Val::Px(GAP),
+            bottom: Val::Px(GAP),
+            width: Val::Px(OUTLINER),
+            height: Val::Px(TURN_BOX),
             ..default()
         },
-        Slot::Orders,
+        Slot::TurnBox,
     ));
-    commands.spawn(panel(
-        Node {
-            right: Val::Px(12.0),
-            bottom: Val::Px(12.0),
-            width: Val::Percent(49.0),
-            height: Val::Px(176.0),
-            ..default()
-        },
-        Slot::Log,
-    ));
-    commands.spawn((
-        panel(
+
+    commands
+        .spawn((frame(Frame::Foot), GlobalZIndex(1)))
+        .with_children(|f| {
+            f.spawn((
+                panel(
+                    Node {
+                        width: Val::Percent(100.0),
+                        max_width: Val::Px(860.0),
+                        max_height: Val::Px(250.0),
+                        ..default()
+                    },
+                    Slot::Guide,
+                ),
+                Visibility::Hidden,
+            ));
+        });
+    commands
+        .spawn((frame(Frame::Head), GlobalZIndex(2)))
+        .with_children(|f| {
+            f.spawn((
+                panel(
+                    Node {
+                        width: Val::Percent(100.0),
+                        max_width: Val::Px(760.0),
+                        ..default()
+                    },
+                    Slot::Toast,
+                ),
+                Visibility::Hidden,
+            ));
+        });
+    commands
+        .spawn((frame(Frame::Middle), GlobalZIndex(3)))
+        .with_children(|f| {
+            f.spawn((
+                panel_with(
+                    Node {
+                        width: Val::Percent(100.0),
+                        max_width: Val::Px(560.0),
+                        row_gap: Val::Px(8.0),
+                        ..default()
+                    },
+                    Slot::Replay,
+                    theme::OVERLAY,
+                ),
+                Visibility::Hidden,
+            ));
+            f.spawn((
+                panel_with(
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        max_width: Val::Px(820.0),
+                        ..default()
+                    },
+                    Slot::Help,
+                    theme::OVERLAY,
+                ),
+                Visibility::Hidden,
+            ));
+            f.spawn((
+                panel_with(
+                    Node {
+                        width: Val::Percent(100.0),
+                        max_width: Val::Px(780.0),
+                        // Tall enough for the longest page, so the buttons
+                        // pinned to the bottom stay put from page to page.
+                        min_height: Val::Px(STORY_HEIGHT),
+                        max_height: Val::Percent(100.0),
+                        row_gap: Val::Px(10.0),
+                        padding: UiRect::all(Val::Px(20.0)),
+                        ..default()
+                    },
+                    Slot::Story,
+                    theme::OVERLAY,
+                ),
+                Visibility::Hidden,
+            ));
+        });
+
+    commands
+        .spawn((
+            TipBox,
             Node {
-                top: Val::Px(TOP_BAR + 10.0),
-                left: Val::Px(OVERLAY_INSET),
-                right: Val::Px(OVERLAY_INSET),
+                position_type: PositionType::Absolute,
+                padding: UiRect::axes(Val::Px(9.0), Val::Px(5.0)),
+                max_width: Val::Px(300.0),
                 ..default()
             },
-            Slot::Toast,
-        ),
-        Visibility::Hidden,
-        GlobalZIndex(1),
-    ));
-    commands.spawn((
-        panel(
-            Node {
-                top: Val::Percent(22.0),
-                left: Val::Percent(30.0),
-                right: Val::Percent(30.0),
-                row_gap: Val::Px(8.0),
-                ..default()
-            },
-            Slot::Replay,
-        ),
-        Visibility::Hidden,
-        GlobalZIndex(2),
-    ));
-    commands.spawn((
-        panel(
-            Node {
-                top: Val::Px(TOP_BAR + 10.0),
-                left: Val::Px(OVERLAY_INSET),
-                right: Val::Px(OVERLAY_INSET),
-                ..default()
-            },
-            Slot::Guide,
-        ),
-        Visibility::Hidden,
-        GlobalZIndex(1),
-    ));
-    commands.spawn((
-        panel(
-            Node {
-                top: Val::Px(TOP_BAR + 10.0),
-                bottom: Val::Px(50.0),
-                left: Val::Px(OVERLAY_INSET),
-                right: Val::Px(OVERLAY_INSET),
-                row_gap: Val::Px(6.0),
-                ..default()
-            },
-            Slot::Help,
-        ),
-        Visibility::Hidden,
-        GlobalZIndex(3),
-    ));
-    commands.spawn((
-        panel(
-            Node {
-                top: Val::Px(TOP_BAR + 10.0),
-                left: Val::Px(OVERLAY_INSET),
-                right: Val::Px(OVERLAY_INSET),
-                // Tall enough for the longest page, so the buttons pinned
-                // to the bottom stay put from page to page.
-                min_height: Val::Px(STORY_HEIGHT),
-                max_height: Val::Percent(85.0),
-                row_gap: Val::Px(10.0),
-                padding: UiRect::all(Val::Px(18.0)),
-                ..default()
-            },
-            Slot::Story,
-        ),
-        Visibility::Hidden,
-        GlobalZIndex(4),
-    ));
+            MaterialNode(theme::TIP),
+            GlobalZIndex(30),
+            Visibility::Hidden,
+            FocusPolicy::Pass,
+        ))
+        .with_children(|t| {
+            t.spawn((text("", 12.5, FG), TipText));
+        });
+}
+
+/// Opens the window on what the player selected on the map or in the
+/// outliner, and closes it when the selection is cleared.
+fn open_selection(selected: Res<Selected>, mut open: ResMut<OpenMenu>) {
+    if !selected.is_changed() || selected.is_added() {
+        return;
+    }
+    if selected.host.is_some() || selected.vessel.is_some() {
+        open.set_if_neq(OpenMenu(Some(Menu::Selection)));
+    } else if open.0 == Some(Menu::Selection) {
+        open.0 = None;
+    }
+}
+
+/// Shows the tip of whatever the cursor rests on, beside the cursor.
+fn show_tip(
+    window: Single<&Window, With<PrimaryWindow>>,
+    tips: Query<(&Interaction, &Tip, &InheritedVisibility)>,
+    tip_box: Single<(&mut Node, &mut Visibility), With<TipBox>>,
+    tip_text: Single<&mut Text, With<TipText>>,
+) {
+    let (mut node, mut visibility) = tip_box.into_inner();
+    let hovered = tips
+        .iter()
+        .find(|(interaction, _, shown)| **interaction != Interaction::None && shown.get())
+        .map(|(_, tip, _)| tip.0.as_str())
+        .filter(|tip| !tip.is_empty());
+    let (Some(tip), Some(cursor)) = (hovered, window.cursor_position()) else {
+        visibility.set_if_neq(Visibility::Hidden);
+        return;
+    };
+    let mut tip_text = tip_text.into_inner();
+    if tip_text.0 != tip {
+        tip_text.0 = tip.to_string();
+    }
+    // Beside the cursor, and to its left near the right edge.
+    let left = if cursor.x > window.width() - 320.0 {
+        cursor.x - 300.0
+    } else {
+        cursor.x + 16.0
+    };
+    let top = if cursor.y > window.height() - 60.0 {
+        cursor.y - 36.0
+    } else {
+        cursor.y + 20.0
+    };
+    node.left = Val::Px(left.max(4.0));
+    node.top = Val::Px(top);
+    visibility.set_if_neq(Visibility::Inherited);
+}
+
+type ChangedButtons = (Changed<Interaction>, With<Button>);
+
+fn style_buttons(
+    mut buttons: Query<(&Interaction, &Look, &mut MaterialNode<PanelMaterial>), ChangedButtons>,
+) {
+    for (interaction, look, mut node) in &mut buttons {
+        let wanted = match interaction {
+            Interaction::None => &look.rest,
+            Interaction::Hovered | Interaction::Pressed => &look.hover,
+        };
+        if node.0 != *wanted {
+            node.0 = wanted.clone();
+        }
+    }
+}
+
+/// Opens the story the first time a crew's status arrives, unless this
+/// browser has read it before.
+fn open_story(session: Res<Session>, mut guide: ResMut<GuideState>, mut opened: Local<bool>) {
+    if *opened || session.status.is_none() {
+        return;
+    }
+    *opened = true;
+    if !notify::story_seen() {
+        guide.story = Some(0);
+        music::duck(true);
+    }
 }
 
 fn fade_toast(time: Res<Time>, mut toast: ResMut<Toast>) {
@@ -536,17 +989,6 @@ fn scroll_panels(
     }
 }
 
-type ChangedButtons = (Changed<Interaction>, With<Button>);
-
-fn style_buttons(mut buttons: Query<(&Interaction, &mut BackgroundColor), ChangedButtons>) {
-    for (interaction, mut color) in &mut buttons {
-        color.0 = match interaction {
-            Interaction::None => BUTTON_BG,
-            Interaction::Hovered | Interaction::Pressed => BUTTON_HOVER,
-        };
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn press_buttons(
     mouse: Res<ButtonInput<MouseButton>>,
@@ -560,6 +1002,7 @@ fn press_buttons(
     mut play: MessageWriter<Play>,
     mut replay: ResMut<Replay>,
     mut guide: ResMut<GuideState>,
+    mut open: ResMut<OpenMenu>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
         return;
@@ -607,6 +1050,20 @@ fn press_buttons(
                     vessel: Some(id),
                 };
             }
+            Action::SelectHost(host) => {
+                *selected = Selected {
+                    host: Some(host),
+                    vessel: None,
+                };
+            }
+            Action::OpenMenu(menu) => {
+                open.0 = if open.0 == Some(menu) {
+                    None
+                } else {
+                    Some(menu)
+                };
+            }
+            Action::CloseWindow => open.0 = None,
             Action::Route(id) => routing.0 = Some(id),
             Action::CancelRoute => routing.0 = None,
             Action::ToggleMute => {
@@ -747,92 +1204,6 @@ fn countdown(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn refresh(
-    mut commands: Commands,
-    session: Res<Session>,
-    selected: Res<Selected>,
-    routing: Res<Routing>,
-    api: Res<Api>,
-    rules: Res<Rules>,
-    clock: Res<Clock>,
-    toast: Res<Toast>,
-    replay: Res<Replay>,
-    sounds: Res<Sounds>,
-    guide: Res<GuideState>,
-    mut slots: Query<(Entity, &Slot, &mut Visibility)>,
-) {
-    let data = &rules.0;
-    let toast_shown = !toast.lines.is_empty() && toast.seconds_left > 0.0;
-    // The guide carries the toast's lines while it is up, so the top of the
-    // map does not swap between the two; it gives way to a replay.
-    let reading = guide.story.is_some();
-    let guide_shown = session.status.is_some()
-        && !guide.hidden
-        && !guide.help
-        && !reading
-        && replay.current.is_none();
-    for (entity, slot, mut visibility) in &mut slots {
-        let shown = match slot {
-            Slot::Toast => toast_shown && !guide_shown && !reading,
-            Slot::Replay => replay.current.is_some(),
-            Slot::Guide => guide_shown,
-            Slot::Help => guide.help && !reading,
-            Slot::Story => reading,
-            _ => true,
-        };
-        let wanted = if shown {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        };
-        if *visibility != wanted {
-            *visibility = wanted;
-        }
-        let mut e = commands.entity(entity);
-        e.despawn_children();
-        if !shown {
-            continue;
-        }
-        e.with_children(|p| match slot {
-            Slot::TopBar => top_bar(p, &session, &clock, &api, &sounds, &guide),
-            Slot::Hideout => match &session.status {
-                Some(status) => hideout_panel(p, status, data),
-                None => muted(p, "Waiting for the server..."),
-            },
-            Slot::Selection => {
-                if let Some(status) = &session.status {
-                    selection_panel(p, status, data, &selected, &routing);
-                }
-            }
-            Slot::Orders => orders_panel(p, &session, data),
-            Slot::Log => {
-                if let Some(status) = &session.status {
-                    log_panel(p, status, data);
-                }
-            }
-            Slot::Toast => toast_lines(p, &toast),
-            Slot::Replay => {
-                if let Some(state) = &replay.current {
-                    replay_panel(p, state);
-                }
-            }
-            Slot::Guide => guide_panel(
-                p,
-                &session,
-                if toast_shown { Some(&toast) } else { None },
-                data,
-            ),
-            Slot::Help => help_panel(p, &session, data),
-            Slot::Story => {
-                if let Some(page) = guide.story {
-                    story_panel(p, page, &session);
-                }
-            }
-        });
-    }
-}
-
 fn toast_lines(p: &mut ChildSpawnerCommands, toast: &Toast) {
     for (index, line) in toast.lines.iter().enumerate() {
         if index == 0 {
@@ -926,13 +1297,25 @@ fn guide_panel(
     let steps = guide::steps(status, data, &session.draft);
     let current = guide::current(&steps);
     let step = &steps[current];
-    p.spawn(row()).with_children(|r| {
-        r.spawn(text(
-            format!("GUIDE  STEP {} OF {}", current + 1, steps.len()),
-            11.0,
+    p.spawn(Node {
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        column_gap: Val::Px(8.0),
+        flex_shrink: 0.0,
+        ..default()
+    })
+    .with_children(|r| {
+        r.spawn(theme::icon(icons::TARGET, 16.0, theme::GOLD));
+        r.spawn(theme::bold(
+            format!("OBJECTIVE {} OF {}", current + 1, steps.len()),
+            12.0,
             MUTED,
         ));
-        r.spawn(text(step.title, 13.0, ACCENT));
+        r.spawn(theme::bold(
+            step.title.to_uppercase(),
+            15.0,
+            theme::GOLD_BRIGHT,
+        ));
     });
     if let Some(story) = guide::STEP_STORIES.get(current) {
         muted(p, *story);
@@ -962,7 +1345,8 @@ fn story_panel(p: &mut ChildSpawnerCommands, page: usize, session: &Session) {
     let page = page.min(pages.len().saturating_sub(1));
     let (title, paragraphs) = pages[page];
     p.spawn(row()).with_children(|r| {
-        r.spawn(text(
+        r.spawn(theme::icon(icons::BOOK, 16.0, theme::GOLD));
+        r.spawn(theme::bold(
             format!(
                 "THE STORY OF NULLNET   PAGE {} OF {}",
                 page + 1,
@@ -973,7 +1357,7 @@ fn story_panel(p: &mut ChildSpawnerCommands, page: usize, session: &Session) {
         ));
         r.spawn(button("Listen", Action::Listen));
     });
-    p.spawn(text(title, 16.0, ACCENT));
+    p.spawn(theme::bold(title.to_uppercase(), 20.0, theme::GOLD_BRIGHT));
     for paragraph in paragraphs {
         p.spawn(text(*paragraph, 13.0, FG));
     }
@@ -1016,9 +1400,11 @@ fn story_panel(p: &mut ChildSpawnerCommands, page: usize, session: &Session) {
 /// Every step with its state, then the rules in brief.
 fn help_panel(p: &mut ChildSpawnerCommands, session: &Session, data: &GameData) {
     p.spawn(row()).with_children(|r| {
-        r.spawn(text("HOW TO PLAY", 14.0, FG));
-        r.spawn(button("Close", Action::ToggleHelp));
+        r.spawn(theme::icon(icons::HELP, 17.0, theme::GOLD));
+        r.spawn(theme::bold("HOW TO PLAY", 16.0, theme::GOLD_BRIGHT));
+        r.spawn(spacer());
         r.spawn(button("Read the story", Action::StoryPage(0)));
+        r.spawn(small_icon_button(icons::CLOSE, "Close", Action::ToggleHelp));
     });
     muted(
         p,
@@ -1029,21 +1415,34 @@ fn help_panel(p: &mut ChildSpawnerCommands, session: &Session, data: &GameData) 
         let steps = guide::steps(status, data, &session.draft);
         let current = guide::current(&steps);
         for (index, step) in steps.iter().enumerate() {
+            // Marks, not boxes: the list is read, not ticked.
             let (mark, color) = if step.done {
-                ("[x]", GOOD)
+                (icons::CHECK, GOOD)
             } else if index == current {
-                ("[>]", ACCENT)
+                (icons::CHEVRON, ACCENT)
             } else {
-                ("[ ]", FG)
+                (icons::HEXAGON, MUTED)
             };
-            p.spawn(text(
-                format!("{mark} {}. {}", index + 1, step.title),
-                12.0,
-                color,
-            ));
+            p.spawn(Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(7.0),
+                flex_shrink: 0.0,
+                ..default()
+            })
+            .with_children(|r| {
+                r.spawn(theme::icon(mark, 13.0, color));
+                r.spawn(text(format!("{}. {}", index + 1, step.title), 13.0, color));
+            });
             if index == current {
                 for hint in &step.hints {
-                    muted(p, format!("      {hint}"));
+                    p.spawn((
+                        text(hint.clone(), 12.5, MUTED),
+                        Node {
+                            margin: UiRect::left(Val::Px(20.0)),
+                            ..default()
+                        },
+                    ));
                 }
             }
         }
@@ -1056,158 +1455,1187 @@ fn help_panel(p: &mut ChildSpawnerCommands, session: &Session, data: &GameData) 
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn refresh(
+    mut commands: Commands,
+    session: Res<Session>,
+    selected: Res<Selected>,
+    routing: Res<Routing>,
+    api: Res<Api>,
+    rules: Res<Rules>,
+    clock: Res<Clock>,
+    toast: Res<Toast>,
+    replay: Res<Replay>,
+    sounds: Res<Sounds>,
+    guide: Res<GuideState>,
+    open: Res<OpenMenu>,
+    mut insets: ResMut<MapInsets>,
+    mut frames: Query<&mut Node, (With<Frame>, Without<Slot>)>,
+    mut slots: Query<(Entity, &Slot, &mut Visibility, &mut Node), Without<Frame>>,
+) {
+    let data = &rules.0;
+    let status = session.status.as_ref();
+    let window_open = status.is_some() && open.0.is_some();
+    let toast_shown = !toast.lines.is_empty() && toast.seconds_left > 0.0;
+    let reading = guide.story.is_some();
+    // The guide carries the toast's lines while it is up, so the foot of
+    // the map does not swap between the two; it gives way to a replay.
+    let guide_shown =
+        status.is_some() && !guide.hidden && !guide.help && !reading && replay.current.is_none();
+
+    // The frames over the map move aside for the window, and the map fits
+    // itself into what the panels leave free.
+    let left = if window_open {
+        PAST_WINDOW
+    } else {
+        WINDOW_LEFT
+    };
+    for mut node in &mut frames {
+        if node.left != Val::Px(left) {
+            node.left = Val::Px(left);
+        }
+    }
+    insets.set_if_neq(MapInsets(Vec4::new(
+        left,
+        TOP_BAR + GAP,
+        OUTLINER + 2.0 * GAP,
+        if guide_shown { GUIDE_ROOM } else { GAP },
+    )));
+
+    for (entity, slot, mut visibility, mut node) in &mut slots {
+        let shown = match slot {
+            Slot::Window => window_open,
+            Slot::Toast => toast_shown && !guide_shown && !reading,
+            Slot::Replay => replay.current.is_some(),
+            Slot::Guide => guide_shown,
+            Slot::Help => guide.help && !reading,
+            Slot::Story => reading,
+            Slot::TopBar | Slot::Rail | Slot::Outliner | Slot::TurnBox => true,
+        };
+        let (wanted, display) = if shown {
+            (Visibility::Inherited, Display::Flex)
+        } else {
+            (Visibility::Hidden, Display::None)
+        };
+        if *visibility != wanted {
+            *visibility = wanted;
+        }
+        if node.display != display {
+            node.display = display;
+        }
+        let mut e = commands.entity(entity);
+        e.despawn_children();
+        if !shown {
+            continue;
+        }
+        e.with_children(|p| match slot {
+            Slot::TopBar => top_bar(p, &session, &clock, &api),
+            Slot::Rail => rail(p, &open, &guide, &sounds),
+            Slot::Window => {
+                if let (Some(status), Some(menu)) = (status, open.0) {
+                    window_panel(p, menu, status, &session, data, &selected, &routing);
+                }
+            }
+            Slot::Outliner => match status {
+                Some(status) => outliner(p, status, data, &selected),
+                None => muted(p, "Waiting for the server..."),
+            },
+            Slot::TurnBox => turn_box(p, &session, data),
+            Slot::Toast => toast_lines(p, &toast),
+            Slot::Replay => {
+                if let Some(state) = &replay.current {
+                    replay_panel(p, state);
+                }
+            }
+            Slot::Guide => guide_panel(
+                p,
+                &session,
+                if toast_shown { Some(&toast) } else { None },
+                data,
+            ),
+            Slot::Help => help_panel(p, &session, data),
+            Slot::Story => {
+                if let Some(page) = guide.story {
+                    story_panel(p, page, &session);
+                }
+            }
+        });
+    }
+}
+
 // ------------------------------------------------------------ top bar
 
-fn top_bar(
-    p: &mut ChildSpawnerCommands,
-    session: &Session,
-    clock: &Clock,
-    api: &Api,
-    sounds: &Sounds,
-    guide: &GuideState,
-) {
-    let bar_row = || Node {
+fn top_bar(p: &mut ChildSpawnerCommands, session: &Session, clock: &Clock, api: &Api) {
+    let Some(status) = &session.status else {
+        p.spawn(theme::bold("NULLNET", 18.0, theme::GOLD_BRIGHT));
+        if api.token.is_none() {
+            p.spawn(text(
+                "No crew token. Open your invite link, or create a game at /console.",
+                13.0,
+                MUTED,
+            ));
+        } else if let Some(error) = &session.error {
+            p.spawn(text(error.clone(), 13.0, WARN));
+        } else {
+            p.spawn(text("Connecting...", 13.0, MUTED));
+        }
+        return;
+    };
+    let me = &status.view.me;
+    let colour = Color::Srgba(Srgba::hex(crew_color(status.player, status.player)).unwrap());
+
+    // The crew.
+    p.spawn(Node {
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        column_gap: Val::Px(8.0),
+        flex_shrink: 0.0,
+        ..default()
+    })
+    .with_children(|r| {
+        r.spawn(theme::icon(icons::HEXAGON, 24.0, colour));
+        r.spawn(Node {
+            flex_direction: FlexDirection::Column,
+            ..default()
+        })
+        .with_children(|c| {
+            c.spawn(theme::bold(status.name.to_uppercase(), 15.0, colour));
+            c.spawn(text(status.game.name.clone(), 11.0, MUTED));
+        });
+    });
+
+    // What the hideout's store holds, and the recruits left.
+    p.spawn(Node {
         flex_direction: FlexDirection::Row,
         align_items: AlignItems::Center,
         column_gap: Val::Px(16.0),
+        flex_shrink: 1.0,
+        min_width: Val::Px(0.0),
+        overflow: Overflow::clip(),
         ..default()
-    };
-    // First row: the client's own buttons, the game and the running turn.
-    p.spawn(bar_row()).with_children(|r| {
-        r.spawn(nowrap("NULLNET", 18.0, FG));
-        r.spawn(bar_button("Help", Action::ToggleHelp));
-        if session.status.is_some() {
-            r.spawn(bar_button(
-                if guide.hidden {
-                    "Show guide"
-                } else {
-                    "Hide guide"
-                },
-                Action::ToggleGuide,
-            ));
+    })
+    .with_children(|r| {
+        for item in BAR_RESOURCES {
+            stat(
+                r,
+                icons::item(item),
+                me.hideout.store.get(item).to_string(),
+                format!("{} in the hideout store", cap(text::item(item))),
+                FG,
+            );
         }
-        r.spawn(bar_button(
-            if sounds.muted {
-                "Sound: off"
-            } else {
-                "Sound: on"
-            },
-            Action::ToggleMute,
-        ));
-        r.spawn(bar_button(
-            if sounds.music {
-                "Music: on"
-            } else {
-                "Music: off"
-            },
-            Action::ToggleMusic,
-        ));
-        if notify::permission() == notify::Permission::Ask {
-            r.spawn(bar_button("Notify me", Action::RequestNotify));
-        }
-        let Some(status) = &session.status else {
-            if api.token.is_none() {
-                r.spawn(nowrap(
-                    "No crew token. Open your invite link, or create a game at /console.",
-                    12.0,
-                    MUTED,
-                ));
-            } else if let Some(error) = &session.error {
-                r.spawn(nowrap(error.clone(), 12.0, WARN));
-            } else {
-                r.spawn(nowrap("Connecting...", 12.0, MUTED));
-            }
-            return;
-        };
-        r.spawn(nowrap(status.game.name.clone(), 12.0, MUTED));
-        r.spawn(nowrap(
-            status.name.clone(),
-            13.0,
-            Color::Srgba(Srgba::hex(crew_color(status.player, status.player)).unwrap()),
-        ));
-        r.spawn(nowrap(
-            format!(
-                "Turn {}   {}   {} days per turn",
-                status.turn,
-                date(status.day),
-                status.game.turn_days
-            ),
-            12.0,
+        stat(
+            r,
+            icons::USERS,
+            me.recruitment.available.to_string(),
+            "Recruits left for the rest of the game",
             FG,
-        ));
-        if let Some(end) = &status.view.ended {
-            let winner = status
-                .crews
-                .iter()
-                .find(|c| c.player == end.winner)
-                .map_or("a crew".to_string(), |c| c.name.clone());
-            r.spawn(nowrap(
-                format!(
-                    "GAME OVER on {}: {} wins {}",
-                    date(end.day),
-                    winner,
-                    match end.reason {
-                        EndReason::Domination => "by holding most of the home network",
-                        EndReason::DayLimit => "on points",
-                    }
-                ),
-                13.0,
-                GOOD,
-            ));
-        } else {
+        );
+    });
+
+    p.spawn(spacer());
+
+    // The crew's standing, and the turn.
+    if me.war.is_some() {
+        stat(
+            p,
+            icons::SWORDS,
+            "AT WAR",
+            "The Legacy Net is at war with you: its swarms come for your hosts",
+            WARN,
+        );
+    }
+    let points = status
+        .view
+        .scores
+        .iter()
+        .find(|s| s.player == status.player)
+        .map_or(0, |s| s.total);
+    stat(
+        p,
+        icons::TROPHY,
+        points.to_string(),
+        "Your points; Crews on the rail has the table",
+        FG,
+    );
+    stat(
+        p,
+        icons::FLAME,
+        me.heat.to_string(),
+        "Heat: every raid adds to it, and it cools a point a day. The Legacy Net's swarms go for the hottest crew.",
+        if me.heat > 0 { WARN } else { FG },
+    );
+    if let Some(end) = &status.view.ended {
+        let winner = status
+            .crews
+            .iter()
+            .find(|c| c.player == end.winner)
+            .map_or("a crew".to_string(), |c| c.name.clone());
+        stat(
+            p,
+            icons::CROWN,
+            format!("GAME OVER: {winner} wins"),
+            match end.reason {
+                EndReason::Domination => "By holding most of the home network",
+                EndReason::DayLimit => "On points, on the last day",
+            },
+            GOOD,
+        );
+    } else {
+        p.spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            Interaction::default(),
+            Tip("When the turn runs, whether or not every crew has handed in".into()),
+        ))
+        .with_children(|r| {
+            r.spawn(theme::icon(icons::HOURGLASS, 14.0, theme::GOLD));
             r.spawn((
-                nowrap(countdown_text(session, clock), 12.0, MUTED),
+                theme::bold(countdown_text(session, clock), 13.0, FG),
                 Countdown,
             ));
-            if let Some(end) = status.game.end_day {
-                r.spawn(nowrap(format!("Last day {}", date(end)), 12.0, MUTED));
-            }
-        }
-    });
-    let Some(status) = &session.status else {
-        return;
-    };
-    // Second row: the crews and what stands between them.
-    p.spawn(bar_row()).with_children(|r| {
-        if status.view.me.war.is_some() {
-            r.spawn(nowrap("AT WAR", 12.0, WARN));
-        }
-        if status.turn < PROTECTION_TURNS {
-            r.spawn(nowrap(
-                format!("No raids between crews before turn {PROTECTION_TURNS}"),
-                12.0,
-                MUTED,
-            ));
-        }
-        for crew in &status.crews {
-            let color = Color::Srgba(Srgba::hex(crew_color(status.player, crew.player)).unwrap());
-            let summary = status.view.crews.iter().find(|c| c.player == crew.player);
-            let held = summary.map_or(0, |c| c.hosts);
-            let heat = summary.map_or(0, |c| c.heat);
-            let points = status
-                .view
-                .scores
-                .iter()
-                .find(|s| s.player == crew.player)
-                .map_or(0, |s| s.total);
-            r.spawn(nowrap(
-                format!(
-                    "{}{}: {} hosts, {} pts, heat {}{}",
-                    crew.name,
-                    if crew.bot { " (bot)" } else { "" },
-                    held,
-                    points,
-                    heat,
-                    if crew.submitted { ", handed in" } else { "" }
-                ),
-                12.0,
-                color,
-            ));
-        }
+        });
+    }
+    let calendar = format!(
+        "{} days pass when the turn runs{}",
+        status.game.turn_days,
+        status
+            .game
+            .end_day
+            .map(|end| format!("; the game ends on {}", date(end)))
+            .unwrap_or_default()
+    );
+    p.spawn((
+        Node {
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::FlexEnd,
+            flex_shrink: 0.0,
+            ..default()
+        },
+        Interaction::default(),
+        Tip(calendar),
+    ))
+    .with_children(|c| {
+        c.spawn(theme::bold(
+            format!("TURN {}", status.turn),
+            15.0,
+            theme::GOLD_BRIGHT,
+        ));
+        c.spawn(text(date(status.day), 11.0, MUTED));
     });
 }
 
-// ------------------------------------------------------------ hideout
+// ------------------------------------------------------------ rail
+
+fn rail(p: &mut ChildSpawnerCommands, open: &OpenMenu, guide: &GuideState, sounds: &Sounds) {
+    for menu in Menu::RAIL {
+        p.spawn(icon_button(
+            menu.icon(),
+            menu.tip(),
+            Action::OpenMenu(menu),
+            open.0 == Some(menu),
+            theme::GOLD,
+        ));
+    }
+    p.spawn(spacer());
+    p.spawn(icon_button(
+        icons::HELP,
+        "Help: every step of the opening, and the rules",
+        Action::ToggleHelp,
+        guide.help,
+        theme::GOLD,
+    ));
+    p.spawn(icon_button(
+        icons::BOOK,
+        "The story of NullNet",
+        Action::StoryPage(0),
+        guide.story.is_some(),
+        theme::GOLD,
+    ));
+    p.spawn(icon_button(
+        icons::TARGET,
+        if guide.hidden {
+            "Guide: hidden. Press to show it."
+        } else {
+            "Guide: shown. Press to hide it."
+        },
+        Action::ToggleGuide,
+        false,
+        if guide.hidden { MUTED } else { theme::GOLD },
+    ));
+    p.spawn(icon_button(
+        if sounds.muted {
+            icons::VOLUME_OFF
+        } else {
+            icons::VOLUME
+        },
+        if sounds.muted {
+            "Sound: off"
+        } else {
+            "Sound: on"
+        },
+        Action::ToggleMute,
+        false,
+        if sounds.muted { MUTED } else { theme::GOLD },
+    ));
+    p.spawn(icon_button(
+        icons::MUSIC,
+        if sounds.music {
+            "Music: on"
+        } else {
+            "Music: off"
+        },
+        Action::ToggleMusic,
+        false,
+        if sounds.music && !sounds.muted {
+            theme::GOLD
+        } else {
+            MUTED
+        },
+    ));
+    if notify::permission() == notify::Permission::Ask {
+        p.spawn(icon_button(
+            icons::BELL,
+            "Let the browser tell you when a turn runs",
+            Action::RequestNotify,
+            false,
+            theme::GOLD,
+        ));
+    }
+}
+
+// ------------------------------------------------------------ outliner
+
+fn outliner(
+    p: &mut ChildSpawnerCommands,
+    status: &CrewStatus,
+    data: &GameData,
+    selected: &Selected,
+) {
+    let me = status.player;
+    let home = data.hideout.host;
+    let hideout = &status.view.me.hideout;
+    let chosen_host = |host: HostId| selected.vessel.is_none() && selected.host == Some(host);
+
+    heading(p, "Hideout");
+    p.spawn(list_row(Action::SelectHost(home), chosen_host(home)))
+        .with_children(|r| {
+            r.spawn(theme::icon(icons::HOUSE, 14.0, theme::GOLD));
+            r.spawn(theme::bold(data.host(home).name.clone(), 13.0, FG));
+            r.spawn(spacer());
+            r.spawn(text(
+                format!(
+                    "taps {}/{}  citadel {}/{}",
+                    hideout.taps,
+                    Site::MAX_TAPS,
+                    hideout.citadel.modules,
+                    Citadel::MODULES
+                ),
+                11.5,
+                MUTED,
+            ));
+        });
+
+    let held: Vec<HostId> = status
+        .view
+        .hosts
+        .iter()
+        .enumerate()
+        .map(|(h, view)| (HostId(h as u16), view))
+        .filter(|(h, view)| *h != home && view.controller == Some(Controller::Crew(me)))
+        .map(|(h, _)| h)
+        .collect();
+    heading(p, &format!("Hosts ({})", held.len()));
+    if held.is_empty() {
+        muted(
+            p,
+            "None yet. A worm with a citadel module claims a free host.",
+        );
+    }
+    for host in held {
+        let view = &status.view.hosts[usize::from(host.0)];
+        let threatened = status.view.threats.iter().any(|t| t.host == host);
+        p.spawn(list_row(Action::SelectHost(host), chosen_host(host)))
+            .with_children(|r| {
+                r.spawn(theme::icon(
+                    if view.citadel_modules >= Citadel::MODULES {
+                        icons::CASTLE
+                    } else {
+                        icons::SERVER
+                    },
+                    14.0,
+                    theme::GOLD,
+                ));
+                r.spawn(theme::bold(data.host(host).name.clone(), 13.0, FG));
+                r.spawn(spacer());
+                if threatened {
+                    r.spawn((
+                        theme::icon(icons::ALERT, 13.0, WARN),
+                        Interaction::default(),
+                        Tip("A Legacy swarm is coming for this host".into()),
+                    ));
+                }
+                r.spawn(text(
+                    format!("citadel {}/{}", view.citadel_modules, Citadel::MODULES),
+                    11.5,
+                    MUTED,
+                ));
+            });
+    }
+
+    let vessels: Vec<(VesselId, &Vessel)> = status
+        .view
+        .vessels
+        .iter()
+        .filter(|(_, v)| v.owner == me)
+        .map(|(&id, v)| (id, v))
+        .collect();
+    heading(p, &format!("Vessels ({})", vessels.len()));
+    if vessels.is_empty() {
+        muted(p, "None yet. The guide shows how to build a dropper.");
+    }
+    for (id, vessel) in vessels {
+        p.spawn(list_row(
+            Action::SelectVessel(id),
+            selected.vessel == Some(id),
+        ))
+        .with_children(|r| {
+            r.spawn(theme::icon(icons::vessel(vessel.kind), 14.0, theme::GOLD));
+            r.spawn(Node {
+                flex_direction: FlexDirection::Column,
+                flex_grow: 1.0,
+                ..default()
+            })
+            .with_children(|c| {
+                c.spawn(theme::bold(
+                    cap(text::vessel(id, &status.view.vessels)),
+                    13.0,
+                    FG,
+                ));
+                c.spawn(text(
+                    format!(
+                        "{}, {}",
+                        text::state(vessel.state, data),
+                        data.host(vessel.host).name
+                    ),
+                    11.0,
+                    MUTED,
+                ));
+            });
+            if vessel.pilot.is_none() {
+                r.spawn((
+                    theme::icon(icons::HEADSET, 13.0, WARN),
+                    Interaction::default(),
+                    Tip("No pilot: it cannot move".into()),
+                ));
+            }
+            if vessel.fuel == 0 {
+                r.spawn((
+                    theme::icon(icons::FUEL, 13.0, WARN),
+                    Interaction::default(),
+                    Tip("No anonymisation left".into()),
+                ));
+            }
+        });
+    }
+
+    if !status.view.threats.is_empty() {
+        heading(p, "Threats");
+        for threat in &status.view.threats {
+            let when = match (threat.siege_until, threat.arrives) {
+                (Some(until), _) => format!("siege, falls {}", date(until)),
+                (None, Some(arrives)) => format!("arrives {}", date(arrives)),
+                _ => "on its way".to_string(),
+            };
+            p.spawn(list_row(
+                Action::SelectHost(threat.host),
+                chosen_host(threat.host),
+            ))
+            .with_children(|r| {
+                r.spawn(theme::icon(icons::ALERT, 14.0, WARN));
+                r.spawn(Node {
+                    flex_direction: FlexDirection::Column,
+                    flex_grow: 1.0,
+                    ..default()
+                })
+                .with_children(|c| {
+                    c.spawn(theme::bold(data.host(threat.host).name.clone(), 13.0, FG));
+                    c.spawn(text(
+                        format!("{} daemons, {when}", threat.daemons),
+                        11.0,
+                        WARN,
+                    ));
+                });
+            });
+        }
+    }
+
+    heading(p, "Crews");
+    for crew in &status.crews {
+        let colour = Color::Srgba(Srgba::hex(crew_color(me, crew.player)).unwrap());
+        let summary = status.view.crews.iter().find(|c| c.player == crew.player);
+        let points = status
+            .view
+            .scores
+            .iter()
+            .find(|s| s.player == crew.player)
+            .map_or(0, |s| s.total);
+        p.spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(7.0),
+            padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
+            flex_shrink: 0.0,
+            ..default()
+        })
+        .with_children(|r| {
+            r.spawn(theme::icon(icons::HEXAGON, 13.0, colour));
+            r.spawn(Node {
+                flex_direction: FlexDirection::Column,
+                flex_grow: 1.0,
+                ..default()
+            })
+            .with_children(|c| {
+                c.spawn(theme::bold(
+                    format!("{}{}", crew.name, if crew.bot { " (bot)" } else { "" }),
+                    13.0,
+                    colour,
+                ));
+                c.spawn(text(
+                    format!(
+                        "{} hosts, {} pts, heat {}",
+                        summary.map_or(0, |c| c.hosts),
+                        points,
+                        summary.map_or(0, |c| c.heat)
+                    ),
+                    11.0,
+                    MUTED,
+                ));
+            });
+            if crew.submitted {
+                r.spawn((
+                    theme::icon(icons::CHECK, 14.0, GOOD),
+                    Interaction::default(),
+                    Tip("Handed in".into()),
+                ));
+            }
+        });
+    }
+    if status.turn < PROTECTION_TURNS {
+        icon_line(
+            p,
+            icons::SHIELD,
+            format!("No raids between crews before turn {PROTECTION_TURNS}"),
+            MUTED,
+        );
+    }
+}
+
+// ------------------------------------------------------------ turn box
+
+fn turn_box(p: &mut ChildSpawnerCommands, session: &Session, data: &GameData) {
+    let Some(status) = &session.status else {
+        return;
+    };
+    p.spawn(Node {
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        column_gap: Val::Px(8.0),
+        flex_shrink: 0.0,
+        ..default()
+    })
+    .with_children(|r| {
+        r.spawn(theme::bold(
+            format!("ORDERS ({})", session.draft.len()),
+            12.0,
+            theme::GOLD,
+        ));
+        r.spawn(spacer());
+        if !session.draft.is_empty() {
+            r.spawn(small_icon_button(
+                icons::UNDO,
+                "Undo the last order",
+                Action::Undo,
+            ));
+            r.spawn(small_icon_button(
+                icons::TRASH,
+                "Clear every order",
+                Action::Clear,
+            ));
+        }
+        r.spawn(small_icon_button(
+            icons::LIST,
+            "Every order, in the Orders menu",
+            Action::OpenMenu(Menu::Orders),
+        ));
+    });
+    let rejected: std::collections::HashMap<usize, &str> = session
+        .receipt
+        .as_ref()
+        .map(|r| {
+            r.rejected
+                .iter()
+                .map(|x| (x.index, x.error.as_str()))
+                .collect()
+        })
+        .unwrap_or_default();
+    const SHOWN: usize = 3;
+    if session.draft.is_empty() {
+        muted(
+            p,
+            "No orders yet. Handing in nothing is also a move: the days pass.",
+        );
+    }
+    let skip = session.draft.len().saturating_sub(SHOWN);
+    if skip > 0 {
+        muted(p, format!("{skip} earlier, in Orders"));
+    }
+    for (index, command) in session.draft.iter().enumerate().skip(skip) {
+        let entry = format!(
+            "{}. {}",
+            index + 1,
+            text::command(command, data, &status.view.vessels)
+        );
+        match rejected.get(&index) {
+            Some(error) => p.spawn(text(format!("{entry}: {error}"), 12.0, WARN)),
+            None => p.spawn(text(entry, 12.0, FG)),
+        };
+    }
+    if let Some(error) = &session.error {
+        p.spawn(text(error.clone(), 12.0, WARN));
+    } else if let Some(notice) = &session.notice {
+        p.spawn(text(notice.clone(), 12.0, GOOD));
+    }
+    p.spawn(Node {
+        flex_direction: FlexDirection::Column,
+        row_gap: Val::Px(5.0),
+        margin: UiRect::top(Val::Auto),
+        flex_shrink: 0.0,
+        ..default()
+    })
+    .with_children(|c| {
+        if session.busy {
+            c.spawn(text("Talking to the server...", 12.0, MUTED));
+            return;
+        }
+        if status.submitted {
+            c.spawn(Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                ..default()
+            })
+            .with_children(|r| {
+                r.spawn(theme::icon(icons::CHECK, 14.0, GOOD));
+                r.spawn(text("Handed in", 12.5, GOOD));
+                r.spawn(spacer());
+                r.spawn(button("Withdraw", Action::Withdraw));
+            });
+        }
+        c.spawn(primary(
+            if status.submitted {
+                "HAND IN AGAIN"
+            } else {
+                "HAND IN"
+            },
+            Action::HandIn,
+        ));
+    });
+}
+
+// ------------------------------------------------------------ window
+
+fn window_panel(
+    p: &mut ChildSpawnerCommands,
+    menu: Menu,
+    status: &CrewStatus,
+    session: &Session,
+    data: &GameData,
+    selected: &Selected,
+    routing: &Routing,
+) {
+    p.spawn(Node {
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        column_gap: Val::Px(8.0),
+        margin: UiRect::bottom(Val::Px(2.0)),
+        flex_shrink: 0.0,
+        ..default()
+    })
+    .with_children(|r| {
+        r.spawn(theme::icon(menu.icon(), 17.0, theme::GOLD));
+        r.spawn(theme::bold(
+            menu.title().to_uppercase(),
+            16.0,
+            theme::GOLD_BRIGHT,
+        ));
+        r.spawn(spacer());
+        r.spawn(small_icon_button(
+            icons::CLOSE,
+            "Close",
+            Action::CloseWindow,
+        ));
+    });
+    match menu {
+        Menu::Hideout => hideout_menu(p, status),
+        Menu::Research => research_menu(p, status, data),
+        Menu::Recruit => recruit_menu(p, status, data),
+        Menu::Workshop => workshop_menu(p, status, data),
+        Menu::Citadel => citadel_menu(p, status, data),
+        Menu::Orders => orders_panel(p, session, data),
+        Menu::Log => log_panel(p, status, data),
+        Menu::Crews => crews_menu(p, status),
+        Menu::Selection => selection_panel(p, status, data, selected, routing),
+    }
+}
+
+fn team_row(p: &mut ChildSpawnerCommands, kind: StaffKind, label: &str, staff: Option<&Staff>) {
+    icon_line(
+        p,
+        icons::staff(kind),
+        team_line(label, staff),
+        if staff.is_some() { FG } else { MUTED },
+    );
+}
+
+/// The line for a course under way, with the day its recruits graduate.
+fn course_line(status: &CrewStatus, data: &GameData, kind: StaffKind) -> Option<String> {
+    let course = status.view.me.recruitment.courses.get(&kind)?;
+    if course.enrolled == 0 {
+        return None;
+    }
+    let day = status.day;
+    let graduation = course.started.unwrap_or(day) + data.recruitment.courses[&kind].days;
+    Some(format!(
+        "{} {}s in training, graduating {} ({} days)",
+        course.enrolled,
+        format!("{kind:?}").to_lowercase(),
+        date(graduation),
+        graduation.saturating_sub(day)
+    ))
+}
+
+fn hideout_menu(p: &mut ChildSpawnerCommands, status: &CrewStatus) {
+    let me = &status.view.me;
+    let hideout = &me.hideout;
+    icon_line(
+        p,
+        icons::PLUG,
+        format!("Taps {}/{}", hideout.taps, Site::MAX_TAPS),
+        FG,
+    );
+    icon_line(
+        p,
+        icons::CASTLE,
+        format!(
+            "Citadel {}/{} modules",
+            hideout.citadel.modules,
+            Citadel::MODULES
+        ),
+        FG,
+    );
+    icon_line(
+        p,
+        icons::USERS,
+        format!("Recruits left {}", me.recruitment.available),
+        FG,
+    );
+
+    heading(p, "Teams");
+    team_row(p, StaffKind::Analyst, "Analysts", me.research_team.as_ref());
+    team_row(p, StaffKind::Coder, "Coders", me.workshop.coders.as_ref());
+    for staff in &hideout.staff {
+        icon_line(
+            p,
+            icons::staff(staff.kind),
+            format!("Waiting: {}", text::team(staff)),
+            FG,
+        );
+    }
+
+    heading(p, "Now");
+    match me
+        .current_research
+        .and_then(|i| me.research.get(&i).map(|r| (i, r)))
+    {
+        Some((item, progress)) if !progress.researched => {
+            icon_line(
+                p,
+                icons::FLASK,
+                format!("Researching {} {}%", text::item(item), progress.percent),
+                FG,
+            );
+            self::progress(p, f32::from(progress.percent) / 100.0);
+        }
+        _ => icon_line(p, icons::FLASK, "Researching nothing", MUTED),
+    }
+    match me.workshop.jobs.iter().find(|j| j.active) {
+        Some(job) => {
+            icon_line(
+                p,
+                icons::HAMMER,
+                format!("Building {} (stage {}/4)", text::item(job.item), job.stage),
+                FG,
+            );
+            self::progress(p, job.stage as f32 / 4.0);
+        }
+        None => icon_line(p, icons::HAMMER, "Building nothing", MUTED),
+    }
+
+    heading(p, "Store");
+    store_lines(p, &hideout.store);
+    if hideout.citadel.store.iter().next().is_some() {
+        heading(p, "Citadel store");
+        store_lines(p, &hideout.citadel.store);
+    }
+}
+
+fn research_menu(p: &mut ChildSpawnerCommands, status: &CrewStatus, data: &GameData) {
+    let me = &status.view.me;
+    match &me.research_team {
+        Some(team) => icon_line(
+            p,
+            icons::MICROSCOPE,
+            format!("{}: level {}", team.leader, team.level()),
+            FG,
+        ),
+        None => {
+            muted(p, "No analysts yet: Recruit trains them.");
+            return;
+        }
+    }
+    match me
+        .current_research
+        .and_then(|i| me.research.get(&i).map(|r| (i, r)))
+    {
+        Some((item, progress)) if !progress.researched => {
+            line(
+                p,
+                format!("Researching {} {}%", text::item(item), progress.percent),
+            );
+            self::progress(p, f32::from(progress.percent) / 100.0);
+        }
+        _ => muted(p, "Researching nothing: pick an item below."),
+    }
+
+    heading(p, "Open to research");
+    p.spawn(row()).with_children(|r| {
+        let mut open: Vec<ItemType> = me
+            .research
+            .iter()
+            .filter(|(_, r)| !r.researched)
+            .map(|(&i, _)| i)
+            .collect();
+        open.sort_by_key(|i| data.research[i].tech_level);
+        if open.is_empty() {
+            r.spawn(text("Nothing left to research for now.", 12.5, MUTED));
+        }
+        for item in open {
+            let label = if me.current_research == Some(item) {
+                format!("{} (now)", text::item(item))
+            } else {
+                text::item(item)
+            };
+            r.spawn(button(label, Action::Order(Command::SetResearch { item })));
+        }
+    });
+
+    let mut done: Vec<String> = me
+        .research
+        .iter()
+        .filter(|(_, r)| r.researched)
+        .map(|(&i, _)| text::item(i))
+        .collect();
+    if !done.is_empty() {
+        done.sort();
+        heading(p, "Researched");
+        muted(p, done.join(", "));
+    }
+}
+
+fn recruit_menu(p: &mut ChildSpawnerCommands, status: &CrewStatus, data: &GameData) {
+    let me = &status.view.me;
+    icon_line(
+        p,
+        icons::USERS,
+        format!("Recruits left {}", me.recruitment.available),
+        FG,
+    );
+    muted(
+        p,
+        "Analysts research, coders build, operators pilot and defend. A course takes a few turns; operators wait in the hideout until a vessel takes them.",
+    );
+    heading(p, "Courses");
+    p.spawn(row()).with_children(|r| {
+        let available = me.recruitment.available;
+        let mut offered = false;
+        for (kind, label, wanted, team) in [
+            (
+                StaffKind::Analyst,
+                "analysts",
+                100,
+                me.research_team.as_ref(),
+            ),
+            (StaffKind::Coder, "coders", 100, me.workshop.coders.as_ref()),
+            (StaffKind::Operator, "operators", 20, None),
+        ] {
+            let def = &data.recruitment.courses[&kind];
+            let course = me.recruitment.courses.get(&kind);
+            if course.is_some_and(|c| c.enrolled > 0) {
+                offered = true;
+                continue;
+            }
+            let room = def.team_max.map_or(u32::MAX, |max| {
+                max.saturating_sub(team.map_or(0, |t| t.count))
+            });
+            let count = wanted.min(def.batch_max).min(room).min(available);
+            if count > 0 {
+                offered = true;
+                r.spawn(button(
+                    format!("+{count} {label}"),
+                    Action::Order(Command::Recruit { kind, count }),
+                ));
+            }
+        }
+        if !offered {
+            r.spawn(text("Every course is running or full.", 12.5, MUTED));
+        }
+    });
+    for kind in [StaffKind::Analyst, StaffKind::Coder, StaffKind::Operator] {
+        if let Some(line) = course_line(status, data, kind) {
+            icon_line(p, icons::staff(kind), line, GOOD);
+        }
+    }
+    heading(p, "Teams");
+    team_row(p, StaffKind::Analyst, "Analysts", me.research_team.as_ref());
+    team_row(p, StaffKind::Coder, "Coders", me.workshop.coders.as_ref());
+    let operators: Vec<&Staff> = me
+        .hideout
+        .staff
+        .iter()
+        .chain(&me.hideout.citadel.staff)
+        .filter(|s| s.kind == StaffKind::Operator)
+        .collect();
+    if operators.is_empty() {
+        icon_line(p, icons::HEADSET, "Operators: none waiting", MUTED);
+    }
+    for team in operators {
+        icon_line(
+            p,
+            icons::HEADSET,
+            format!("Operators waiting: {}", text::team(team)),
+            FG,
+        );
+    }
+}
+
+fn workshop_menu(p: &mut ChildSpawnerCommands, status: &CrewStatus, data: &GameData) {
+    let me = &status.view.me;
+    let hideout = &me.hideout;
+    match &me.workshop.coders {
+        Some(team) => icon_line(
+            p,
+            icons::TERMINAL,
+            format!("{}: level {}", team.leader, team.level()),
+            FG,
+        ),
+        None => {
+            muted(p, "No coders yet: Recruit trains them.");
+            return;
+        }
+    }
+    match me.workshop.jobs.iter().find(|j| j.active) {
+        Some(job) => {
+            line(
+                p,
+                format!("Building {} (stage {}/4)", text::item(job.item), job.stage),
+            );
+            self::progress(p, job.stage as f32 / 4.0);
+        }
+        None => muted(p, "Building nothing: pick an item below."),
+    }
+    if hideout.store.get(ItemType::Tap) > 0 && hideout.taps < Site::MAX_TAPS {
+        heading(p, "Taps");
+        p.spawn(row()).with_children(|r| {
+            r.spawn(button(
+                "Install a tap",
+                Action::Order(Command::InstallTaps {
+                    site: SiteRef::Hideout,
+                    count: 1,
+                }),
+            ));
+        });
+    }
+    heading(p, "Build in the hideout");
+    muted(
+        p,
+        "One item at a time; starting another pauses the current one. The resources come from the hideout store.",
+    );
+    p.spawn(row()).with_children(|r| {
+        let items = buildable(status, data, false);
+        if items.is_empty() {
+            r.spawn(text("Research something to build first.", 12.5, MUTED));
+        }
+        for item in items {
+            r.spawn(button(
+                text::item(item),
+                Action::Order(Command::Build {
+                    at: WorkshopRef::Hideout,
+                    item,
+                }),
+            ));
+        }
+    });
+    heading(p, "Store");
+    store_lines(p, &hideout.store);
+}
+
+fn citadel_menu(p: &mut ChildSpawnerCommands, status: &CrewStatus, data: &GameData) {
+    let me = &status.view.me;
+    let hideout = &me.hideout;
+    let citadel = &hideout.citadel;
+    if !citadel.complete() {
+        icon_line(
+            p,
+            icons::CASTLE,
+            format!("{}/{} modules", citadel.modules, Citadel::MODULES),
+            FG,
+        );
+        self::progress(p, citadel.modules as f32 / Citadel::MODULES as f32);
+        muted(
+            p,
+            "The citadel above the hideout is built from eight citadel modules, lifted by the dropper and installed from outside. It brings a workshop and a store of its own; worms are built there.",
+        );
+        return;
+    }
+    team_row(
+        p,
+        StaffKind::Coder,
+        "Coders",
+        citadel.workshop.coders.as_ref(),
+    );
+    for staff in &citadel.staff {
+        icon_line(
+            p,
+            icons::staff(staff.kind),
+            format!("Waiting: {}", text::team(staff)),
+            FG,
+        );
+    }
+    if let Some(job) = citadel.workshop.jobs.iter().find(|j| j.active) {
+        line(
+            p,
+            format!("Building {} (stage {}/4)", text::item(job.item), job.stage),
+        );
+        self::progress(p, job.stage as f32 / 4.0);
+    }
+    p.spawn(row()).with_children(|r| {
+        let at = WorkshopRef::Citadel(SiteRef::Hideout);
+        if citadel.workshop.coders.is_none()
+            && let Some(team) = citadel
+                .staff
+                .iter()
+                .position(|s| s.kind == StaffKind::Coder)
+        {
+            r.spawn(button(
+                "Put the coders to work",
+                Action::Order(Command::AssignCoders { at, team }),
+            ));
+        }
+        if me.workshop.coders.is_some()
+            && !me.workshop.jobs.iter().any(|j| j.active)
+            && hideout.staff.len() < nullnet_core::STAFF_SLOTS
+        {
+            r.spawn(button(
+                "Release the hideout coders",
+                Action::Order(Command::ReleaseCoders {
+                    at: WorkshopRef::Hideout,
+                }),
+            ));
+        }
+    });
+    if citadel.workshop.coders.is_some() {
+        heading(p, "Build in the citadel");
+        p.spawn(row()).with_children(|r| {
+            let at = WorkshopRef::Citadel(SiteRef::Hideout);
+            for item in buildable(status, data, true) {
+                r.spawn(button(
+                    format!("Build {}", text::item(item)),
+                    Action::Order(Command::Build { at, item }),
+                ));
+            }
+        });
+    }
+    heading(p, "Citadel store");
+    store_lines(p, &citadel.store);
+}
+
+fn crews_menu(p: &mut ChildSpawnerCommands, status: &CrewStatus) {
+    muted(
+        p,
+        "10 points per complete citadel, 3 per other host, 15 per Legacy host freed, 5 per host taken from a rival, 2 per item researched.",
+    );
+    for crew in &status.crews {
+        let colour = Color::Srgba(Srgba::hex(crew_color(status.player, crew.player)).unwrap());
+        let score = status.view.scores.iter().find(|s| s.player == crew.player);
+        let summary = status.view.crews.iter().find(|c| c.player == crew.player);
+        p.spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(8.0),
+            margin: UiRect::top(Val::Px(8.0)),
+            flex_shrink: 0.0,
+            ..default()
+        })
+        .with_children(|r| {
+            r.spawn(theme::icon(icons::HEXAGON, 16.0, colour));
+            r.spawn(theme::bold(
+                format!("{}{}", crew.name, if crew.bot { " (bot)" } else { "" }),
+                14.0,
+                colour,
+            ));
+            r.spawn(spacer());
+            r.spawn(theme::bold(
+                format!("{} pts", score.map_or(0, |s| s.total)),
+                14.0,
+                theme::GOLD_BRIGHT,
+            ));
+        });
+        if let Some(score) = score {
+            muted(
+                p,
+                format!(
+                    "{} citadels, {} other hosts, {} freed, {} taken, {} researched",
+                    score.citadels, score.hosts, score.freed, score.taken, score.research
+                ),
+            );
+        }
+        muted(
+            p,
+            format!(
+                "Heat {}{}",
+                summary.map_or(0, |c| c.heat),
+                if crew.submitted {
+                    ", handed in"
+                } else {
+                    ", not handed in yet"
+                }
+            ),
+        );
+    }
+    if status.turn < PROTECTION_TURNS {
+        heading(p, "Protection");
+        muted(
+            p,
+            format!("Crews cannot raid each other before turn {PROTECTION_TURNS}."),
+        );
+    }
+}
 
 fn team_line(label: &str, staff: Option<&Staff>) -> String {
     match staff {
@@ -1215,6 +2643,47 @@ fn team_line(label: &str, staff: Option<&Staff>) -> String {
         None => format!("{label}: none"),
     }
 }
+
+/// What a store holds, two to a row, each with its icon.
+fn store_lines(p: &mut ChildSpawnerCommands, store: &nullnet_core::Store) {
+    let items: Vec<(ItemType, u32)> = store.iter().collect();
+    if items.is_empty() {
+        muted(p, "nothing yet");
+        return;
+    }
+    p.spawn(Node {
+        flex_direction: FlexDirection::Row,
+        flex_wrap: FlexWrap::Wrap,
+        row_gap: Val::Px(3.0),
+        flex_shrink: 0.0,
+        ..default()
+    })
+    .with_children(|grid| {
+        for (item, count) in items {
+            grid.spawn(Node {
+                width: Val::Percent(50.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                ..default()
+            })
+            .with_children(|cell| {
+                cell.spawn(theme::icon(icons::item(item), 13.0, theme::GOLD));
+                cell.spawn(text(text::item(item), 12.5, FG));
+                cell.spawn(spacer());
+                cell.spawn((
+                    theme::bold(count.to_string(), 12.5, FG),
+                    Node {
+                        margin: UiRect::right(Val::Px(10.0)),
+                        ..default()
+                    },
+                ));
+            });
+        }
+    });
+}
+
+// ------------------------------------------------------------ selection
 
 /// Items the crew can build somewhere, with what it has researched.
 fn buildable(status: &CrewStatus, data: &GameData, orbit: bool) -> Vec<ItemType> {
@@ -1234,240 +2703,6 @@ fn buildable(status: &CrewStatus, data: &GameData, orbit: bool) -> Vec<ItemType>
         .map(|(&item, _)| item)
         .collect()
 }
-
-fn store_lines(p: &mut ChildSpawnerCommands, store: &nullnet_core::Store) {
-    let items: Vec<(ItemType, u32)> = store.iter().collect();
-    if items.is_empty() {
-        muted(p, "nothing yet");
-        return;
-    }
-    for (item, count) in items {
-        line(p, format!("{} {count}", text::item(item)));
-    }
-}
-
-fn hideout_panel(p: &mut ChildSpawnerCommands, status: &CrewStatus, data: &GameData) {
-    let me = &status.view.me;
-    let hideout = &me.hideout;
-    heading(p, "Hideout");
-    line(
-        p,
-        format!(
-            "Taps {}/8   Citadel {}/8   Recruits {}",
-            hideout.taps, hideout.citadel.modules, me.recruitment.available
-        ),
-    );
-    line(p, team_line("Analysts", me.research_team.as_ref()));
-    line(p, team_line("Coders", me.workshop.coders.as_ref()));
-    if !hideout.staff.is_empty() {
-        line(
-            p,
-            format!(
-                "Waiting: {}",
-                hideout
-                    .staff
-                    .iter()
-                    .map(text::team)
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            ),
-        );
-    }
-    for (kind, course) in &me.recruitment.courses {
-        if course.enrolled > 0 {
-            muted(
-                p,
-                format!(
-                    "Training {} {}s{}",
-                    course.enrolled,
-                    format!("{kind:?}").to_lowercase(),
-                    if course.running() {
-                        ""
-                    } else {
-                        " (starts tomorrow)"
-                    }
-                ),
-            );
-        }
-    }
-    match me
-        .current_research
-        .and_then(|i| me.research.get(&i).map(|r| (i, r)))
-    {
-        Some((item, progress)) if !progress.researched => {
-            line(
-                p,
-                format!("Researching {} {}%", text::item(item), progress.percent),
-            );
-        }
-        _ => muted(p, "Researching nothing"),
-    }
-    match me.workshop.jobs.iter().find(|j| j.active) {
-        Some(job) => line(
-            p,
-            format!("Building {} (stage {}/4)", text::item(job.item), job.stage),
-        ),
-        None => muted(p, "Building nothing"),
-    }
-
-    heading(p, "Store");
-    store_lines(p, &hideout.store);
-    if hideout.citadel.store.iter().next().is_some() {
-        heading(p, "Citadel store");
-        store_lines(p, &hideout.citadel.store);
-    }
-
-    heading(p, "Recruit");
-    p.spawn(row()).with_children(|r| {
-        let available = me.recruitment.available;
-        let mut offered = false;
-        for (kind, label, wanted, team) in [
-            (
-                StaffKind::Analyst,
-                "analysts",
-                100,
-                me.research_team.as_ref(),
-            ),
-            (StaffKind::Coder, "coders", 100, me.workshop.coders.as_ref()),
-            (StaffKind::Operator, "operators", 20, None),
-        ] {
-            let def = &data.recruitment.courses[&kind];
-            let course = me.recruitment.courses.get(&kind);
-            if let Some(course) = course.filter(|c| c.enrolled > 0) {
-                offered = true;
-                r.spawn(text(
-                    format!("{} {label} in training", course.enrolled),
-                    11.0,
-                    MUTED,
-                ));
-                continue;
-            }
-            let room = def.team_max.map_or(u32::MAX, |max| {
-                max.saturating_sub(team.map_or(0, |t| t.count))
-            });
-            let count = wanted.min(def.batch_max).min(room).min(available);
-            if count > 0 {
-                offered = true;
-                r.spawn(button(
-                    format!("+{count} {label}"),
-                    Action::Order(Command::Recruit { kind, count }),
-                ));
-            }
-        }
-        if !offered {
-            r.spawn(text("Every course is running or full.", 11.0, MUTED));
-        }
-    });
-
-    heading(p, "Research");
-    p.spawn(row()).with_children(|r| {
-        let mut open: Vec<ItemType> = me
-            .research
-            .iter()
-            .filter(|(_, r)| !r.researched)
-            .map(|(&i, _)| i)
-            .collect();
-        open.sort_by_key(|i| data.research[i].tech_level);
-        if open.is_empty() {
-            r.spawn(text("nothing to research", 12.0, MUTED));
-        }
-        for item in open {
-            let label = if me.current_research == Some(item) {
-                format!("{} (now)", text::item(item))
-            } else {
-                text::item(item)
-            };
-            r.spawn(button(label, Action::Order(Command::SetResearch { item })));
-        }
-    });
-
-    if me.workshop.coders.is_some() {
-        heading(p, "Build in the hideout");
-        p.spawn(row()).with_children(|r| {
-            for item in buildable(status, data, false) {
-                r.spawn(button(
-                    text::item(item),
-                    Action::Order(Command::Build {
-                        at: WorkshopRef::Hideout,
-                        item,
-                    }),
-                ));
-            }
-        });
-    }
-    if hideout.store.get(ItemType::Tap) > 0 && hideout.taps < Site::MAX_TAPS {
-        p.spawn(row()).with_children(|r| {
-            r.spawn(button(
-                "Install a tap",
-                Action::Order(Command::InstallTaps {
-                    site: SiteRef::Hideout,
-                    count: 1,
-                }),
-            ));
-        });
-    }
-
-    if hideout.citadel.complete() {
-        heading(p, "Citadel");
-        let citadel = &hideout.citadel;
-        line(p, team_line("Coders", citadel.workshop.coders.as_ref()));
-        if !citadel.staff.is_empty() {
-            line(
-                p,
-                format!(
-                    "Waiting: {}",
-                    citadel
-                        .staff
-                        .iter()
-                        .map(text::team)
-                        .collect::<Vec<_>>()
-                        .join("; ")
-                ),
-            );
-        }
-        if let Some(job) = citadel.workshop.jobs.iter().find(|j| j.active) {
-            line(
-                p,
-                format!("Building {} (stage {}/4)", text::item(job.item), job.stage),
-            );
-        }
-        p.spawn(row()).with_children(|r| {
-            let at = WorkshopRef::Citadel(SiteRef::Hideout);
-            if citadel.workshop.coders.is_none()
-                && let Some(team) = citadel
-                    .staff
-                    .iter()
-                    .position(|s| s.kind == StaffKind::Coder)
-            {
-                r.spawn(button(
-                    "Put the coders to work",
-                    Action::Order(Command::AssignCoders { at, team }),
-                ));
-            }
-            if me.workshop.coders.is_some()
-                && !me.workshop.jobs.iter().any(|j| j.active)
-                && hideout.staff.len() < nullnet_core::STAFF_SLOTS
-            {
-                r.spawn(button(
-                    "Release the hideout coders",
-                    Action::Order(Command::ReleaseCoders {
-                        at: WorkshopRef::Hideout,
-                    }),
-                ));
-            }
-            if citadel.workshop.coders.is_some() {
-                for item in buildable(status, data, true) {
-                    r.spawn(button(
-                        format!("Build {}", text::item(item)),
-                        Action::Order(Command::Build { at, item }),
-                    ));
-                }
-            }
-        });
-    }
-}
-
-// ------------------------------------------------------------ selection
 
 /// The crew's own site on a host, if it holds one there.
 fn site_of<'a>(status: &'a CrewStatus, data: &GameData, host: HostId) -> Option<&'a Site> {

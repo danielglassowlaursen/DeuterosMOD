@@ -1,4 +1,5 @@
 mod guide;
+mod icons;
 mod map;
 mod materials;
 mod music;
@@ -6,6 +7,7 @@ mod net;
 mod notify;
 mod sound;
 mod text;
+mod theme;
 mod ui;
 mod voice;
 
@@ -34,6 +36,7 @@ fn main() {
         }))
         .add_plugins((
             materials::MaterialsPlugin,
+            theme::ThemePlugin,
             sound::SoundPlugin,
             net::NetPlugin,
             map::MapPlugin,

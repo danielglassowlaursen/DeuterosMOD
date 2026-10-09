@@ -26,8 +26,10 @@ use crate::materials::{
 use crate::net::Session;
 use crate::ui::OverUi;
 
-/// The area the camera always keeps on screen, in world units.
+/// The area the backdrop covers around the network, in world units.
 const VIEW_SIZE: Vec2 = Vec2::new(1600.0, 900.0);
+/// How far a subsystem's name reaches right of its node, in world units.
+const SUBSYSTEM_LABEL: f32 = 80.0;
 /// Where the backbone beam stands.
 const BACKBONE_X: f32 = -445.0;
 /// The trunk every host sits on.
@@ -56,10 +58,13 @@ impl Plugin for MapPlugin {
             .init_resource::<Selected>()
             .init_resource::<Routing>()
             .init_resource::<Layout>()
+            .init_resource::<MapInsets>()
+            .init_resource::<Bounds>()
             .add_systems(Startup, spawn_scene)
             .add_systems(
                 Update,
                 (
+                    fit_camera,
                     update_hover,
                     click,
                     animate_highlight,
@@ -110,6 +115,28 @@ pub struct Routing(pub Option<VesselId>);
 #[derive(Resource, Default)]
 pub struct Layout {
     pub hosts: HashMap<HostId, (Vec2, f32)>,
+}
+
+/// How much of the screen the panels cover at each edge, in logical
+/// pixels: x left, y top, z right, w bottom. The UI keeps it up to date,
+/// and the camera fits the network into what is left.
+#[derive(Resource, Clone, Copy, PartialEq)]
+pub struct MapInsets(pub Vec4);
+
+impl Default for MapInsets {
+    fn default() -> Self {
+        MapInsets(Vec4::new(68.0, 56.0, 284.0, 8.0))
+    }
+}
+
+/// The world rectangle the network's nodes and names take up.
+#[derive(Resource)]
+struct Bounds(Rect);
+
+impl Default for Bounds {
+    fn default() -> Self {
+        Bounds(Rect::from_center_size(Vec2::ZERO, VIEW_SIZE))
+    }
 }
 
 /// The colour a host or vessel takes from whoever holds it.
@@ -191,6 +218,7 @@ fn spawn_link(
     ));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -198,6 +226,7 @@ fn spawn_scene(
     mut links: ResMut<Assets<LinkMaterial>>,
     mut backgrounds: ResMut<Assets<BackgroundMaterial>>,
     mut layout: ResMut<Layout>,
+    mut bounds: ResMut<Bounds>,
     rules: Res<Rules>,
 ) {
     let data = &rules.0;
@@ -207,10 +236,7 @@ fn spawn_scene(
     commands.spawn((
         Camera2d,
         Projection::Orthographic(OrthographicProjection {
-            scaling_mode: ScalingMode::AutoMin {
-                min_width: VIEW_SIZE.x,
-                min_height: VIEW_SIZE.y,
-            },
+            scaling_mode: ScalingMode::WindowSize,
             ..OrthographicProjection::default_2d()
         }),
     ));
@@ -380,6 +406,72 @@ fn spawn_scene(
                 Transform::from_xyz(x + SUBSYSTEM_RADIUS + 7.0, y, 1.0),
             ));
         }
+    }
+
+    // What the camera has to show: the backbone and its name, every node,
+    // the hosts' names above them and the subsystems' to their right.
+    let mut rect = Rect::from_center_size(Vec2::new(BACKBONE_X, TRUNK_Y), Vec2::new(90.0, 140.0));
+    for (id, &(centre, radius)) in &layout.hosts {
+        let subsystem = data.host(*id).parent.is_some();
+        let (right, above) = if subsystem {
+            (radius + 7.0 + SUBSYSTEM_LABEL, radius)
+        } else {
+            (radius, radius + 56.0)
+        };
+        rect = rect.union(Rect::new(
+            centre.x - radius,
+            centre.y - radius,
+            centre.x + right,
+            centre.y + above,
+        ));
+    }
+    bounds.0 = rect;
+}
+
+/// Fits the network into the part of the screen the panels leave free,
+/// and glides there when that part changes, as when a window opens.
+fn fit_camera(
+    time: Res<Time>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    insets: Res<MapInsets>,
+    bounds: Res<Bounds>,
+    camera: Single<(&mut Transform, &mut Projection), With<Camera2d>>,
+    mut placed: Local<bool>,
+) {
+    let size = window.size();
+    let inset = insets.0;
+    let free =
+        Vec2::new(size.x - inset.x - inset.z, size.y - inset.y - inset.w).max(Vec2::splat(120.0));
+    let content = bounds.0.size();
+    // World units per logical pixel, with a little room around the edges.
+    let scale = (content.x / free.x).max(content.y / free.y) * 1.06;
+    let centre = bounds.0.center();
+    let target = Vec2::new(
+        centre.x - (inset.x - inset.z) * 0.5 * scale,
+        centre.y + (inset.y - inset.w) * 0.5 * scale,
+    );
+
+    let (mut transform, mut projection) = camera.into_inner();
+    let Projection::Orthographic(current) = &*projection else {
+        return;
+    };
+    let follow = if *placed {
+        1.0 - (-time.delta_secs() * 7.0).exp()
+    } else {
+        1.0
+    };
+    *placed = true;
+    let next_scale = current.scale + (scale - current.scale) * follow;
+    if (next_scale - current.scale).abs() > 1e-5
+        && let Projection::Orthographic(ortho) = projection.as_mut()
+    {
+        ortho.scale = next_scale;
+    }
+    let now = transform.translation.truncate();
+    let next = now.lerp(target, follow);
+    if now.distance_squared(next) > 1e-4 {
+        transform.translation.x = next.x;
+        transform.translation.y = next.y;
     }
 }
 
@@ -600,10 +692,10 @@ fn click(
         }
         (Some(_), _) => routing.0 = None,
         (None, Some(Target::Host(host))) => {
-            selected.set_if_neq(Selected {
+            *selected = Selected {
                 host: Some(host),
                 vessel: None,
-            });
+            };
         }
         (None, Some(Target::Vessel(id))) => {
             let host = session
@@ -611,10 +703,10 @@ fn click(
                 .as_ref()
                 .and_then(|s| s.view.vessels.get(&id))
                 .map(|v| v.host);
-            selected.set_if_neq(Selected {
+            *selected = Selected {
                 host,
                 vessel: Some(id),
-            });
+            };
         }
         (None, Some(Target::Backbone)) | (None, None) => {
             selected.set_if_neq(Selected::default());

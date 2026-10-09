@@ -103,7 +103,7 @@ pub const STORY: &[(&str, &[&str])] = &[
         &[
             "Your hideout is on the Exchange, the one Metro host every crew shares. It cannot be taken, and it cannot win on its own.",
             "Every turn you queue orders with the panels and hand them in. When every crew has, or the deadline passes, the turn's days go by at once and the log tells you what happened.",
-            "The guide over the map walks you through the first weeks step by step and names the buttons to press. Playing again? 'Skip' on any earlier page jumps past the story, and 'Hide guide' in the top bar keeps the guide away for good. The story and the rules stay under Help.",
+            "The guide over the map walks you through the first weeks step by step and names the buttons to press. Playing again? 'Skip' on any earlier page jumps past the story, and 'Hide guide' on the guide keeps it away for good. The story and the rules stay under Help.",
         ],
     ),
 ];
@@ -131,18 +131,27 @@ pub const STEP_STORIES: [&str; 16] = [
 /// The rules in brief, for the help overlay: a heading and its lines.
 pub const HELP: &[(&str, &[&str])] = &[
     (
+        "The screen",
+        &[
+            "The top bar shows what the hideout's store holds, the recruits left, your points and heat, the time left on the turn and the turn itself. Rest the cursor on an icon to see what it is.",
+            "The rail on the left opens the menus: Hideout, Research, Recruit, Workshop, Citadel, Orders, Log and Crews. Below them: this help, the story, the guide, the sound and the music.",
+            "The outliner on the right lists your hideout, your hosts and vessels, the swarms coming and the crews. Click a row, or a node on the map, to open it in the window beside the rail.",
+            "The turn box under the outliner holds this turn's orders and the HAND IN button.",
+        ],
+    ),
+    (
         "Turns",
         &[
-            "Every button queues an order in the ORDERS panel. Press 'Hand in' to send the orders; 'Withdraw' takes them back while the turn is still open.",
+            "Every button queues an order in the turn box at the bottom right. Press HAND IN to send the orders; 'Withdraw' takes them back while the turn is still open.",
             "The turn runs when every crew has handed in or the deadline passes. The days of the turn then play out, orders first, and the LOG shows what happened.",
-            "Orders the server would refuse are marked in the ORDERS panel before the turn runs, so nothing is lost by trying.",
+            "Orders the server would refuse are marked in the turn box before the turn runs, so nothing is lost by trying.",
         ],
     ),
     (
         "The map",
         &[
             "Every dot is a host. Your hosts carry your colour, rivals theirs, free hosts a dim ring and the Legacy Net's hosts a red ring. The map pulses where a swarm is coming.",
-            "Click a host to see it in the right panel, or a vessel marker to select the vessel. Clicking does nothing to a host by itself: everything done to a host is done by a vessel sent there.",
+            "Click a host, or a vessel marker, to open it in the window beside the rail. Clicking does nothing to a host by itself: everything done to a host is done by a vessel sent there.",
             "Hosts in one network are a few days apart; other networks are far.",
         ],
     ),
@@ -262,7 +271,7 @@ impl<'a> Crew<'a> {
         if self.status.submitted {
             "Orders handed in; the turn runs when every crew has, or at the deadline.".into()
         } else {
-            "Nothing else to do for this step: press 'Hand in' (no orders is fine) so the days pass.".into()
+            "Nothing else to do for this step: press HAND IN at the bottom right (no orders is fine) so the days pass.".into()
         }
     }
 
@@ -313,7 +322,7 @@ impl<'a> Crew<'a> {
 
     /// A line to press `label` at `place`, unless an order `matches` is
     /// already queued or handed in, in which case the thing to press is
-    /// 'Hand in', or nothing at all.
+    /// HAND IN, or nothing at all.
     fn press(
         &self,
         matches: impl Fn(&Command) -> bool,
@@ -324,7 +333,7 @@ impl<'a> Crew<'a> {
         if self.status.submitted && self.status.orders.iter().any(&matches) {
             format!("'{label}' is handed in and takes effect when the turn runs.")
         } else if self.draft.iter().any(matches) {
-            format!("'{label}' is in your orders. ORDERS: press 'Hand in' to send them.")
+            format!("'{label}' is in your orders. Press HAND IN at the bottom right to send them.")
         } else {
             format!("{place}: press '{label}'{rest}")
         }
@@ -350,7 +359,7 @@ impl<'a> Crew<'a> {
             };
         }
         if !self.researched(item) {
-            return format!("RESEARCH: '{name}' has to be researched before it can be built.");
+            return format!("Research menu: '{name}' has to be researched before it can be built.");
         }
         if workshop.coders.is_none() && !workshop.automated {
             return if above {
@@ -374,12 +383,12 @@ impl<'a> Crew<'a> {
         if above {
             self.press(
                 queued,
-                "CITADEL (hideout panel)",
+                "Citadel menu (rail)",
                 &format!("Build {name}"),
                 &rest,
             )
         } else {
-            self.press(queued, "BUILD IN THE HIDEOUT", &name, &rest)
+            self.press(queued, "Workshop menu (rail)", &name, &rest)
         }
     }
 
@@ -414,7 +423,7 @@ impl<'a> Crew<'a> {
                         } else {
                             hints.push(self.press(
                                 move |c| matches!(c, Command::SetResearch { item: i } if *i == item),
-                                "RESEARCH",
+                                "Research menu (rail)",
                                 &name,
                                 &format!(": {what}."),
                             ));
@@ -457,7 +466,7 @@ impl<'a> Crew<'a> {
                     waiting = false;
                     hints.push(self.press(
                         move |c| matches!(c, Command::Recruit { kind: k, .. } if *k == kind),
-                        "Hideout panel, RECRUIT",
+                        "Recruit menu (rail)",
                         &format!("+100 {label}"),
                         &format!(". They {job}."),
                     ));
@@ -470,7 +479,7 @@ impl<'a> Crew<'a> {
                 && self.draft.is_empty()
             {
                 hints.push(format!(
-                    "Every button queues an order in the ORDERS panel; press 'Hand in' to send them. The turn runs when every crew has handed in or the deadline passes, and {} days go by.",
+                    "Every button queues an order in the turn box at the bottom right; press HAND IN to send them. The turn runs when every crew has handed in or the deadline passes, and {} days go by.",
                     self.status.game.turn_days
                 ));
             }
@@ -500,7 +509,7 @@ impl<'a> Crew<'a> {
                             }
                         )
                     },
-                    "RECRUIT",
+                    "Recruit menu (rail)",
                     "+20 operators",
                     ". Operators pilot vessels: nothing moves without a team waiting in the hideout.",
                 ));
@@ -535,7 +544,7 @@ impl<'a> Crew<'a> {
                             }
                         )
                     },
-                    "Hideout panel",
+                    "Workshop menu (rail)",
                     "Install a tap",
                     ".",
                 ));
@@ -588,7 +597,7 @@ impl<'a> Crew<'a> {
                         )
                     },
                     &format!(
-                        "Click {} on the map (the host your hideout is on). ASSEMBLE",
+                        "Select {}, the host your hideout is on, on the map or in the outliner. ASSEMBLE",
                         self.home()
                     ),
                     "Assemble a dropper inside",
@@ -637,10 +646,9 @@ impl<'a> Crew<'a> {
             match dropper {
                 None => hints.push("Assemble the dropper first.".into()),
                 Some((id, d)) => {
-                    hints.push(format!(
-                        "Click {} on the map, then 'Select' next to the dropper under VESSELS HERE.",
-                        self.home()
-                    ));
+                    hints.push(
+                        "Select the dropper under VESSELS in the outliner on the right.".into(),
+                    );
                     if d.pilot.is_none() {
                         match self
                             .hideout()
@@ -657,7 +665,7 @@ impl<'a> Crew<'a> {
                                 ".",
                             )),
                             None => hints.push(
-                                "No operator team is waiting in the hideout: RECRUIT '+20 operators'.".into(),
+                                "No operator team is waiting in the hideout: Recruit menu, '+20 operators'.".into(),
                             ),
                         }
                     }
@@ -854,7 +862,7 @@ impl<'a> Crew<'a> {
                             }
                         )
                     },
-                    "CITADEL (hideout panel)",
+                    "Citadel menu (rail)",
                     "Put the coders to work",
                     &format!(" so {} runs the citadel workshop.", team.leader),
                 ));
@@ -922,9 +930,9 @@ impl<'a> Crew<'a> {
                             }
                         )
                     },
-                    "Coders have to move up to the citadel's workshop. CITADEL (hideout panel)",
+                    "Coders have to move up to the citadel's workshop. Citadel menu (rail)",
                     "Release the hideout coders",
-                    "; they wait in the hideout for the dropper. Then RECRUIT '+100 coders' as the new hideout team.",
+                    "; they wait in the hideout for the dropper. Then Recruit menu: '+100 coders' as the new hideout team.",
                 ));
                 if self.me().workshop.jobs.iter().any(|j| j.active) {
                     hints.push("Coders can only be released while nothing is being built.".into());
@@ -1111,7 +1119,10 @@ impl<'a> Crew<'a> {
                             }
                         )
                     },
-                    &format!("Click {} on the map. ASSEMBLE", self.home()),
+                    &format!(
+                        "Select {} on the map or in the outliner. ASSEMBLE",
+                        self.home()
+                    ),
                     "Assemble a worm at the citadel",
                     ".",
                 ));
@@ -1145,10 +1156,10 @@ impl<'a> Crew<'a> {
                 None => hints.push("Build a worm first.".into()),
                 Some((id, w)) => {
                     let citadel = &self.hideout().citadel;
-                    hints.push(format!(
-                        "Select the worm: click it on the map, or click {} and press 'Select'.",
-                        self.data.host(w.host).name
-                    ));
+                    hints.push(
+                        "Select the worm under VESSELS in the outliner, or click it on the map."
+                            .into(),
+                    );
                     let loaded = w.modules.iter().any(
                         |m| matches!(m, Module::ToolModule(Some(c)) if c.item == ItemType::CitadelModule),
                     );
@@ -1191,7 +1202,7 @@ impl<'a> Crew<'a> {
                                 ));
                             } else {
                                 hints.push(
-                                    "Get a citadel module into the citadel store: CITADEL 'Build citadel module', or carry one up in the dropper.".into(),
+                                    "Get a citadel module into the citadel store: Citadel menu, 'Build citadel module', or carry one up in the dropper.".into(),
                                 );
                             }
                         } else if citadel.store.get(ItemType::ToolModule) > 0 {
@@ -1205,7 +1216,7 @@ impl<'a> Crew<'a> {
                             ));
                         } else {
                             hints.push(
-                                "The citadel store needs a tool module: CITADEL 'Build tool module', or carry one up in the dropper.".into(),
+                                "The citadel store needs a tool module: Citadel menu, 'Build tool module', or carry one up in the dropper.".into(),
                             );
                         }
                     } else if w.berth() == Some(Berth::Lurking) && w.host != home {
@@ -1277,7 +1288,7 @@ impl<'a> Crew<'a> {
                     if !self.researched(item) {
                         hints.push(self.press(
                             move |c| matches!(c, Command::SetResearch { item: i } if *i == item),
-                            "RESEARCH",
+                            "Research menu (rail)",
                             &text::item(item),
                             ".",
                         ));
