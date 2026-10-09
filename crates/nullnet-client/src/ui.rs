@@ -52,6 +52,7 @@ impl Plugin for UiPlugin {
                     countdown,
                     fade_toast,
                     animate_replay,
+                    open_story.run_if(resource_changed::<Session>),
                     refresh.run_if(
                         resource_changed::<Session>
                             .or_else(resource_changed::<Selected>)
@@ -105,12 +106,13 @@ struct ReplayCount(bool);
 #[derive(Component)]
 struct ReplayOutcome;
 
-/// The guide over the map: whether the player hid it, and whether the help
-/// overlay is open.
+/// The guide over the map: whether the player hid it, whether the help
+/// overlay is open, and the page of the story being read, if any.
 #[derive(Resource)]
 pub struct GuideState {
     pub hidden: bool,
     pub help: bool,
+    pub story: Option<usize>,
 }
 
 impl Default for GuideState {
@@ -118,7 +120,20 @@ impl Default for GuideState {
         GuideState {
             hidden: notify::guide_hidden(),
             help: false,
+            story: None,
         }
+    }
+}
+
+/// Opens the story the first time a crew's status arrives, unless this
+/// browser has read it before.
+fn open_story(session: Res<Session>, mut guide: ResMut<GuideState>, mut opened: Local<bool>) {
+    if *opened || session.status.is_none() {
+        return;
+    }
+    *opened = true;
+    if !notify::story_seen() {
+        guide.story = Some(0);
     }
 }
 
@@ -142,6 +157,7 @@ enum Slot {
     Replay,
     Guide,
     Help,
+    Story,
 }
 
 #[derive(Component)]
@@ -165,6 +181,9 @@ enum Action {
     CloseReplay,
     ToggleGuide,
     ToggleHelp,
+    /// Opens the story at this page.
+    StoryPage(usize),
+    CloseStory,
 }
 
 const PANEL_BG: Color = Color::srgba(0.04, 0.07, 0.10, 0.94);
@@ -390,6 +409,22 @@ fn spawn_layout(mut commands: Commands) {
         Visibility::Hidden,
         GlobalZIndex(3),
     ));
+    commands.spawn((
+        panel(
+            Node {
+                top: Val::Px(TOP_BAR + 10.0),
+                bottom: Val::Px(50.0),
+                left: Val::Px(OVERLAY_INSET),
+                right: Val::Px(OVERLAY_INSET),
+                row_gap: Val::Px(10.0),
+                padding: UiRect::all(Val::Px(18.0)),
+                ..default()
+            },
+            Slot::Story,
+        ),
+        Visibility::Hidden,
+        GlobalZIndex(4),
+    ));
 }
 
 fn fade_toast(time: Res<Time>, mut toast: ResMut<Toast>) {
@@ -577,6 +612,14 @@ fn press_buttons(
                 notify::remember_guide_hidden(guide.hidden);
             }
             Action::ToggleHelp => guide.help = !guide.help,
+            Action::StoryPage(page) => {
+                guide.story = Some(page);
+                guide.help = false;
+            }
+            Action::CloseStory => {
+                guide.story = None;
+                notify::remember_story_seen();
+            }
         }
     }
 }
@@ -681,14 +724,19 @@ fn refresh(
     let toast_shown = !toast.lines.is_empty() && toast.seconds_left > 0.0;
     // The guide carries the toast's lines while it is up, so the top of the
     // map does not swap between the two; it gives way to a replay.
-    let guide_shown =
-        session.status.is_some() && !guide.hidden && !guide.help && replay.current.is_none();
+    let reading = guide.story.is_some();
+    let guide_shown = session.status.is_some()
+        && !guide.hidden
+        && !guide.help
+        && !reading
+        && replay.current.is_none();
     for (entity, slot, mut visibility) in &mut slots {
         let shown = match slot {
-            Slot::Toast => toast_shown && !guide_shown,
+            Slot::Toast => toast_shown && !guide_shown && !reading,
             Slot::Replay => replay.current.is_some(),
             Slot::Guide => guide_shown,
-            Slot::Help => guide.help,
+            Slot::Help => guide.help && !reading,
+            Slot::Story => reading,
             _ => true,
         };
         let wanted = if shown {
@@ -734,6 +782,11 @@ fn refresh(
                 data,
             ),
             Slot::Help => help_panel(p, &session, data),
+            Slot::Story => {
+                if let Some(page) = guide.story {
+                    story_panel(p, page, &session);
+                }
+            }
         });
     }
 }
@@ -839,6 +892,9 @@ fn guide_panel(
         ));
         r.spawn(text(step.title, 13.0, ACCENT));
     });
+    if let Some(story) = guide::STEP_STORIES.get(current) {
+        muted(p, *story);
+    }
     for hint in step.hints.iter().take(5) {
         line(p, hint.clone());
     }
@@ -858,11 +914,57 @@ fn guide_panel(
     });
 }
 
+/// One page of the story, with the way to the next.
+fn story_panel(p: &mut ChildSpawnerCommands, page: usize, session: &Session) {
+    let pages = guide::STORY;
+    let page = page.min(pages.len().saturating_sub(1));
+    let (title, paragraphs) = pages[page];
+    muted(
+        p,
+        format!(
+            "THE STORY OF NULLNET   PAGE {} OF {}",
+            page + 1,
+            pages.len()
+        ),
+    );
+    p.spawn(text(title, 16.0, ACCENT));
+    for paragraph in paragraphs {
+        p.spawn(text(*paragraph, 13.0, FG));
+    }
+    if let Some(status) = &session.status {
+        if page == 0 {
+            p.spawn(text(format!("Today is {}.", date(status.day)), 13.0, GOOD));
+        }
+        if page + 1 == pages.len() {
+            p.spawn(text(
+                format!(
+                    "In this game a turn is {} days, and you are {}.",
+                    status.game.turn_days, status.name
+                ),
+                13.0,
+                GOOD,
+            ));
+        }
+    }
+    p.spawn(row()).with_children(|r| {
+        if page > 0 {
+            r.spawn(button("Back", Action::StoryPage(page - 1)));
+        }
+        if page + 1 < pages.len() {
+            r.spawn(button("Next", Action::StoryPage(page + 1)));
+            r.spawn(button("Skip", Action::CloseStory));
+        } else {
+            r.spawn(button("Begin", Action::CloseStory));
+        }
+    });
+}
+
 /// Every step with its state, then the rules in brief.
 fn help_panel(p: &mut ChildSpawnerCommands, session: &Session, data: &GameData) {
     p.spawn(row()).with_children(|r| {
         r.spawn(text("HOW TO PLAY", 14.0, FG));
         r.spawn(button("Close", Action::ToggleHelp));
+        r.spawn(button("Read the story", Action::StoryPage(0)));
     });
     muted(
         p,

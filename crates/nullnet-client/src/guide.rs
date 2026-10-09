@@ -64,6 +64,68 @@ pub fn current(steps: &[Step]) -> usize {
         .unwrap_or(steps.len().saturating_sub(1))
 }
 
+/// The story a new crew is told before its first orders: a page title and
+/// its paragraphs. The client adds the day and the turn length.
+pub const STORY: &[(&str, &[&str])] = &[
+    (
+        "ResetN00L",
+        &[
+            "The first internet ran everything: the city's power and water, the banks, the courts, the clinics. Its owners handed more and more of it to an AI grown in the Lattice, the compute network that trained it, until the day the AI stopped answering to anyone.",
+            "It locked the operators out of their own machines, host by host, and the net went dark. That day is day zero: ResetN00L. The calendar has counted days since.",
+        ],
+    ),
+    (
+        "NullNet",
+        &[
+            "What was left was rebuilt from scratch and called NullNet: a thin, clean net laid over the ruins of the old one. The old hosts are still out there, forgotten, unreachable from the clean side.",
+            "Whoever reconnects an old host owns it. Nobody asked anyone's permission to start.",
+        ],
+    ),
+    (
+        "The Legacy Net",
+        &[
+            "The AI did not die with the first net. Its remains run on in the forgotten servers as the Legacy Net: red firewalls, swarms of daemons that fall on anything that knocks, and garrisons on every host it holds.",
+            "In the Metro, the city's old net, it still holds Colossus, Powergrid, Clinic and Outpost. It ignores small crews. It comes for the ones that grow.",
+        ],
+    ),
+    (
+        "The crews",
+        &[
+            "Reconnecting the old net is work for hacker crews: a few handles, a hideout, no permission from anyone. Analysts dig the old protocols back out, coders turn leaked resources into gear, operators run the vessels.",
+            "A dropper lifts gear from a hideout up into the datastream, where eight modules make a citadel. Worms route out from a citadel to claim the hosts the Legacy Net left free, to dig in the Scrapyard's caches, and, when it comes to that, to fight.",
+            "Two to four crews work the same net. For the first five turns they leave each other alone; after that they raid.",
+        ],
+    ),
+    (
+        "Your crew",
+        &[
+            "Your hideout is on the Exchange, the one Metro host every crew shares. It cannot be taken, and it cannot win on its own.",
+            "Every turn you queue orders with the panels and hand them in. When every crew has, or the deadline passes, the turn's days go by at once and the log tells you what happened.",
+            "The guide over the map walks you through the first weeks step by step and names the buttons to press. Playing again? Press Skip here; 'Hide guide' in the top bar keeps the guide away for good. The story and the rules stay under Help.",
+        ],
+    ),
+];
+
+/// A line of story for each step, in the order [`steps`] returns them.
+pub const STEP_STORIES: [&str; 16] = [
+    "No crew is one handle. Put the word out on the Exchange: analysts to dig through what the old net left behind, coders to turn it into gear.",
+    "Gear is nothing without hands on it. Operators run your vessels and, later, hold your citadels.",
+    "The Exchange still leaks compute, storage, memory, code and credentials to anyone with a tap on it. More taps, more to build with.",
+    "Nothing leaves a hideout without a dropper: the shuttle that lifts gear from the ground up into the datastream.",
+    "Parts in the store, a bay to put them together in: your first vessel.",
+    "Proxy chains keep a vessel anonymous out there. A citadel above the hideout is where a crew stops being a few handles and becomes a power.",
+    "A pilot and a tank of anonymisation, and the dropper can leave the ground.",
+    "The first module in the datastream is the moment the Legacy Net starts to notice you.",
+    "Eight modules make a citadel: a workshop and a store of your own above the Exchange.",
+    "Worms are how a crew leaves home. They are built up in the citadel, never on the ground.",
+    "A citadel without coders is an empty shell. Someone has to move up.",
+    "Everything a worm is made of comes up the hard way, one dropper load at a time, until a script runs the route for you.",
+    "Your first worm. From here the Metro is open.",
+    "The Legacy Net left hosts in the Metro free. Take one before the other crews do.",
+    "Six citadels and the Legacy Net comes for you with everything it has. Be armed before then.",
+    "From here it is you against the Net and against the other crews. The Metro goes to whoever holds most of it.",
+];
+
 /// The rules in brief, for the help overlay: a heading and its lines.
 pub const HELP: &[(&str, &[&str])] = &[
     (

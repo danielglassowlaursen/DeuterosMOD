@@ -108,3 +108,29 @@ pub fn guide_hidden() -> bool {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn remember_guide_hidden(_hidden: bool) {}
+
+const STORY_KEY: &str = "nullnet.story-seen";
+
+/// Whether the player has been told the story in an earlier visit.
+#[cfg(target_arch = "wasm32")]
+pub fn story_seen() -> bool {
+    storage()
+        .and_then(|s| s.get_item(STORY_KEY).ok().flatten())
+        .is_some_and(|v| v == "1")
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn remember_story_seen() {
+    if let Some(storage) = storage() {
+        let _ = storage.set_item(STORY_KEY, "1");
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn story_seen() -> bool {
+    let _ = STORY_KEY;
+    false
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn remember_story_seen() {}

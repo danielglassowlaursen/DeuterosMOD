@@ -48,7 +48,7 @@ Klienten kan også køre som desktop-app: `cargo run -p nullnet-client -- --serv
 1. Opret et spil på `/console`: navn, crews (en bot kan spille et sæde), dage pr. tur, frist i timer, sidste dag og eventuelt en Discord- eller Slack-webhook, der får besked, når turene kører.
 2. Send hvert crew sit invitationslink. Linket åbner kortet; `/console#<token>` er den rå konsol med alle ordrer som JSON.
 3. Hver tur: læg ordrer med panelerne og tryk *Hand in*. Turen kører, når alle har afleveret, eller når fristen udløber. Loggen, en toast og en lyd fortæller, hvad der skete; kampe kan afspilles.
-   Guiden over kortet viser det næste trin i åbningen (rekruttér, taps, dropper, citadel, orm, anden vært, oprustning) med de knapper, der skal trykkes på; *Help* i toplinjen har alle trin og reglerne i korte træk.
+   Første gang fortæller klienten historien om ResetN00L, NullNet og The Legacy Net i fem sider (spring over med *Skip*; *Help* har den igen). Guiden over kortet viser det næste trin i åbningen (rekruttér, taps, dropper, citadel, orm, anden vært, oprustning) med de knapper, der skal trykkes på; *Help* i toplinjen har alle trin og reglerne i korte træk.
 4. Spillet slutter, når en crew holder det meste af hjemmenettet, eller på den sidste dag, hvor flest point vinder.
 
 ## Hosting
