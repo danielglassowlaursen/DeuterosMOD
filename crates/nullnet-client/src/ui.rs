@@ -956,14 +956,18 @@ fn story_panel(p: &mut ChildSpawnerCommands, page: usize, session: &Session) {
         ..row()
     })
     .with_children(|r| {
+        // The way on comes first, so it stays under the cursor page after page.
+        let last = page + 1 == pages.len();
+        if last {
+            r.spawn(button("Begin", Action::CloseStory));
+        } else {
+            r.spawn(button("Next", Action::StoryPage(page + 1)));
+        }
         if page > 0 {
             r.spawn(button("Back", Action::StoryPage(page - 1)));
         }
-        if page + 1 < pages.len() {
-            r.spawn(button("Next", Action::StoryPage(page + 1)));
+        if !last {
             r.spawn(button("Skip", Action::CloseStory));
-        } else {
-            r.spawn(button("Begin", Action::CloseStory));
         }
     });
 }
