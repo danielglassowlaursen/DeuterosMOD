@@ -13,8 +13,8 @@ Vores egne og bliver: turstrukturen, serveren og API'et, klienten og UI'et, raid
 1. Kerneløkken: hvad man gør hver tur. Besluttet.
 2. Hacking: hvordan et indbrud foregår. Besluttet.
 3. Økonomi: få, tydelige ressourcer, folk og værktøjer. Besluttet.
-4. Kortet: vores eget netværk i stedet for Deuteros' stjernesystemer. I gang.
-5. Modstanderne: The Legacy Net og de andre crews.
+4. Kortet: vores eget netværk i stedet for Deuteros' stjernesystemer. Besluttet.
+5. Modstanderne: The Legacy Net og de andre crews. I gang.
 6. De første ti minutter: guide og historie til de nye regler.
 7. Bygningen: den nye kerne i Rust, trin for trin, med resten genbrugt.
 
@@ -65,3 +65,24 @@ Vores egne og bliver: turstrukturen, serveren og API'et, klienten og UI'et, raid
 **Værktøjer** købes på det sorte marked og passer til en svaghed. Et kit (fx SQL-injection til databaser) holder, når det er købt. En zero-day passer til alle svagheder, giver mere og er brugt op efter ét indbrud.
 
 **Opgraderinger** afløser forskningstræet: få forbedringer af skjulestedet, købt for credits og computerkraft, fx bedre rigs (mere computerkraft), firewall (bedre forsvar af egne værter), flere linjer (mere båndbredde) og plads til flere hackere.
+
+## 4. Kortet (besluttet)
+
+**En fast skabelon med nye værdier hvert spil.** Nettet og navnene er de samme hver gang, så man lærer kortet at kende, men sikkerhed, svaghed og ICE slås nye for hver vært, når et spil oprettes. Scanning betyder derfor noget hvert spil.
+
+**Omkring 40 værter** i ni distrikter med vores egne navne og hvert sit præg:
+- *Metro*: byens net. Fire startområder i hver sit hjørne, med svage værter omkring hvert skjulested.
+- *Bankwire*: banker og betalinger. Mest credits.
+- *Nimbus*: cloud og datacentre. Mest computerkraft.
+- *Orbital*: satellitter og jordstationer. Mest båndbredde.
+- *Campus*, *Ministry* og *Helix*: universitet, stat og biotek. Mest data.
+- *Foundry*: industriens styresystemer. Lidt af det hele.
+- *Lattice*: AI-regnenettet i midten, hvor The Legacy Net blev født. Højeste sikkerhed, mest data.
+
+Sikkerheden stiger indad: værterne nær hjørnerne har 1-2, mellemringen 2-4 og Lattice 4-5.
+
+**Hvert crew starter i sit eget hjørne** med skjulestedet og bygger sit område op; crewene mødes inde i nettet. Med to eller tre crews står de tomme hjørner som frie værter.
+
+**Rækkevidde.** Man kan kun bryde ind i værter, der har en forbindelse til en vært, man ejer, skjulestedet medregnet. Man arbejder sig indad vært for vært, og kortet får fronter og flaskehalse. Første bud: scanning rækker to forbindelser ud, så man kan planlægge næste skridt.
+
+**På skærmen** bliver kortet en graf af noder og forbindelser i stedet for den nuværende stamme med undersystemer. Kort-tegningen og dens shaders genbruges.
