@@ -334,7 +334,15 @@ fn refresh(
 fn build_bar(p: &mut ChildSpawnerCommands, session: &Session, sounds: &Sounds, hud: &Hud) {
     p.spawn(theme::bold("NULLNET", 17.0, ACCENT));
     let Some(status) = session.status.as_ref() else {
-        p.spawn(text("connecting…", 13.0, MUTED));
+        match &session.error {
+            Some(error) => {
+                p.spawn(text(error.clone(), 13.0, theme::WARN));
+                p.spawn(text("  — open /console to create a game", 12.5, MUTED));
+            }
+            None => {
+                p.spawn(text("connecting…", 13.0, MUTED));
+            }
+        }
         return;
     };
     let view = &status.view;
@@ -391,7 +399,16 @@ fn build_bar(p: &mut ChildSpawnerCommands, session: &Session, sounds: &Sounds, h
 
 fn build_crew(p: &mut ChildSpawnerCommands, session: &Session, _data: &GameData) {
     let Some(status) = session.status.as_ref() else {
-        muted(p, "connecting…");
+        match &session.error {
+            Some(error) => {
+                p.spawn(text(error.clone(), 12.5, theme::WARN));
+                muted(
+                    p,
+                    "This link may be from an old game. Create a new one on /console.",
+                );
+            }
+            None => muted(p, "connecting…"),
+        }
         return;
     };
     let view = &status.view;
