@@ -14,8 +14,8 @@ Vores egne og bliver: turstrukturen, serveren og API'et, klienten og UI'et, raid
 2. Hacking: hvordan et indbrud foregår. Besluttet.
 3. Økonomi: få, tydelige ressourcer, folk og værktøjer. Besluttet.
 4. Kortet: vores eget netværk i stedet for Deuteros' stjernesystemer. Besluttet.
-5. Modstanderne: The Legacy Net og de andre crews. I gang.
-6. De første ti minutter: guide og historie til de nye regler.
+5. Modstanderne: The Legacy Net og de andre crews. Besluttet.
+6. De første ti minutter: guide og historie til de nye regler. I gang.
 7. Bygningen: den nye kerne i Rust, trin for trin, med resten genbrugt.
 
 ## 1. Kerneløkken (besluttet)
@@ -86,3 +86,17 @@ Sikkerheden stiger indad: værterne nær hjørnerne har 1-2, mellemringen 2-4 og
 **Rækkevidde.** Man kan kun bryde ind i værter, der har en forbindelse til en vært, man ejer, skjulestedet medregnet. Man arbejder sig indad vært for vært, og kortet får fronter og flaskehalse. Første bud: scanning rækker to forbindelser ud, så man kan planlægge næste skridt.
 
 **På skærmen** bliver kortet en graf af noder og forbindelser i stedet for den nuværende stamme med undersystemer. Kort-tegningen og dens shaders genbruges.
+
+## 5. Modstanderne (besluttet)
+
+**The Legacy Net** holder Lattice i midten og nogle få højborge fra start. Dens værter har høj sikkerhed, stærk ICE og meget data.
+- *Den reagerer på trace.* Når turen er kørt, får det crew, der har mest trace over en tærskel, en udrensning: The Legacy Net angriber den af crewets værter, der er dårligst forsvaret. Holder forsvaret ikke, bliver værten en Legacy-vært, og crewets trace falder, så det ikke rammes hver tur. Første bud: tærskel 6 trace, udrensningens styrke 4 + 1 for hver femte tur, mod værtens forsvar, og trace falder med 3 efter en udrensning.
+- *Den breder sig langsomt.* Første bud: fra tur 10 tager den hver fjerde tur en fri vært, der grænser op til dens egne. Den kæmper ikke om crewenes værter på den måde; det gør kun udrensningerne.
+- *En tabt vært bliver en Legacy-vært.* Den skal tages tilbage med indbrud og bagdør, og så tæller den også som befriet.
+
+**De andre crews.** En rivals vært brydes ind i som alle andre. Med adgang kan man stjæle data eller plante en bagdør og tage værten. Ejeren kan i mellemtiden forsvare og rense den. De første 5 ture kan crews ikke bryde ind hos hinanden; scanning er tilladt. Trace erstatter den nuværende heat.
+
+**Point ved sidste tur.** Første bud, der skal balanceres:
+- 1 point pr. data, som crewet har samlet.
+- 5 point pr. vært, crewet holder ved slutningen.
+- 10 point pr. vært, crewet har taget fra The Legacy Net, hvad enten den holdes til slut eller ej.
