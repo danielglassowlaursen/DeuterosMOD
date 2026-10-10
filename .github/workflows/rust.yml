@@ -15,12 +15,10 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
-      - name: Data file matches the extractor
-        run: python3 tools/extract_coredata.py && git diff --exit-code crates/nullnet-core/data
       - run: cargo clippy -p nullnet-core -p nullnet-api -p nullnet-sim -p nullnet-server --all-targets -- -D warnings
       - run: cargo test -p nullnet-core -p nullnet-server
       - name: Bot game (fails if a bot gives an order the rules refuse)
-        run: cargo run --release -p nullnet-sim -- --crews 4 --days 5000
+        run: cargo run --release -p nullnet-sim -- --crews 4 --turns 50 --difficulty hard
 
   web:
     runs-on: ubuntu-latest

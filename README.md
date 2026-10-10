@@ -1,18 +1,17 @@
 # NullNet
 
-Et strategispil i et hacker-univers med asynkron, turbaseret online-multiplayer, der spilles i browseren. Reglerne bygger på Deuteros (Activision, 1991). Mål, arkitektur, ordbog og plan står i [docs/DESIGN.md](docs/DESIGN.md).
+Et hacking-strategispil med asynkron, turbaseret online-multiplayer, der spilles i browseren. Et crew arbejder sig ind i et net af værter fra sit hjørne — scanner, bryder ind og planter bagdøre — mens The Legacy Net holder midten og slår ned på de crews, der larmer for meget. Flest data ved sidste tur vinder. Mål, regler og arkitektur står i [docs/DESIGN.md](docs/DESIGN.md); historien om omlægningen fra Deuteros-remake til hacking-spil i [docs/REDESIGN.md](docs/REDESIGN.md).
 
 | Mappe | Indhold |
 |---|---|
 | `crates/nullnet-core` | Spillets regler: ren, deterministisk Rust uden motor eller I/O |
 | `crates/nullnet-api` | JSON-typerne, server og klient udveksler |
-| `crates/nullnet-client` | Web-klienten (Bevy → WebAssembly): netværkskortet som spillebræt og terminalpaneler til ordrer |
-| `crates/nullnet-sim` | Lader bot-crews spille mod hinanden og udskriver tidslinjen |
+| `crates/nullnet-client` | Web-klienten (Bevy → WebAssembly): kortet som graf og panelerne til ordrer |
+| `crates/nullnet-sim` | Lader bot-crews spille mod hinanden og udskriver forløbet |
 | `crates/nullnet-server` | Spilserveren: axum + SQLite. Invitationer, ordrer, turafvikling og web-klienten i én binærfil |
 | `web/` | HTML-siden til Bevy-klienten og konsollen (`console.html`), som serveren serverer |
 | `scripts/` | Build-script til browser-klienten |
 | `Dockerfile`, `docker-compose.yml`, `fly.toml` | Hosting: ét image med server og klient, se [docs/HOSTING.md](docs/HOSTING.md) |
-| `Godot/` | Godot-remaken [DeuterosOrg/Deuteros-Resurrected](https://github.com/DeuterosOrg/Deuteros-Resurrected), brugt som opslagsværk for regler og data |
 
 ## Kom i gang
 
@@ -22,11 +21,8 @@ Kræver [Rust](https://rustup.rs).
 # Kerne-tests
 cargo test -p nullnet-core
 
-# Se 3 bot-crews spille 3.000 dage (--verbose viser alt, hvad der bygges og flyttes)
-cargo run -p nullnet-sim -- --seed 7 --crews 3 --days 3000
-
-# Lav en afspilning, hvor du kan bladre gennem turene i browseren
-cargo run --release -p nullnet-sim -- --crews 2 --days 1000 --json | python3 tools/replay.py > replay.html
+# Se bot-crews spille et helt spil (--verbose viser hver begivenhed)
+cargo run -p nullnet-sim -- --seed 7 --crews 3 --turns 50 --difficulty normal
 
 # Start en spilserver og opret et spil på http://localhost:8080/console
 cargo run -p nullnet-server -- --db nullnet.db --port 8080
@@ -45,19 +41,12 @@ Klienten kan også køre som desktop-app: `cargo run -p nullnet-client -- --serv
 
 ## Sådan spiller man
 
-1. Opret et spil på `/console`: navn, crews (en bot kan spille et sæde), dage pr. tur, frist i timer, sidste dag og eventuelt en Discord- eller Slack-webhook, der får besked, når turene kører.
+1. Opret et spil på `/console`: navn, crews (en bot kan spille et sæde), sværhedsgrad og sidste tur. Sæt kryds i *Practice*, så turen kører, så snart alle har afleveret — så kan et øvelsesspil mod en bot læres på en aften. Du kan også angive en frist i timer og en Discord- eller Slack-webhook, der får besked, når turene kører.
 2. Send hvert crew sit invitationslink. Linket åbner kortet; `/console#<token>` er den rå konsol med alle ordrer som JSON.
-3. Hver tur: læg ordrer med panelerne og tryk *Hand in*. Turen kører, når alle har afleveret, eller når fristen udløber. Loggen, en toast og en lyd fortæller, hvad der skete; kampe kan afspilles.
-   Første gang fortæller klienten historien om ResetN00L, NullNet og The Legacy Net i fem sider, læst op af en fortællerstemme (spring over med *Skip*; *Help* har den igen). Guiden over kortet viser det næste trin i åbningen (rekruttér, taps, dropper, citadel, orm, anden vært, oprustning) med de knapper, der skal trykkes på; *Help* i toplinjen har alle trin og reglerne i korte træk.
-4. Spillet slutter, når en crew holder det meste af hjemmenettet, eller på den sidste dag, hvor flest point vinder.
+3. Hver tur: klik en vært på kortet, vælg en operation for en hacker (scan, bryd ind, plant bagdør, stjæl data, forsvar), og tryk *Hand in*. Turen kører, når alle har afleveret, eller når fristen udløber. Loggen, en toast og en lyd fortæller, hvad der skete.
+   Første gang fortæller klienten historien om ResetN00L, NullNet og The Legacy Net (spring over med *Skip*; *Help* har den igen). Guiden ved kortets fod foreslår det næste trin med en *Do it*-knap, der lægger ordren.
+4. Spillet slutter på den sidste tur; flest point vinder (1 pr. data, 5 pr. vært man holder, 10 pr. vært befriet fra The Legacy Net).
 
 ## Hosting
 
 `docker compose up -d --build` starter en server med web-klienten på port 8080 og databasen i en volume. `fly.toml` gør det samme på Fly.io. Se [docs/HOSTING.md](docs/HOSTING.md) for indstillinger, HTTPS, backup og notifikationer.
-
-Sådan henter du ændringer fra Godot-remaken:
-
-```bash
-git remote add upstream https://github.com/DeuterosOrg/Deuteros-Resurrected.git   # kun første gang
-git fetch upstream && git merge upstream/develop
-```
