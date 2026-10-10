@@ -26,6 +26,7 @@ const CONSOLE: &str = include_str!("../../../web/console.html");
 pub fn router(server: Arc<Server>, web_dir: Option<PathBuf>) -> Router {
     let api = Router::new()
         .route("/games", post(create_game))
+        .route("/map", get(map))
         .route("/crew/{token}", get(crew_status))
         .route(
             "/crew/{token}/orders",
@@ -71,6 +72,15 @@ impl IntoResponse for Error {
 
 async fn console() -> Html<&'static str> {
     Html(CONSOLE)
+}
+
+/// The static map every game is played on: host names, places and links.
+async fn map(State(server): State<Arc<Server>>) -> Json<serde_json::Value> {
+    let data = server.data();
+    Json(json!({
+        "hosts": data.hosts,
+        "links": data.links.iter().map(|&(a, b)| [a.0, b.0]).collect::<Vec<_>>(),
+    }))
 }
 
 async fn create_game(

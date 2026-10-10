@@ -2,7 +2,7 @@
 //! a turn has run, so the crews hear it where they already are. The body
 //! carries both `content` (Discord) and `text` (Slack).
 
-use nullnet_core::{EndReason, World, date};
+use nullnet_core::World;
 use serde::Serialize;
 
 use crate::db::CrewRow;
@@ -30,19 +30,18 @@ pub fn turn_text(game: &str, turn: u32, world: &World, crews: &[CrewRow]) -> Str
     };
     match &world.ended {
         Some(end) => {
-            let how = match end.reason {
-                EndReason::Domination => "by holding most of the home network",
-                EndReason::DayLimit => "on points at the last day",
-            };
             let standings: Vec<String> = end
                 .scores
                 .iter()
                 .map(|s| format!("{} {}", name(s.player), s.total))
                 .collect();
+            let outcome = match end.winner {
+                Some(winner) => format!("{} wins on points", name(winner)),
+                None => "it is a tie".to_string(),
+            };
             format!(
-                "NullNet: {game} is over on {}. {} wins {how}. Final: {}.",
-                date(end.day),
-                name(end.winner),
+                "NullNet: {game} is over after turn {}. {outcome}. Final: {}.",
+                end.turn,
                 standings.join(", ")
             )
         }
@@ -53,9 +52,8 @@ pub fn turn_text(game: &str, turn: u32, world: &World, crews: &[CrewRow]) -> Str
                 .map(|c| c.name.clone())
                 .collect();
             format!(
-                "NullNet: turn {turn} of {game} has run; it is {}. Orders for turn {} are open{}.",
-                date(world.day),
-                turn + 1,
+                "NullNet: turn {turn} of {game} has run. Orders for turn {} are open{}.",
+                world.turn,
                 if people.is_empty() {
                     String::new()
                 } else {

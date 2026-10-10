@@ -1,6 +1,10 @@
 //! The SQLite store. Every game keeps its current world, the orders handed
 //! in for the running turn, and a record of every resolved turn: the world
 //! before it, the orders and the report, so any turn can be replayed.
+//!
+//! The world's serialised form changed when the rules were rebuilt, so the
+//! store carries a schema version. When it opens an older store it drops the
+//! game data (which it could not read anyway) and starts fresh.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -12,15 +16,18 @@ use serde::{Deserialize, Serialize};
 
 pub type DbResult<T> = Result<T, rusqlite::Error>;
 
+/// Bumped whenever the stored world or turn format changes.
+const SCHEMA_VERSION: i64 = 2;
+
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS games (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     seed INTEGER NOT NULL,
-    turn_days INTEGER NOT NULL,
+    difficulty TEXT NOT NULL,
+    last_turn INTEGER NOT NULL,
     deadline_hours INTEGER NOT NULL,
     created_at INTEGER NOT NULL,
-    turn INTEGER NOT NULL,
     world TEXT NOT NULL,
     deadline INTEGER NOT NULL,
     notify_url TEXT
@@ -61,16 +68,23 @@ pub struct GameRow {
     pub id: String,
     pub name: String,
     pub seed: u64,
-    pub turn_days: u32,
+    pub difficulty: String,
+    pub last_turn: u32,
     pub deadline_hours: u32,
     pub created_at: i64,
-    pub turn: u32,
     pub world: World,
     /// Unix time the running turn resolves whether or not everyone has
     /// handed in orders.
     pub deadline: i64,
     /// A webhook to post to when a turn has run.
     pub notify_url: Option<String>,
+}
+
+impl GameRow {
+    /// The turn now being played.
+    pub fn turn(&self) -> u32 {
+        self.world.turn
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -92,14 +106,17 @@ pub struct TurnRow {
     pub resolved_at: i64,
 }
 
-/// Brings a store made by an earlier version up to the current schema.
-fn migrate(conn: &Connection) -> DbResult<()> {
-    let mut columns = conn.prepare("PRAGMA table_info(games)")?;
-    let names: Vec<String> = columns
-        .query_map([], |row| row.get::<_, String>(1))?
-        .collect::<Result<_, _>>()?;
-    if !names.iter().any(|n| n == "notify_url") {
-        conn.execute_batch("ALTER TABLE games ADD COLUMN notify_url TEXT")?;
+/// Clears game data left by an older, incompatible build.
+fn reset_if_old(conn: &Connection) -> DbResult<()> {
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version != SCHEMA_VERSION {
+        conn.execute_batch(
+            "DROP TABLE IF EXISTS turns;
+             DROP TABLE IF EXISTS orders;
+             DROP TABLE IF EXISTS crews;
+             DROP TABLE IF EXISTS games;",
+        )?;
+        conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
     }
     Ok(())
 }
@@ -119,24 +136,24 @@ impl Store {
     pub fn open(path: impl AsRef<Path>) -> DbResult<Store> {
         let conn = Connection::open(path)?;
         conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
+        reset_if_old(&conn)?;
         conn.execute_batch(SCHEMA)?;
-        migrate(&conn)?;
         Ok(Store { conn })
     }
 
     pub fn insert_game(&mut self, game: &GameRow, crews: &[CrewRow]) -> DbResult<()> {
         let tx = self.conn.transaction()?;
         tx.execute(
-            "INSERT INTO games (id, name, seed, turn_days, deadline_hours, created_at, turn, world, deadline, notify_url)
+            "INSERT INTO games (id, name, seed, difficulty, last_turn, deadline_hours, created_at, world, deadline, notify_url)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 game.id,
                 game.name,
                 game.seed as i64,
-                game.turn_days,
+                game.difficulty,
+                game.last_turn,
                 game.deadline_hours,
                 game.created_at,
-                game.turn,
                 json(&game.world),
                 game.deadline,
                 game.notify_url
@@ -154,7 +171,7 @@ impl Store {
     pub fn game(&self, id: &str) -> DbResult<Option<GameRow>> {
         self.conn
             .query_row(
-                "SELECT id, name, seed, turn_days, deadline_hours, created_at, turn, world, deadline, notify_url
+                "SELECT id, name, seed, difficulty, last_turn, deadline_hours, created_at, world, deadline, notify_url
                  FROM games WHERE id = ?1",
                 params![id],
                 |row| {
@@ -162,10 +179,10 @@ impl Store {
                         id: row.get(0)?,
                         name: row.get(1)?,
                         seed: row.get::<_, i64>(2)? as u64,
-                        turn_days: row.get(3)?,
-                        deadline_hours: row.get(4)?,
-                        created_at: row.get(5)?,
-                        turn: row.get(6)?,
+                        difficulty: row.get(3)?,
+                        last_turn: row.get(4)?,
+                        deadline_hours: row.get(5)?,
+                        created_at: row.get(6)?,
                         world: parse(row.get(7)?)?,
                         deadline: row.get(8)?,
                         notify_url: row.get(9)?,
@@ -250,8 +267,8 @@ impl Store {
             ],
         )?;
         tx.execute(
-            "UPDATE games SET turn = ?2, world = ?3, deadline = ?4 WHERE id = ?1",
-            params![game_id, world_after.turn, json(world_after), deadline],
+            "UPDATE games SET world = ?2, deadline = ?3 WHERE id = ?1",
+            params![game_id, json(world_after), deadline],
         )?;
         tx.execute(
             "DELETE FROM orders WHERE game_id = ?1 AND turn = ?2",
@@ -261,16 +278,13 @@ impl Store {
     }
 
     pub fn turns(&self, game_id: &str) -> DbResult<Vec<TurnSummary>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT turn, report, resolved_at FROM turns WHERE game_id = ?1 ORDER BY turn",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT turn, resolved_at FROM turns WHERE game_id = ?1 ORDER BY turn")?;
         let rows = stmt.query_map(params![game_id], |row| {
-            let report: TurnReport = parse(row.get(1)?)?;
             Ok(TurnSummary {
                 turn: row.get(0)?,
-                first_day: report.first_day,
-                last_day: report.last_day,
-                resolved_at: row.get(2)?,
+                resolved_at: row.get(1)?,
             })
         })?;
         rows.collect()
@@ -295,7 +309,7 @@ impl Store {
             .optional()
     }
 
-    /// Games whose running turn's deadline has passed.
+    /// Games whose running turn's deadline has passed and that are not over.
     pub fn due_games(&self, now: i64) -> DbResult<Vec<String>> {
         let mut stmt = self
             .conn

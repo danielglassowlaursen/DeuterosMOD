@@ -4,7 +4,7 @@
 //! Every crew is identified by the secret token in its invite link; its
 //! routes hang under `/api/crew/{token}`.
 
-use nullnet_core::{Command, CrewView, Day, PlayerId, TurnReport};
+use nullnet_core::{Command, CrewView, PlayerId, TurnReport};
 use serde::{Deserialize, Serialize};
 
 /// `POST /api/games`
@@ -12,16 +12,17 @@ use serde::{Deserialize, Serialize};
 pub struct CreateGame {
     pub name: String,
     pub crews: Vec<NewCrew>,
-    /// Days each turn runs. Default 10.
+    /// `easy`, `normal` or `hard`. Default `normal`.
     #[serde(default)]
-    pub turn_days: Option<u32>,
-    /// Hours a turn waits for orders before it runs anyway. Default 24.
+    pub difficulty: Option<String>,
+    /// The game's last turn; the highest score wins then. Default 50.
+    #[serde(default)]
+    pub last_turn: Option<u32>,
+    /// Hours a turn waits for orders before it runs anyway. Default 24; 0
+    /// runs each turn the moment every person has handed in (a practice
+    /// game against bots then runs turn by turn at once).
     #[serde(default)]
     pub deadline_hours: Option<u32>,
-    /// The game's last day; the highest score wins then if nobody has won
-    /// before. Default 3000; 0 for no limit.
-    #[serde(default)]
-    pub end_day: Option<Day>,
     /// A webhook (Discord or Slack style) the server posts to when a turn
     /// has run and when the game ends.
     #[serde(default)]
@@ -43,11 +44,9 @@ pub struct NewCrew {
 pub struct GameInfo {
     pub id: String,
     pub name: String,
-    pub turn_days: u32,
+    pub difficulty: String,
+    pub last_turn: u32,
     pub deadline_hours: u32,
-    /// The game's last day, if it has one.
-    #[serde(default)]
-    pub end_day: Option<Day>,
     /// Whether the game posts to a webhook when turns run.
     #[serde(default)]
     pub notifies: bool,
@@ -86,8 +85,8 @@ pub struct CrewStatus {
     pub game: GameInfo,
     pub player: PlayerId,
     pub name: String,
+    /// The turn now being played, from 1.
     pub turn: u32,
-    pub day: u32,
     /// The server's clock when it answered, Unix seconds.
     pub now: i64,
     /// Unix time the running turn resolves at the latest.
@@ -99,7 +98,7 @@ pub struct CrewStatus {
     pub view: CrewView,
     /// The last resolved turn, as this crew may see it.
     pub last_turn: Option<CrewTurn>,
-    /// Whether the game is over; `view.ended` says how.
+    /// Whether the game is over; `view` carries the final scores.
     #[serde(default)]
     pub over: bool,
 }
@@ -117,8 +116,6 @@ pub struct CrewTurn {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TurnSummary {
     pub turn: u32,
-    pub first_day: u32,
-    pub last_day: u32,
     pub resolved_at: i64,
 }
 

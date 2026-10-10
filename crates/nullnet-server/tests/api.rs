@@ -61,7 +61,8 @@ impl Client {
                 Some(json!({
                     "name": "Test run",
                     "crews": crews,
-                    "turn_days": 10,
+                    "difficulty": "normal",
+                    "last_turn": 50,
                     "deadline_hours": deadline_hours,
                     "seed": 7
                 })),
@@ -79,8 +80,9 @@ fn token(created: &Value, index: usize) -> String {
         .to_string()
 }
 
-fn recruit(kind: &str, count: u32) -> Value {
-    json!({ "Recruit": { "kind": kind, "count": count } })
+/// A command that does nothing wrong, for a hand-in that should be accepted.
+fn scan(hacker: u32, host: u32) -> Value {
+    json!({ "Scan": { "hacker": hacker, "host": host } })
 }
 
 #[tokio::test]
@@ -88,7 +90,7 @@ async fn a_game_hands_out_one_invite_per_person_and_none_to_bots() {
     let client = Client::in_memory();
     let created = client
         .create(
-            json!([{ "name": "Ghostline" }, { "name": "Blackice", "bot": true }, { "name": "Nullsector" }]),
+            json!([{ "name": "Ghostline" }, { "name": "Blackice", "bot": true }, { "name": "Nullset" }]),
             24,
         )
         .await;
@@ -100,17 +102,18 @@ async fn a_game_hands_out_one_invite_per_person_and_none_to_bots() {
         created["crews"][0]["join_path"].as_str().unwrap(),
         format!("/join/{}", token(&created, 0))
     );
+    assert_eq!(created["difficulty"], "Normal");
+    assert_eq!(created["last_turn"], 50);
 
     let (status, me) = client
         .get(&format!("/api/crew/{}", token(&created, 0)))
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(me["name"], "Ghostline");
-    assert_eq!(me["turn"], 0);
-    assert_eq!(me["day"], 0);
+    assert_eq!(me["turn"], 1, "the game opens on turn 1");
     assert_eq!(me["submitted"], false);
     assert_eq!(me["crews"][1]["submitted"], true, "a bot is always ready");
-    assert_eq!(me["view"]["me"]["hideout"]["taps"], 1);
+    assert_eq!(me["view"]["me"]["hackers"].as_array().unwrap().len(), 2);
     assert!(me["last_turn"].is_null());
 
     let (status, _) = client.get("/api/crew/not-a-token").await;
@@ -118,14 +121,15 @@ async fn a_game_hands_out_one_invite_per_person_and_none_to_bots() {
 }
 
 #[tokio::test]
-async fn games_need_a_name_a_person_and_one_to_four_crews() {
+async fn games_need_a_name_a_person_and_sensible_settings() {
     let client = Client::in_memory();
     for body in [
         json!({ "name": " ", "crews": [{ "name": "A" }] }),
         json!({ "name": "x", "crews": [] }),
         json!({ "name": "x", "crews": [{ "name": "A", "bot": true }] }),
         json!({ "name": "x", "crews": [{ "name": "A" }, { "name": "B" }, { "name": "C" }, { "name": "D" }, { "name": "E" }] }),
-        json!({ "name": "x", "crews": [{ "name": "A" }], "turn_days": 0 }),
+        json!({ "name": "x", "crews": [{ "name": "A" }], "last_turn": 2 }),
+        json!({ "name": "x", "crews": [{ "name": "A" }], "difficulty": "brutal" }),
     ] {
         let (status, _) = client.call(Method::POST, "/api/games", Some(body)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -143,11 +147,20 @@ async fn the_turn_runs_once_every_person_has_handed_in() {
         .await;
     let (a, b) = (token(&created, 0), token(&created, 1));
 
+    // Ghostline scans two hosts near its hideout.
+    let (_, me) = client.get(&format!("/api/crew/{a}")).await;
+    let reach: Vec<u64> = me["view"]["hosts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|h| h["can_scan"].as_bool().unwrap())
+        .map(|h| h["host"].as_u64().unwrap())
+        .collect();
     let (status, receipt) = client
         .call(
             Method::PUT,
             &format!("/api/crew/{a}/orders"),
-            Some(json!([recruit("Analyst", 100), recruit("Coder", 100)])),
+            Some(json!([scan(0, reach[0] as u32)])),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
@@ -156,7 +169,7 @@ async fn the_turn_runs_once_every_person_has_handed_in() {
 
     let (_, me) = client.get(&format!("/api/crew/{a}")).await;
     assert_eq!(me["submitted"], true);
-    assert_eq!(me["orders"].as_array().unwrap().len(), 2);
+    assert_eq!(me["orders"].as_array().unwrap().len(), 1);
     assert_eq!(me["crews"][1]["submitted"], false);
     let (_, rival) = client.get(&format!("/api/crew/{b}")).await;
     assert_eq!(rival["crews"][0]["submitted"], true);
@@ -169,106 +182,84 @@ async fn the_turn_runs_once_every_person_has_handed_in() {
         .call(
             Method::PUT,
             &format!("/api/crew/{b}/orders"),
-            Some(json!([recruit("Operator", 20)])),
+            Some(json!([])),
         )
         .await;
     assert_eq!(receipt["resolved"], true);
 
     let (_, me) = client.get(&format!("/api/crew/{a}")).await;
-    assert_eq!(me["turn"], 1);
-    assert_eq!(me["day"], 10);
+    assert_eq!(me["turn"], 2);
     assert_eq!(me["submitted"], false);
-    assert_eq!(me["last_turn"]["turn"], 0);
-    assert_eq!(me["last_turn"]["orders"].as_array().unwrap().len(), 2);
-    assert_eq!(me["last_turn"]["report"]["first_day"], 1);
-    assert_eq!(me["last_turn"]["report"]["last_day"], 10);
-    assert_eq!(
-        me["view"]["me"]["recruitment"]["courses"]["Analyst"]["enrolled"],
-        100
+    assert_eq!(me["last_turn"]["turn"], 1);
+    assert_eq!(me["last_turn"]["orders"].as_array().unwrap().len(), 1);
+    assert!(
+        me["last_turn"]["report"]["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e.get("Scanned").is_some()),
+        "the scan happened"
     );
 
     let (_, turns) = client.get(&format!("/api/crew/{a}/turns")).await;
     assert_eq!(turns.as_array().unwrap().len(), 1);
-    let (status, turn) = client.get(&format!("/api/crew/{b}/turns/0")).await;
+    assert_eq!(turns[0]["turn"], 1);
+    let (status, turn) = client.get(&format!("/api/crew/{b}/turns/1")).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(
-        turn["orders"].as_array().unwrap().len(),
-        1,
-        "Blackice's own orders"
+    assert!(
+        turn["orders"].as_array().unwrap().is_empty(),
+        "Blackice handed in nothing"
     );
-    let (status, _) = client.get(&format!("/api/crew/{b}/turns/5")).await;
+    let (status, _) = client.get(&format!("/api/crew/{b}/turns/9")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
-async fn the_game_ends_on_its_last_day_and_takes_no_more_orders() {
+async fn a_practice_game_runs_each_turn_at_once() {
     let client = Client::in_memory();
     let (status, created) = client
         .call(
             Method::POST,
             "/api/games",
             Some(json!({
-                "name": "Short run",
-                "crews": [{ "name": "Ghostline" }, { "name": "Bot", "bot": true }],
-                "turn_days": 10,
-                "deadline_hours": 24,
-                "end_day": 20,
+                "name": "Practice",
+                "crews": [{ "name": "Solo" }, { "name": "Bot", "bot": true }],
+                "difficulty": "easy",
+                "last_turn": 5,
+                "deadline_hours": 0,
                 "seed": 7
             })),
         )
         .await;
     assert_eq!(status, StatusCode::CREATED, "{created}");
-    assert_eq!(created["end_day"], 20);
     let me = token(&created, 0);
 
-    let (_, status) = client.get(&format!("/api/crew/{me}")).await;
-    assert_eq!(status["game"]["end_day"], 20);
-    assert_eq!(status["over"], false);
-    assert_eq!(status["view"]["scores"].as_array().unwrap().len(), 2);
-    assert!(status["view"]["ended"].is_null());
-
-    for _ in 0..2 {
-        let (status, receipt) = client
+    for turn in 1..=5 {
+        let (status, me_view) = client.get(&format!("/api/crew/{me}")).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(me_view["turn"], turn);
+        assert_eq!(me_view["over"], false);
+        let (_, receipt) = client
             .call(
                 Method::PUT,
                 &format!("/api/crew/{me}/orders"),
-                Some(json!([recruit("Analyst", 100)])),
+                Some(json!([])),
             )
             .await;
-        assert_eq!(status, StatusCode::OK, "{receipt}");
-        assert_eq!(receipt["resolved"], true);
+        assert_eq!(receipt["resolved"], true, "a practice turn runs at once");
     }
-    let (_, status) = client.get(&format!("/api/crew/{me}")).await;
-    assert_eq!(status["day"], 20);
-    assert_eq!(status["over"], true);
-    assert_eq!(status["view"]["ended"]["day"], 20);
-    assert_eq!(status["view"]["ended"]["reason"], "DayLimit");
-    let events = status["last_turn"]["report"]["events"].as_array().unwrap();
-    assert!(
-        events.iter().any(|e| e.get("GameOver").is_some()),
-        "{events:?}"
-    );
 
-    let (status, error) = client
+    let (_, me_view) = client.get(&format!("/api/crew/{me}")).await;
+    assert_eq!(me_view["over"], true);
+    assert!(me_view["view"]["over"].as_bool().unwrap());
+    assert_eq!(me_view["view"]["scores"].as_array().unwrap().len(), 2);
+
+    // No more orders once the game is over.
+    let (status, _) = client
         .call(
             Method::PUT,
             &format!("/api/crew/{me}/orders"),
             Some(json!([])),
-        )
-        .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "{error}");
-
-    // A last day within the first turn is refused.
-    let (status, _) = client
-        .call(
-            Method::POST,
-            "/api/games",
-            Some(json!({
-                "name": "Too short",
-                "crews": [{ "name": "Ghostline" }],
-                "turn_days": 10,
-                "end_day": 5
-            })),
         )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -280,7 +271,6 @@ async fn a_turn_that_ran_is_posted_to_the_game_webhook() {
     use axum::routing::post;
     use std::sync::Mutex;
 
-    // A webhook of our own, on a free local port.
     let received: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
     let sink = Arc::clone(&received);
     let hook = Router::new().route(
@@ -305,8 +295,8 @@ async fn a_turn_that_ran_is_posted_to_the_game_webhook() {
             Some(json!({
                 "name": "Hooked run",
                 "crews": [{ "name": "Ghostline" }, { "name": "Bot", "bot": true }],
-                "turn_days": 10,
-                "end_day": 10,
+                "last_turn": 5,
+                "deadline_hours": 0,
                 "notify_url": format!("http://{address}/hook"),
                 "seed": 7
             })),
@@ -325,8 +315,6 @@ async fn a_turn_that_ran_is_posted_to_the_game_webhook() {
         )
         .await;
     assert_eq!(receipt["resolved"], true);
-    // The handler spawned the delivery; take and deliver the queue here to
-    // wait for it, or find it already sent.
     let notices = client.server.take_notices();
     nullnet_server::notify::deliver(notices).await;
     for _ in 0..50 {
@@ -340,10 +328,7 @@ async fn a_turn_that_ran_is_posted_to_the_game_webhook() {
     let text = posts[0]["content"].as_str().unwrap();
     assert_eq!(posts[0]["text"], posts[0]["content"]);
     assert!(text.contains("Hooked run"), "{text}");
-    assert!(
-        text.contains("is over") && text.contains("Ghostline wins"),
-        "{text}"
-    );
+    assert!(text.contains("turn 1"), "{text}");
 
     // A webhook that is not a URL is refused.
     let (status, _) = client
@@ -367,20 +352,20 @@ async fn handing_in_previews_what_the_rules_refuse_and_can_be_withdrawn() {
         .create(json!([{ "name": "Ghostline" }, { "name": "Blackice" }]), 24)
         .await;
     let a = token(&created, 0);
+    let (_, me) = client.get(&format!("/api/crew/{a}")).await;
+    let hideout = me["view"]["me"]["hideout"].as_u64().unwrap() as u32;
+    // Scanning the hideout is refused: a crew already knows its own hosts.
     let (_, receipt) = client
         .call(
             Method::PUT,
             &format!("/api/crew/{a}/orders"),
-            Some(json!([
-                { "Build": { "at": "Hideout", "item": "Tap" } },
-                recruit("Analyst", 50)
-            ])),
+            Some(json!([scan(0, hideout), { "BuyZeroDay": null }])),
         )
         .await;
     assert_eq!(receipt["rejected"][0]["index"], 0);
     assert_eq!(
         receipt["rejected"][0]["error"],
-        "the workshop has no coders"
+        "you already know that host"
     );
     assert_eq!(receipt["rejected"].as_array().unwrap().len(), 1);
 
@@ -415,8 +400,7 @@ async fn the_deadline_runs_the_turn_without_the_missing_orders() {
     );
 
     let (_, me) = client.get(&format!("/api/crew/{a}")).await;
-    assert_eq!(me["turn"], 1);
-    assert_eq!(me["day"], 10);
+    assert_eq!(me["turn"], 2);
     assert_eq!(me["deadline"], deadline + 3600);
     assert!(me["last_turn"]["orders"].as_array().unwrap().is_empty());
 }
@@ -442,38 +426,23 @@ async fn bots_play_their_seats() {
         assert_eq!(receipt["resolved"], true);
     }
     let (_, me) = client.get(&format!("/api/crew/{a}")).await;
-    assert_eq!(me["day"], 300);
-    // The bot has recruited and researched; the person has done nothing.
-    assert_eq!(me["view"]["me"]["research_team"], Value::Null);
-    let researched = |crew: &Value| {
-        crew["research"]
-            .as_object()
-            .unwrap()
-            .values()
-            .filter(|p| p["researched"] == true)
-            .count()
-    };
-    assert_eq!(
-        researched(&me["view"]["me"]),
-        1,
-        "only the starter research"
-    );
-    // The bot's hideout is hidden, but its milestones show through its
-    // claims only, so check the record instead.
-    let (_, turn) = client.get(&format!("/api/crew/{a}/turns/29")).await;
-    assert!(
-        turn["report"]["events"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|e| {
-                let (_, inner) = e.as_object().unwrap().iter().next().unwrap();
-                inner["player"] == 0 || e.get("HostClaimed").is_some()
-            }),
-        "a crew only sees its own events and public ones"
-    );
-    let bot_world_turns = client.server.turns(&a).unwrap();
-    assert_eq!(bot_world_turns.len(), 30);
+    assert_eq!(me["turn"], 31);
+    // The bot has taken hosts; the person has done nothing.
+    let bot = me["view"]["crews"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["player"] == 1)
+        .unwrap();
+    assert!(bot["hosts"].as_u64().unwrap() >= 1, "the bot took hosts");
+    let my_hosts = me["view"]["hosts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|h| h["controller"] == json!({ "Crew": 0 }))
+        .count();
+    assert_eq!(my_hosts, 1, "the idle crew holds only its hideout");
+    assert_eq!(client.server.turns(&a).unwrap().len(), 30);
 }
 
 #[tokio::test]
@@ -490,11 +459,20 @@ async fn games_survive_a_restart() {
             .create(json!([{ "name": "Ghostline" }, { "name": "Blackice" }]), 24)
             .await;
         let a = token(&created, 0);
+        let (_, me) = client.get(&format!("/api/crew/{a}")).await;
+        let host = me["view"]["hosts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|h| h["can_scan"].as_bool().unwrap())
+            .unwrap()["host"]
+            .as_u64()
+            .unwrap() as u32;
         client
             .call(
                 Method::PUT,
                 &format!("/api/crew/{a}/orders"),
-                Some(json!([recruit("Coder", 10)])),
+                Some(json!([scan(0, host)])),
             )
             .await;
         created
@@ -509,7 +487,7 @@ async fn games_survive_a_restart() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(me["game"]["name"], "Test run");
     assert_eq!(me["submitted"], true, "handed-in orders are kept");
-    assert_eq!(me["orders"][0]["Recruit"]["count"], 10);
+    assert!(me["orders"][0]["Scan"].is_object());
     let _ = std::fs::remove_dir_all(&dir);
 }
 

@@ -10,13 +10,18 @@ use nullnet_api::{
     CreateGame, CrewInvite, CrewState, CrewStatus, CrewTurn, GameCreated, GameInfo, OrdersReceipt,
     RejectedOrder, TurnSummary,
 };
-use nullnet_core::{Command, GameData, Orders, PlayerId, World, bot, crew_view, resolve_turn};
+use nullnet_core::{
+    Command, Difficulty, GameData, Orders, PlayerId, Settings, World, bot_orders, check_orders,
+    crew_view, resolve_turn,
+};
 
 use crate::db::{CrewRow, GameRow, Store, TurnRow};
 use crate::notify::Notice;
 
-/// The last day of a game that is set up without one.
-pub const DEFAULT_END_DAY: u32 = 3000;
+/// A game's last turn when it is set up without one.
+pub const DEFAULT_LAST_TURN: u32 = 50;
+/// The longest a game can run.
+pub const MAX_LAST_TURN: u32 = 200;
 
 /// Unix time in seconds.
 pub fn now() -> i64 {
@@ -64,7 +69,7 @@ struct Crew {
 impl Server {
     pub fn open(path: impl AsRef<std::path::Path>) -> Result<Server, Error> {
         Ok(Server {
-            data: GameData::classic(),
+            data: GameData::standard(),
             db: Mutex::new(Store::open(path)?),
             outbox: Mutex::new(Vec::new()),
         })
@@ -115,21 +120,29 @@ impl Server {
         if request.crews.iter().any(|c| c.name.trim().is_empty()) {
             return Err(Error::BadRequest("every crew needs a name".into()));
         }
-        let turn_days = request.turn_days.unwrap_or(10);
-        if !(1..=100).contains(&turn_days) {
-            return Err(Error::BadRequest("a turn runs 1 to 100 days".into()));
+        let difficulty = match request
+            .difficulty
+            .as_deref()
+            .map(str::to_lowercase)
+            .as_deref()
+        {
+            None | Some("normal") => Difficulty::Normal,
+            Some("easy") => Difficulty::Easy,
+            Some("hard") => Difficulty::Hard,
+            Some(other) => {
+                return Err(Error::BadRequest(format!("unknown difficulty {other}")));
+            }
+        };
+        let last_turn = request.last_turn.unwrap_or(DEFAULT_LAST_TURN);
+        if !(5..=MAX_LAST_TURN).contains(&last_turn) {
+            return Err(Error::BadRequest(format!(
+                "the last turn must be 5 to {MAX_LAST_TURN}"
+            )));
         }
         let deadline_hours = request.deadline_hours.unwrap_or(24);
-        let end_day = match request.end_day {
-            None => Some(DEFAULT_END_DAY),
-            Some(0) => None,
-            Some(day) if day < turn_days => {
-                return Err(Error::BadRequest(
-                    "the last day must be at least one turn away".into(),
-                ));
-            }
-            Some(day) => Some(day),
-        };
+        if deadline_hours > 24 * 30 {
+            return Err(Error::BadRequest("the deadline is too far off".into()));
+        }
         let seed = request.seed.unwrap_or_else(rand::random);
         let notify_url = match request.notify_url.as_deref().map(str::trim) {
             None | Some("") => None,
@@ -158,18 +171,32 @@ impl Server {
             .collect();
         let named: Vec<(PlayerId, &str)> =
             crews.iter().map(|c| (c.player, c.name.as_str())).collect();
-        let mut world = World::new_game(&self.data, seed, &named);
-        world.end_day = end_day;
+        let world = World::new_game(
+            &self.data,
+            seed,
+            &named,
+            Settings {
+                difficulty,
+                last_turn,
+            },
+        );
+        // A deadline of zero means a turn runs the moment everyone has handed
+        // in; keep the stored deadline far off so the clock never forces it.
+        let deadline = if deadline_hours == 0 {
+            now + i64::from(DEFAULT_LAST_TURN) * 365 * 24 * 3600
+        } else {
+            now + i64::from(deadline_hours) * 3600
+        };
         let game = GameRow {
             id: id.clone(),
             name: name.to_string(),
             seed,
-            turn_days,
+            difficulty: difficulty.name().to_string(),
+            last_turn,
             deadline_hours,
             created_at: now,
-            turn: 0,
             world,
-            deadline: now + i64::from(deadline_hours) * 3600,
+            deadline,
             notify_url,
         };
         self.store().insert_game(&game, &crews)?;
@@ -182,7 +209,8 @@ impl Server {
     pub fn crew_status(&self, token: &str, now: i64) -> Result<CrewStatus, Error> {
         let store = self.store();
         let Crew { row, game } = Self::crew(&store, token)?;
-        let orders = store.orders(&game.id, game.turn)?;
+        let turn = game.turn();
+        let orders = store.orders(&game.id, turn)?;
         let crews = store
             .crews(&game.id)?
             .into_iter()
@@ -193,11 +221,11 @@ impl Server {
                 bot: c.bot,
             })
             .collect();
-        let last_turn = match game.turn.checked_sub(1) {
-            Some(previous) => store
+        let last_turn = match turn.checked_sub(1) {
+            Some(previous) if previous >= 1 => store
                 .turn(&game.id, previous)?
                 .map(|t| crew_turn(&t, row.player)),
-            None => None,
+            _ => None,
         };
         let view = crew_view(&self.data, &game.world, row.player)
             .ok_or_else(|| Error::Internal("the crew is not in its game".into()))?;
@@ -205,8 +233,7 @@ impl Server {
             game: info(&game),
             player: row.player,
             name: row.name,
-            turn: game.turn,
-            day: game.world.day,
+            turn,
             now,
             deadline: game.deadline,
             submitted: orders.contains_key(&row.player),
@@ -232,25 +259,17 @@ impl Server {
             return Err(Error::BadRequest("the game is over".into()));
         }
 
-        // Try the orders on a copy so the crew hears at once what the rules
-        // would refuse. The real turn may still differ: rivals go too.
-        let mut preview = game.world.clone();
-        let report = resolve_turn(
-            &self.data,
-            &mut preview,
-            &Orders::from([(row.player, orders.clone())]),
-            0,
-        );
-        let rejected = report
-            .rejected
-            .iter()
+        // Tell the crew at once what the rules would refuse as things stand.
+        // The real turn may still differ: rivals go too.
+        let rejected = check_orders(&self.data, &game.world, row.player, &orders)
+            .into_iter()
             .map(|r| RejectedOrder {
                 index: r.index,
                 error: r.error.to_string(),
             })
             .collect();
 
-        store.put_orders(&game.id, game.turn, row.player, &orders, now)?;
+        store.put_orders(&game.id, game.turn(), row.player, &orders, now)?;
         let resolved = self.resolve_if_ready(&mut store, &game.id, now, false)?;
         Ok(OrdersReceipt { rejected, resolved })
     }
@@ -258,7 +277,7 @@ impl Server {
     pub fn withdraw_orders(&self, token: &str) -> Result<(), Error> {
         let store = self.store();
         let Crew { row, game } = Self::crew(&store, token)?;
-        store.delete_orders(&game.id, game.turn, row.player)?;
+        store.delete_orders(&game.id, game.turn(), row.player)?;
         Ok(())
     }
 
@@ -304,8 +323,9 @@ impl Server {
         if game.world.ended.is_some() {
             return Ok(false);
         }
+        let turn = game.turn();
         let crews = store.crews(game_id)?;
-        let handed_in = store.orders(game_id, game.turn)?;
+        let handed_in = store.orders(game_id, turn)?;
         let everyone = crews
             .iter()
             .all(|c| c.bot || handed_in.contains_key(&c.player));
@@ -316,25 +336,29 @@ impl Server {
         let mut orders: Orders = BTreeMap::new();
         for crew in &crews {
             let given = if crew.bot {
-                bot::orders(&self.data, &game.world, crew.player)
+                bot_orders(&self.data, &game.world, crew.player)
             } else {
                 handed_in.get(&crew.player).cloned().unwrap_or_default()
             };
             orders.insert(crew.player, given);
         }
         let mut world = game.world.clone();
-        let report = resolve_turn(&self.data, &mut world, &orders, game.turn_days);
+        let report = resolve_turn(&self.data, &mut world, &orders);
         let record = TurnRow {
-            turn: game.turn,
+            turn,
             world_before: game.world,
             orders,
             report,
             resolved_at: now,
         };
-        let deadline = now + i64::from(game.deadline_hours) * 3600;
+        let deadline = if game.deadline_hours == 0 {
+            now + i64::from(MAX_LAST_TURN) * 365 * 24 * 3600
+        } else {
+            now + i64::from(game.deadline_hours) * 3600
+        };
         store.finish_turn(game_id, &record, &world, deadline)?;
         if let Some(url) = &game.notify_url {
-            let text = crate::notify::turn_text(&game.name, game.turn, &world, &crews);
+            let text = crate::notify::turn_text(&game.name, turn, &world, &crews);
             self.outbox
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -351,9 +375,9 @@ fn info(game: &GameRow) -> GameInfo {
     GameInfo {
         id: game.id.clone(),
         name: game.name.clone(),
-        turn_days: game.turn_days,
+        difficulty: game.difficulty.clone(),
+        last_turn: game.last_turn,
         deadline_hours: game.deadline_hours,
-        end_day: game.world.end_day,
         notifies: game.notify_url.is_some(),
     }
 }
