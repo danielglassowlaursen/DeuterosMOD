@@ -873,6 +873,10 @@ fn classify(event: &Event) -> (char, Color) {
 /// Watches for a freshly resolved turn and opens the report over the map,
 /// unless the player has turned reports off.
 fn watch_turn(session: Res<Session>, mut hud: ResMut<Hud>) {
+    // Let the opening story finish before a report takes the screen.
+    if hud.show_story {
+        return;
+    }
     let Some(status) = session.status.as_ref() else {
         return;
     };
