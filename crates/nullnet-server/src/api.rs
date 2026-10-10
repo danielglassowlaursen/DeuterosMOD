@@ -9,12 +9,14 @@ use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use axum::http::header::{CACHE_CONTROL, HeaderValue};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use nullnet_core::Command;
 use serde_json::json;
 use tower_http::services::ServeDir;
+use tower_http::set_header::SetResponseHeaderLayer;
 
 use nullnet_api::{CreateGame, CrewStatus, CrewTurn, GameCreated, OrdersReceipt, TurnSummary};
 
@@ -44,10 +46,17 @@ pub fn router(server: Arc<Server>, web_dir: Option<PathBuf>) -> Router {
         .with_state(web_dir.clone());
 
     let app = Router::new().nest("/api", api).merge(pages);
-    match web_dir {
+    let app = match web_dir {
         Some(dir) => app.fallback_service(ServeDir::new(dir)),
         None => app.route("/", get(|| async { Redirect::temporary("/console") })),
-    }
+    };
+    // The client's files keep the same names across builds, so tell the
+    // browser to revalidate rather than serve a stale client against a new
+    // server (which then fails to parse the answer).
+    app.layer(SetResponseHeaderLayer::overriding(
+        CACHE_CONTROL,
+        HeaderValue::from_static("no-cache"),
+    ))
 }
 
 async fn join(State(web_dir): State<Option<PathBuf>>) -> Html<String> {
