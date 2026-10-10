@@ -16,7 +16,7 @@ Vores egne og bliver: turstrukturen, serveren og API'et, klienten og UI'et, raid
 4. Kortet: vores eget netværk i stedet for Deuteros' stjernesystemer. Besluttet.
 5. Modstanderne: The Legacy Net og de andre crews. Besluttet.
 6. De første ti minutter: guide og historie til de nye regler. Besluttet.
-7. Bygningen: den nye kerne i Rust, trin for trin, med resten genbrugt. I gang.
+7. Bygningen: den nye kerne i Rust, trin for trin, med resten genbrugt. Besluttet; i gang.
 
 ## 1. Kerneløkken (besluttet)
 
@@ -128,3 +128,14 @@ Sikkerheden stiger indad: værterne nær hjørnerne har 1-2, mellemringen 2-4 og
 *4. The crews.* Reconnecting the old net is work for hacker crews: a handful of handles, a hideout in a corner of the Metro, no permission from anyone. You scan a host to find its weakness, break in, and plant a backdoor; from then on it is yours, and it pays out in credits, compute, bandwidth or data. Every host you hold opens the way to the ones linked to it. Two to four crews work the same net from different corners. For the first five turns they leave each other alone; after that, anything one crew holds, another can take.
 
 *5. Your crew.* Your hideout waits in a corner of the Metro, and your first hackers are ready. Each turn you give them their orders and hand them in; when every crew has, or the deadline passes, the turn runs and the log tells you what happened. The guide at the foot of the map walks you through the first turns and can give the orders for you. Playing again? 'Skip' on any earlier page jumps past the story, and 'Hide guide' keeps the guide away for good. When the last turn runs, data is what counts. Collect it, and stay quiet enough that the Legacy Net does not come for you.
+
+## 7. Bygningen (besluttet)
+
+- **Den nye kerne erstatter den gamle direkte.** Det nuværende spil holder op med at virke, mens der bygges.
+- **Først et spilbart øvelsesspil:** kerne, bot, server og en enkel klient, så reglerne kan prøves tidligt. Finpudsning og balance bagefter.
+- **Rækkefølgen:**
+  1. Ny kerne i `nullnet-core`: kortskabelonen med nye værdier pr. spil, crews, hackere, marked, værktøj og opgraderinger, operationerne, turafviklingen, The Legacy Net, point, sværhedsgrad og fog of war. Ture, id'er og tilfældighedsgeneratoren bliver.
+  2. Bot og simulering af hele spil til balancen.
+  3. Server og konsol: de nye spiltyper, sværhedsgrad og øvelsesspil med ture, der kører med det samme.
+  4. Klienten: kortet som en graf af noder, vinduer til hackere, marked, værktøj og værter med chancen, guiden med *Do it*, de nye sider i historien.
+  5. Oprydning, når den nye kerne kan spilles: `Godot/`, `SourceData/`, `SourceMaterials/`, `tools/extract_coredata.py`, `classic.json` og de gamle regelmoduler fjernes, og designdokumentet skrives om. Git-historikken har dem stadig.
