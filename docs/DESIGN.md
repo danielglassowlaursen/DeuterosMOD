@@ -66,7 +66,9 @@ En fast skabelon med 41 værter i ni distrikter, så man lærer kortet at kende,
 - **Campus**, **Ministry** og **Helix** (data) i den inderste ring sammen med The Legacy Nets højborge.
 - **Lattice** i midten: AI-regnenettet, hvor The Legacy Net blev født. Højeste sikkerhed, mest data.
 
-Hvert crew starter i sit eget hjørne. Man kan kun bryde ind i værter, der er forbundet til en vært, man ejer (skjulestedet medregnet), så man arbejder sig indad vært for vært. Kortet vises som en graf af noder og forbindelser.
+Hvert crew starter i sit eget hjørne. Man kan kun bryde ind i værter, der er forbundet til en vært, man ejer (skjulestedet medregnet), så man arbejder sig indad vært for vært. Kortet vises som en graf af noder og forbindelser, som man kan zoome ind på og trække rundt i.
+
+**Sub-net:** 2-4 tilfældige værter pr. spil (aldrig skjulestederne eller værterne lige omkring dem) gemmer et forseglet sub-net, som en scanning afslører. Låsen er to bestemte specialer: to hackere, der har netop de to specialer, åbner det sammen fra en vært, crewet ejer. Der er ingen terning — det rigtige crew er nøglen — men det koster 2 båndbredde og giver 2 trace. Et åbent sub-net giver 6 ekstra credits hver tur til den, der ejer værten, også hvis værten skifter ejer.
 
 ## The Legacy Net
 

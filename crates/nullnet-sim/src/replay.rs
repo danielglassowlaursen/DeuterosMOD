@@ -160,6 +160,7 @@ pub fn describe(world: &World, event: &Event) -> String {
             }
         }
         LegacySpread { .. } => "the Legacy Net spread to a free host".to_string(),
+        SubnetOpened { player, .. } => format!("{} opened a sealed sub-net", crew(*player)),
         GameEnded { winner, .. } => match winner {
             Some(p) => format!("game over: {} won", crew(*p)),
             None => "game over: a tie".to_string(),

@@ -78,6 +78,35 @@ pub fn orders(data: &GameData, world: &World, player: PlayerId) -> Vec<Command> 
         .map(|h| h.id)
         .collect();
 
+    // 0. Open the sealed sub-net behind any host we hold, when two ready
+    //    hackers fit its lock: steady credits for the rest of the game.
+    for host in world.held_by(player).collect::<Vec<_>>() {
+        let Some(subnet) = world.host(host).subnet.filter(|s| !s.open) else {
+            continue;
+        };
+        if bandwidth < Operation::OpenSubnet.bandwidth() {
+            break;
+        }
+        let free = |want: Weakness, skip: Option<HackerId>| {
+            ready.iter().copied().find(|&id| {
+                !busy.contains(&id)
+                    && Some(id) != skip
+                    && crew.hacker(id).is_some_and(|h| h.specialty == want)
+            })
+        };
+        if let Some(first) = free(subnet.lock[0], None)
+            && let Some(second) = free(subnet.lock[1], Some(first))
+        {
+            out.push(Command::OpenSubnet {
+                host,
+                hackers: [first, second],
+            });
+            busy.insert(first);
+            busy.insert(second);
+            bandwidth -= Operation::OpenSubnet.bandwidth();
+        }
+    }
+
     // 1. Backdoor every host we have access to but do not own: that is how
     //    we take hosts, and access lasts only one turn.
     for host in world.held_access(player) {
@@ -283,7 +312,7 @@ mod tests {
         assert!(used <= world.bandwidth(&data, me));
         let mut hackers = BTreeSet::new();
         for command in &turn {
-            if let Some((_, hacker, _)) = command.operation() {
+            for hacker in command.hackers() {
                 assert!(hackers.insert(hacker), "a hacker acted twice");
             }
         }

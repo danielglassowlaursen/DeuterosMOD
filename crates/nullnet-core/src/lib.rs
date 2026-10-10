@@ -35,5 +35,6 @@ pub use turn::{
 };
 pub use view::{CrewSummary, CrewView, HostView, Intel, crew_view};
 pub use world::{
-    Access, Controller, Crew, Difficulty, Hacker, HostState, Offer, Settings, Upgrades, World,
+    Access, Controller, Crew, Difficulty, Hacker, HostState, Offer, Settings, Subnet, Upgrades,
+    World,
 };

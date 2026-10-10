@@ -136,6 +136,16 @@ impl Role {
         }
     }
 
+    /// Whether a sealed sub-net can sit behind a host of this role: not on a
+    /// hideout or the hosts right next to one (no crew may start beside a
+    /// sub-net), and not deep in the Lattice.
+    pub fn can_hold_subnet(self) -> bool {
+        matches!(
+            self,
+            Role::CornerBack | Role::SideEnd | Role::SideMiddle | Role::Inner | Role::Stronghold
+        )
+    }
+
     pub fn ice(self) -> (u8, u8) {
         match self {
             Role::Hideout | Role::CornerEdge | Role::CornerSide | Role::CornerBack => (0, 1),
@@ -285,6 +295,13 @@ pub mod rules {
     pub const MAX_LEVEL: u8 = 5;
     /// Experience needed for levels 2, 3, 4 and 5.
     pub const LEVEL_XP: [u32; 4] = [2, 5, 9, 14];
+
+    /// Sealed sub-nets: how many a game has, what opening one takes and what
+    /// an open one pays its host's holder each turn.
+    pub const SUBNETS: (u32, u32) = (2, 4);
+    pub const SUBNET_BANDWIDTH: u32 = 2;
+    pub const SUBNET_CREDITS: u32 = 6;
+    pub const TRACE_SUBNET: u32 = 2;
 
     /// Points at the end of the game.
     pub const POINTS_PER_HOST: u32 = 5;

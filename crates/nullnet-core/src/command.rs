@@ -39,6 +39,12 @@ pub enum Command {
         hacker: HackerId,
         host: HostId,
     },
+    /// Open the sealed sub-net behind one of your hosts: two hackers whose
+    /// specialties match its lock work together for the turn.
+    OpenSubnet {
+        host: HostId,
+        hackers: [HackerId; 2],
+    },
     /// Hire a hacker from your market.
     Hire {
         hacker: HackerId,
@@ -64,6 +70,7 @@ pub enum Operation {
     Backdoor,
     StealData,
     Defend,
+    OpenSubnet,
 }
 
 impl Operation {
@@ -74,6 +81,7 @@ impl Operation {
             Operation::Backdoor => "Plant backdoor",
             Operation::StealData => "Steal data",
             Operation::Defend => "Defend",
+            Operation::OpenSubnet => "Open sub-net",
         }
     }
 
@@ -85,12 +93,14 @@ impl Operation {
             Operation::Backdoor => BACKDOOR_BANDWIDTH,
             Operation::StealData => STEAL_BANDWIDTH,
             Operation::Defend => DEFEND_BANDWIDTH,
+            Operation::OpenSubnet => SUBNET_BANDWIDTH,
         }
     }
 }
 
 impl Command {
-    /// The operation, hacker and host, if this is an operation.
+    /// The operation, its (first) hacker and host, if this is an operation.
+    /// Opening a sub-net takes two hackers; [`Command::hackers`] lists both.
     pub fn operation(&self) -> Option<(Operation, HackerId, HostId)> {
         match *self {
             Command::Scan { hacker, host } => Some((Operation::Scan, hacker, host)),
@@ -98,7 +108,19 @@ impl Command {
             Command::Backdoor { hacker, host } => Some((Operation::Backdoor, hacker, host)),
             Command::StealData { hacker, host } => Some((Operation::StealData, hacker, host)),
             Command::Defend { hacker, host } => Some((Operation::Defend, hacker, host)),
+            Command::OpenSubnet { host, hackers } => {
+                Some((Operation::OpenSubnet, hackers[0], host))
+            }
             _ => None,
+        }
+    }
+
+    /// Every hacker the command ties up this turn.
+    pub fn hackers(&self) -> Vec<HackerId> {
+        match *self {
+            Command::OpenSubnet { hackers, .. } => hackers.to_vec(),
+            Command::Dismiss { hacker } => vec![hacker],
+            _ => self.operation().map(|(_, h, _)| h).into_iter().collect(),
         }
     }
 
@@ -166,6 +188,14 @@ pub enum CommandError {
     LastHacker,
     AlreadyOwned,
     MaxLevel,
+    /// The host has no sealed sub-net.
+    NoSubnet,
+    /// Its sub-net is already open.
+    SubnetOpen,
+    /// The two hackers' specialties do not fit the sub-net's lock.
+    WrongCrew {
+        need: [Weakness; 2],
+    },
 }
 
 impl fmt::Display for CommandError {
@@ -209,6 +239,14 @@ impl fmt::Display for CommandError {
             CommandError::LastHacker => write!(f, "you cannot let your last hacker go"),
             CommandError::AlreadyOwned => write!(f, "you already have that kit"),
             CommandError::MaxLevel => write!(f, "already at the highest level"),
+            CommandError::NoSubnet => write!(f, "that host has no sealed sub-net"),
+            CommandError::SubnetOpen => write!(f, "that sub-net is already open"),
+            CommandError::WrongCrew { need } => write!(
+                f,
+                "the sub-net opens only for a {} and a {} hacker together",
+                need[0].name(),
+                need[1].name()
+            ),
         }
     }
 }

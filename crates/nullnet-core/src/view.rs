@@ -8,7 +8,7 @@ use crate::data::{GameData, Weakness, Yields, rules};
 use crate::ids::{HackerId, HostId, PlayerId};
 use crate::legacy;
 use crate::score::{Score, scores};
-use crate::world::{Controller, Crew, Difficulty, Settings, World};
+use crate::world::{Controller, Crew, Difficulty, Settings, Subnet, World};
 
 /// A host as a crew sees it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +33,9 @@ pub struct Intel {
     pub ice: u8,
     /// The defence a break-in faces, firewall included.
     pub defence: u32,
+    /// A sealed sub-net behind the host, which a scan reveals.
+    #[serde(default)]
+    pub subnet: Option<Subnet>,
 }
 
 /// What a crew knows about a rival.
@@ -92,6 +95,7 @@ pub fn crew_view(data: &GameData, world: &World, player: PlayerId) -> Option<Cre
                 weakness: state.weakness,
                 ice: state.ice,
                 defence: world.defence(host),
+                subnet: state.subnet,
             });
             HostView {
                 host,

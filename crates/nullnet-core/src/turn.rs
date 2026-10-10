@@ -127,6 +127,12 @@ pub enum Event {
         turn: u32,
         host: HostId,
     },
+    /// A crew opened the sealed sub-net behind one of its hosts.
+    SubnetOpened {
+        turn: u32,
+        player: PlayerId,
+        host: HostId,
+    },
     GameEnded {
         turn: u32,
         winner: Option<PlayerId>,
@@ -152,7 +158,8 @@ impl Event {
             | Event::HackerHired { player, .. }
             | Event::LevelUp { player, .. }
             | Event::Bought { player, .. }
-            | Event::Swept { player, .. } => Some(player),
+            | Event::Swept { player, .. }
+            | Event::SubnetOpened { player, .. } => Some(player),
             Event::LegacySpread { .. } | Event::GameEnded { .. } => None,
         }
     }
@@ -344,6 +351,8 @@ struct AcceptedOp {
     host: HostId,
     zero_day: bool,
     boost: u32,
+    /// The second hacker, for an operation that takes two.
+    partner: Option<HackerId>,
 }
 
 /// Tracks one crew while its commands are applied, spending credits, compute
@@ -415,6 +424,7 @@ impl CrewTurn {
                     host,
                     zero_day: false,
                     boost: 0,
+                    partner: None,
                 }))
             }
             Command::BreakIn {
@@ -456,6 +466,7 @@ impl CrewTurn {
                     host,
                     zero_day,
                     boost,
+                    partner: None,
                 }))
             }
             Command::Backdoor { hacker, host } => {
@@ -473,6 +484,7 @@ impl CrewTurn {
                     host,
                     zero_day: false,
                     boost: 0,
+                    partner: None,
                 }))
             }
             Command::StealData { hacker, host } => {
@@ -490,6 +502,7 @@ impl CrewTurn {
                     host,
                     zero_day: false,
                     boost: 0,
+                    partner: None,
                 }))
             }
             Command::Defend { hacker, host } => {
@@ -507,6 +520,42 @@ impl CrewTurn {
                     host,
                     zero_day: false,
                     boost: 0,
+                    partner: None,
+                }))
+            }
+            Command::OpenSubnet { host, hackers } => {
+                check_host(data, host)?;
+                if world.controller(host) != Some(Controller::Crew(player)) {
+                    return Err(CommandError::NotYourHost);
+                }
+                let subnet = world.host(host).subnet.ok_or(CommandError::NoSubnet)?;
+                if subnet.open {
+                    return Err(CommandError::SubnetOpen);
+                }
+                for hacker in hackers {
+                    self.ready(world, hacker)?;
+                }
+                let [first, second] = hackers;
+                if first == second || self.busy.contains(&first) || self.busy.contains(&second) {
+                    return Err(CommandError::HackerBusy);
+                }
+                let crew = world.crew(player).ok_or(CommandError::NotInGame)?;
+                let specialty = |id| crew.hacker(id).map(|h| h.specialty);
+                match (specialty(first), specialty(second)) {
+                    (Some(a), Some(b)) if subnet.fits(a, b) => {}
+                    _ => return Err(CommandError::WrongCrew { need: subnet.lock }),
+                }
+                self.spend_bandwidth(Operation::OpenSubnet.bandwidth())?;
+                self.use_hacker(first)?;
+                self.use_hacker(second)?;
+                Ok(Some(AcceptedOp {
+                    player,
+                    operation: Operation::OpenSubnet,
+                    hacker: first,
+                    host,
+                    zero_day: false,
+                    boost: 0,
+                    partner: Some(second),
                 }))
             }
             Command::Hire { hacker } => {
@@ -697,6 +746,16 @@ fn run_operations(
         }
     }
 
+    // Open sub-nets. They run before any attack, so a host is still held by
+    // the crew that was checked to hold it.
+    for player in &order {
+        for op in ops.get(player).into_iter().flatten() {
+            if op.operation == Operation::OpenSubnet {
+                open_subnet(world, report, op);
+            }
+        }
+    }
+
     // Break-in, backdoor and steal, crew by crew.
     for player in &order {
         let crew_ops = match ops.remove(player) {
@@ -705,7 +764,7 @@ fn run_operations(
         };
         for op in crew_ops {
             match op.operation {
-                Operation::Scan | Operation::Defend => {}
+                Operation::Scan | Operation::Defend | Operation::OpenSubnet => {}
                 Operation::BreakIn => {
                     break_in(world, report, &op, defended.contains(&op.host));
                 }
@@ -848,6 +907,23 @@ fn steal(data: &GameData, world: &mut World, report: &mut TurnReport, op: &Accep
         });
     }
     gain_xp(world, report, player, op.hacker, 1);
+}
+
+fn open_subnet(world: &mut World, report: &mut TurnReport, op: &AcceptedOp) {
+    let player = op.player;
+    let Some(subnet) = world.hosts[op.host.index()].subnet.as_mut() else {
+        return;
+    };
+    subnet.open = true;
+    add_trace(world, player, rules::TRACE_SUBNET);
+    for hacker in std::iter::once(op.hacker).chain(op.partner) {
+        gain_xp(world, report, player, hacker, 1);
+    }
+    report.events.push(Event::SubnetOpened {
+        turn: world.turn,
+        player,
+        host: op.host,
+    });
 }
 
 fn add_trace(world: &mut World, player: PlayerId, amount: u32) {
@@ -1043,6 +1119,62 @@ mod tests {
             }
         }
         assert!(took, "never took the host");
+    }
+
+    #[test]
+    fn the_right_crew_opens_a_subnet_and_it_pays() {
+        use crate::data::Weakness;
+        use crate::world::Subnet;
+
+        let (data, mut world) = game();
+        let me = PlayerId(0);
+        // A held host with a sealed sub-net, and two hackers.
+        let hideout = world.crew(me).unwrap().hideout;
+        let host = data.neighbours(hideout)[0];
+        let lock = [Weakness::Database, Weakness::People];
+        world.hosts[host.index()].controller = Some(Controller::Crew(me));
+        world.hosts[host.index()].subnet = Some(Subnet { lock, open: false });
+        let (a, b) = {
+            let crew = world.crews.get_mut(&me).unwrap();
+            crew.hackers[0].specialty = Weakness::People;
+            crew.hackers[1].specialty = Weakness::Network;
+            (crew.hackers[0].id, crew.hackers[1].id)
+        };
+        let open = vec![Command::OpenSubnet {
+            host,
+            hackers: [a, b],
+        }];
+
+        // The wrong crew is turned away.
+        let wrong = check_orders(&data, &world, me, &open);
+        assert_eq!(wrong[0].error, CommandError::WrongCrew { need: lock });
+
+        // The right crew opens it, and from then on the host pays more.
+        world.crews.get_mut(&me).unwrap().hackers[1].specialty = Weakness::Database;
+        let credits_before = world.income(&data, me).credits;
+        let trace_before = world.crew(me).unwrap().trace;
+        let report = resolve_turn(&data, &mut world, &only(me, open.clone()));
+        assert!(report.rejected.is_empty(), "{:?}", report.rejected);
+        assert!(world.host(host).subnet.unwrap().open);
+        assert!(
+            report
+                .events
+                .iter()
+                .any(|e| matches!(e, Event::SubnetOpened { .. }))
+        );
+        assert_eq!(
+            world.income(&data, me).credits,
+            credits_before + rules::SUBNET_CREDITS
+        );
+        // It is noisy: trace up by two, then down by one at the end of the turn.
+        assert_eq!(
+            world.crew(me).unwrap().trace,
+            trace_before + rules::TRACE_SUBNET - 1
+        );
+
+        // It cannot be opened twice.
+        let again = check_orders(&data, &world, me, &open);
+        assert_eq!(again[0].error, CommandError::SubnetOpen);
     }
 
     #[test]

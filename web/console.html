@@ -354,14 +354,15 @@
     $('market').innerHTML = '<tr><th>#</th><th>Handle</th><th>Specialty</th><th class="num">Lv</th><th class="num">Price</th></tr>' +
       (me.market.length ? me.market.map(o => '<tr><td>' + o.hacker.id + '</td><td>' + esc(o.hacker.handle) + '</td><td>' + o.hacker.specialty + '</td><td class="num">' + o.hacker.level + '</td><td class="num">' + o.price + '</td></tr>').join('') : '<tr><td colspan="5" class="muted">empty</td></tr>');
 
-    $('hosts').innerHTML = '<tr><th>#</th><th>Host</th><th>District</th><th>Held by</th><th>Sec</th><th>Weakness</th><th>ICE</th><th class="num">Def</th><th>You</th></tr>' +
+    $('hosts').innerHTML = '<tr><th>#</th><th>Host</th><th>District</th><th>Held by</th><th>Sec</th><th>Weakness</th><th>ICE</th><th class="num">Def</th><th>Sub-net</th><th>You</th></tr>' +
       v.hosts.map(h => {
         const reach = h.can_break_in || h.can_scan || h.access;
         const i = h.intel;
         const you = h.access ? 'access' : h.can_break_in ? 'can break in' : h.can_scan ? 'can scan' : '';
         return '<tr class="' + (reach ? 'reach' : '') + '"><td>' + h.host + '</td><td>' + esc(hostName(h.host)) + '</td><td>' + (MAP.hosts[h.host] ? MAP.hosts[h.host].district : '') + '</td><td>' + esc(ctrlName(h.controller)) + '</td>' +
-          (i ? '<td>' + i.security + '</td><td>' + i.weakness + '</td><td>' + i.ice + '</td><td class="num">' + i.defence + '</td>'
-             : '<td colspan="4" class="muted">unknown</td>') +
+          (i ? '<td>' + i.security + '</td><td>' + i.weakness + '</td><td>' + i.ice + '</td><td class="num">' + i.defence + '</td>' +
+               '<td>' + (i.subnet ? (i.subnet.open ? '<span class="ok">open</span>' : 'sealed: ' + i.subnet.lock.join(' + ')) : '') + '</td>'
+             : '<td colspan="5" class="muted">unknown</td>') +
           '<td>' + you + '</td></tr>';
       }).join('');
 
@@ -439,6 +440,7 @@
       case 'Bought': return 'Bought ' + a.what;
       case 'Swept': return 'The Legacy Net swept ' + crew(a.player) + (a.lost ? ' and took ' + host(a.host) : ' but ' + host(a.host) + ' held');
       case 'LegacySpread': return 'The Legacy Net spread to ' + host(a.host);
+      case 'SubnetOpened': return 'Opened the sub-net on ' + host(a.host);
       case 'GameEnded': return a.winner == null ? 'Game over: a tie' : 'Game over: ' + crew(a.winner) + ' wins';
       default: return k;
     }

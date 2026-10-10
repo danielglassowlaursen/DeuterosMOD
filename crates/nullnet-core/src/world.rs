@@ -92,6 +92,23 @@ pub struct Access {
     pub until: u32,
 }
 
+/// A sealed sub-net behind a host. Two hackers whose specialties match the
+/// lock open it together; from then on it pays extra credits each turn to
+/// whoever holds the host.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Subnet {
+    /// The two specialties that open it, in order.
+    pub lock: [Weakness; 2],
+    pub open: bool,
+}
+
+impl Subnet {
+    /// Whether two hackers' specialties fit the lock, in either order.
+    pub fn fits(&self, a: Weakness, b: Weakness) -> bool {
+        (a, b) == (self.lock[0], self.lock[1]) || (a, b) == (self.lock[1], self.lock[0])
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostState {
     pub controller: Option<Controller>,
@@ -101,6 +118,10 @@ pub struct HostState {
     pub access: Vec<Access>,
     /// Crews that know this host's security, weakness and ICE.
     pub scanned: BTreeSet<PlayerId>,
+    /// A sealed sub-net, if the host has one. Missing in games saved before
+    /// sub-nets existed, which then simply have none.
+    #[serde(default)]
+    pub subnet: Option<Subnet>,
 }
 
 impl HostState {
@@ -245,7 +266,7 @@ impl World {
             let ice = rng.range_inclusive(lo.into(), hi.into()) as u8;
             rolled.insert(role, (security.clamp(1, 5) as u8, ice));
         }
-        let hosts = data
+        let mut hosts: Vec<HostState> = data
             .hosts
             .iter()
             .map(|def| {
@@ -257,9 +278,26 @@ impl World {
                     ice: ice + u8::from(def.legacy),
                     access: Vec::new(),
                     scanned: BTreeSet::new(),
+                    subnet: None,
                 }
             })
             .collect();
+
+        // A few sealed sub-nets in new places every game, each locked to a
+        // pair of different specialties.
+        let mut candidates: Vec<usize> = (0..data.hosts.len())
+            .filter(|&i| data.hosts[i].role.can_hold_subnet())
+            .collect();
+        let (fewest, most) = rules::SUBNETS;
+        let count = rng.range_inclusive(fewest, most) as usize;
+        for _ in 0..count.min(candidates.len()) {
+            let host = candidates.swap_remove(rng.below(candidates.len() as u32) as usize);
+            let first = rng.below(4) as usize;
+            let second = (first + 1 + rng.below(3) as usize) % 4;
+            let mut lock = [Weakness::ALL[first], Weakness::ALL[second]];
+            lock.sort();
+            hosts[host].subnet = Some(Subnet { lock, open: false });
+        }
         let mut world = World {
             seed,
             rng,
@@ -354,6 +392,9 @@ impl World {
         let mut total = Yields::default();
         for host in self.held_by(player) {
             total.add(data.host(host).yields);
+            if self.host(host).subnet.is_some_and(|s| s.open) {
+                total.credits += rules::SUBNET_CREDITS;
+            }
         }
         if let Some(crew) = self.crew(player) {
             total.compute += 2 * u32::from(crew.upgrades.rigs);
@@ -537,6 +578,40 @@ mod tests {
         // Empty corners are free hosts.
         assert_eq!(world.controller(data.hideouts[1]), None);
         assert!(!world.is_hideout(data.hideouts[1]));
+    }
+
+    #[test]
+    fn a_few_sealed_subnets_away_from_the_hideouts() {
+        let data = GameData::standard();
+        for seed in 0..20 {
+            let world = World::new_game(&data, seed, &[(PlayerId(0), "A")], Settings::default());
+            let subnets: Vec<(HostId, Subnet)> = data
+                .host_ids()
+                .filter_map(|h| world.host(h).subnet.map(|s| (h, s)))
+                .collect();
+            let (fewest, most) = rules::SUBNETS;
+            assert!(
+                (fewest as usize..=most as usize).contains(&subnets.len()),
+                "seed {seed}: {} sub-nets",
+                subnets.len()
+            );
+            for (host, subnet) in subnets {
+                assert!(data.host(host).role.can_hold_subnet());
+                assert_ne!(subnet.lock[0], subnet.lock[1]);
+                assert!(!subnet.open);
+            }
+        }
+    }
+
+    #[test]
+    fn games_saved_before_subnets_still_load() {
+        let (_, world) = game(2);
+        let mut json = serde_json::to_value(&world).unwrap();
+        for host in json["hosts"].as_array_mut().unwrap() {
+            host.as_object_mut().unwrap().remove("subnet");
+        }
+        let old: World = serde_json::from_value(json).unwrap();
+        assert!(old.hosts.iter().all(|h| h.subnet.is_none()));
     }
 
     #[test]
