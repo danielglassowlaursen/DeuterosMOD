@@ -2,8 +2,8 @@
 //! rules are the core's; this is the clock, the mailbox and the archive
 //! around them.
 
-use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use nullnet_api::{
@@ -11,9 +11,11 @@ use nullnet_api::{
     RejectedOrder, TurnSummary,
 };
 use nullnet_core::{
-    Command, Difficulty, GameData, Orders, PlayerId, Settings, World, bot_orders, check_orders,
-    crew_view, resolve_turn,
+    Command, Difficulty, GameData, MapSpec, Orders, PlayerId, Settings, World, bot_orders,
+    check_orders, crew_view, resolve_turn,
 };
+
+use nullnet_core::mapgen::{MAX_HOSTS, MIN_HOSTS};
 
 use crate::db::{CrewRow, GameRow, Store, TurnRow};
 use crate::notify::Notice;
@@ -32,7 +34,10 @@ pub fn now() -> i64 {
 }
 
 pub struct Server {
-    data: GameData,
+    /// The standard map, and the random maps of games played lately, built
+    /// once from their specs.
+    data: Arc<GameData>,
+    maps: Mutex<HashMap<MapSpec, Arc<GameData>>>,
     db: Mutex<Store>,
     /// Webhook posts waiting to be sent, queued as turns run.
     outbox: Mutex<Vec<Notice>>,
@@ -69,7 +74,8 @@ struct Crew {
 impl Server {
     pub fn open(path: impl AsRef<std::path::Path>) -> Result<Server, Error> {
         Ok(Server {
-            data: GameData::standard(),
+            data: Arc::new(GameData::standard()),
+            maps: Mutex::new(HashMap::new()),
             db: Mutex::new(Store::open(path)?),
             outbox: Mutex::new(Vec::new()),
         })
@@ -84,8 +90,36 @@ impl Server {
         std::mem::take(&mut *outbox)
     }
 
+    /// The standard map.
     pub fn data(&self) -> &GameData {
         &self.data
+    }
+
+    /// The map a game is played on.
+    pub fn map(&self, spec: MapSpec) -> Arc<GameData> {
+        if spec == MapSpec::Standard {
+            return self.data.clone();
+        }
+        let mut maps = self
+            .maps
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Building a map takes a moment; keep the ones in play, within reason.
+        if maps.len() >= 64 && !maps.contains_key(&spec) {
+            maps.clear();
+        }
+        maps.entry(spec)
+            .or_insert_with(|| Arc::new(spec.data()))
+            .clone()
+    }
+
+    /// The map of the game a crew plays in.
+    pub fn crew_map(&self, token: &str) -> Result<Arc<GameData>, Error> {
+        let spec = {
+            let store = self.store();
+            Self::crew(&store, token)?.game.world.settings.map
+        };
+        Ok(self.map(spec))
     }
 
     fn store(&self) -> std::sync::MutexGuard<'_, Store> {
@@ -144,6 +178,19 @@ impl Server {
             return Err(Error::BadRequest("the deadline is too far off".into()));
         }
         let seed = request.seed.unwrap_or_else(rand::random);
+        let map = match request.map.as_deref().map(str::to_lowercase).as_deref() {
+            None | Some("standard") => MapSpec::Standard,
+            Some("random") => {
+                let hosts = request.hosts.unwrap_or(41);
+                if !(MIN_HOSTS..=MAX_HOSTS).contains(&hosts) {
+                    return Err(Error::BadRequest(format!(
+                        "a random map takes {MIN_HOSTS} to {MAX_HOSTS} hosts"
+                    )));
+                }
+                MapSpec::random(seed, hosts)
+            }
+            Some(other) => return Err(Error::BadRequest(format!("unknown map {other}"))),
+        };
         let notify_url = match request.notify_url.as_deref().map(str::trim) {
             None | Some("") => None,
             Some(url) if url.starts_with("https://") || url.starts_with("http://") => {
@@ -172,12 +219,13 @@ impl Server {
         let named: Vec<(PlayerId, &str)> =
             crews.iter().map(|c| (c.player, c.name.as_str())).collect();
         let world = World::new_game(
-            &self.data,
+            &self.map(map),
             seed,
             &named,
             Settings {
                 difficulty,
                 last_turn,
+                map,
             },
         );
         // A deadline of zero means a turn runs the moment everyone has handed
@@ -227,7 +275,8 @@ impl Server {
                 .map(|t| crew_turn(&t, row.player)),
             _ => None,
         };
-        let view = crew_view(&self.data, &game.world, row.player)
+        let data = self.map(game.world.settings.map);
+        let view = crew_view(&data, &game.world, row.player)
             .ok_or_else(|| Error::Internal("the crew is not in its game".into()))?;
         Ok(CrewStatus {
             game: info(&game),
@@ -261,7 +310,8 @@ impl Server {
 
         // Tell the crew at once what the rules would refuse as things stand.
         // The real turn may still differ: rivals go too.
-        let rejected = check_orders(&self.data, &game.world, row.player, &orders)
+        let data = self.map(game.world.settings.map);
+        let rejected = check_orders(&data, &game.world, row.player, &orders)
             .into_iter()
             .map(|r| RejectedOrder {
                 index: r.index,
@@ -333,17 +383,18 @@ impl Server {
             return Ok(false);
         }
 
+        let data = self.map(game.world.settings.map);
         let mut orders: Orders = BTreeMap::new();
         for crew in &crews {
             let given = if crew.bot {
-                bot_orders(&self.data, &game.world, crew.player)
+                bot_orders(&data, &game.world, crew.player)
             } else {
                 handed_in.get(&crew.player).cloned().unwrap_or_default()
             };
             orders.insert(crew.player, given);
         }
         let mut world = game.world.clone();
-        let report = resolve_turn(&self.data, &mut world, &orders);
+        let report = resolve_turn(&data, &mut world, &orders);
         let record = TurnRow {
             turn,
             world_before: game.world,
@@ -379,6 +430,7 @@ fn info(game: &GameRow) -> GameInfo {
         last_turn: game.last_turn,
         deadline_hours: game.deadline_hours,
         notifies: game.notify_url.is_some(),
+        map: game.world.settings.map,
     }
 }
 

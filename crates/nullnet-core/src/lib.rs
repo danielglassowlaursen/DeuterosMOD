@@ -16,6 +16,7 @@ pub mod command;
 pub mod data;
 pub mod ids;
 pub mod legacy;
+pub mod mapgen;
 pub mod rng;
 pub mod score;
 pub mod turn;
@@ -27,6 +28,7 @@ pub use command::{Command, CommandError, Operation};
 pub use data::{District, GameData, HostDef, Role, Upgrade, Weakness, Yields, rules};
 pub use ids::{EPOCH, HackerId, HostId, PlayerId};
 pub use legacy::spread_front;
+pub use mapgen::MapSpec;
 pub use rng::Rng;
 pub use score::{GameEnd, Score, score, scores};
 pub use turn::{

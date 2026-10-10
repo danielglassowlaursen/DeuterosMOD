@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 
 use nullnet_core::{
-    Command, Controller, Difficulty, GameData, Orders, PlayerId, Settings, World, bot_orders,
-    check_orders, crew_view, resolve_turn,
+    Command, Controller, Difficulty, GameData, MapSpec, Orders, PlayerId, Settings, World,
+    bot_orders, check_orders, crew_view, resolve_turn,
 };
 
 fn crews(n: usize) -> Vec<(PlayerId, &'static str)> {
@@ -17,10 +17,15 @@ fn crews(n: usize) -> Vec<(PlayerId, &'static str)> {
 /// crews keep at least one hacker, nothing the bot issues is rejected, and
 /// the game ends with scores on the last turn.
 fn play(seed: u64, n: usize, difficulty: Difficulty, last_turn: u32) -> World {
-    let data = GameData::standard();
+    play_on(MapSpec::Standard, seed, n, difficulty, last_turn)
+}
+
+fn play_on(map: MapSpec, seed: u64, n: usize, difficulty: Difficulty, last_turn: u32) -> World {
+    let data = map.data();
     let settings = Settings {
         difficulty,
         last_turn,
+        map,
     };
     let mut world = World::new_game(&data, seed, &crews(n), settings);
     let players: Vec<PlayerId> = world.crews.keys().copied().collect();
@@ -99,6 +104,26 @@ fn multi_crew_games_end_cleanly() {
 }
 
 #[test]
+fn games_on_random_maps_end_cleanly() {
+    for (seed, hosts, crews) in [(1, 20, 2), (2, 41, 2), (3, 60, 3), (4, 100, 4), (5, 33, 4)] {
+        let map = MapSpec::random(seed * 31, hosts);
+        let world = play_on(map, seed, crews, Difficulty::Normal, 40);
+        assert_eq!(world.settings.map, map);
+    }
+}
+
+#[test]
+fn the_bot_makes_progress_on_random_maps() {
+    let mut hosts = 0;
+    for seed in 0..8u64 {
+        let map = MapSpec::random(seed + 100, [21, 41, 61, 81][seed as usize % 4]);
+        let world = play_on(map, seed, 1, Difficulty::Easy, 40);
+        hosts += world.ended.as_ref().unwrap().scores[0].hosts;
+    }
+    assert!(hosts / 8 >= 3, "bot averaged only {} hosts", hosts / 8);
+}
+
+#[test]
 fn a_game_is_deterministic() {
     let a = play(42, 2, Difficulty::Normal, 30);
     let b = play(42, 2, Difficulty::Normal, 30);
@@ -131,6 +156,7 @@ fn freeing_a_legacy_host_scores_ten() {
         Settings {
             difficulty: Difficulty::Easy,
             last_turn: 50,
+            ..Settings::default()
         },
     );
     let me = PlayerId(0);

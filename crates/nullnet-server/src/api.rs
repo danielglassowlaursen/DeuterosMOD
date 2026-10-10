@@ -13,7 +13,7 @@ use axum::http::header::{CACHE_CONTROL, HeaderValue};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use nullnet_core::Command;
+use nullnet_core::{Command, GameData};
 use serde_json::json;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -30,6 +30,7 @@ pub fn router(server: Arc<Server>, web_dir: Option<PathBuf>) -> Router {
         .route("/games", post(create_game))
         .route("/map", get(map))
         .route("/crew/{token}", get(crew_status))
+        .route("/crew/{token}/map", get(crew_map))
         .route(
             "/crew/{token}/orders",
             axum::routing::put(submit_orders).delete(withdraw_orders),
@@ -83,13 +84,25 @@ async fn console() -> Html<&'static str> {
     Html(CONSOLE)
 }
 
-/// The static map every game is played on: host names, places and links.
+/// The standard map: host names, places and links.
 async fn map(State(server): State<Arc<Server>>) -> Json<serde_json::Value> {
-    let data = server.data();
-    Json(json!({
+    Json(map_json(server.data()))
+}
+
+/// The map of a crew's game, standard or random.
+async fn crew_map(
+    State(server): State<Arc<Server>>,
+    Path(token): Path<String>,
+) -> Result<Json<serde_json::Value>, Error> {
+    let data = server.crew_map(&token)?;
+    Ok(Json(map_json(&data)))
+}
+
+fn map_json(data: &GameData) -> serde_json::Value {
+    json!({
         "hosts": data.hosts,
         "links": data.links.iter().map(|&(a, b)| [a.0, b.0]).collect::<Vec<_>>(),
-    }))
+    })
 }
 
 async fn create_game(

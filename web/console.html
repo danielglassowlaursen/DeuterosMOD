@@ -67,6 +67,15 @@
             </select>
           </label>
           <label>Last turn <input id="gturns" type="number" value="50" min="5" max="200"></label>
+          <label>Map
+            <select id="gmap">
+              <option value="standard" selected>Standard: the same 41 servers every game</option>
+              <option value="random">Random: a new net for this game</option>
+            </select>
+          </label>
+          <label>Servers on a random map (20 to 100)
+            <input id="ghosts" type="number" value="41" min="20" max="100" disabled></label>
+          <div class="muted" id="gmapnote" hidden>All four corners are alike, so nobody starts better off. Each net is new: some branch out with dead ends, some are a dense web. The count is rounded to fit four corners and Cortex in the middle.</div>
           <label style="display:flex;gap:8px;align-items:center;margin-top:4px">
             <input id="ginstant" type="checkbox" checked style="width:auto">
             Practice: run each turn the moment everyone has handed in
@@ -183,7 +192,8 @@
   };
 
   let MAP = null;
-  const loadMap = async () => { if (!MAP) MAP = await api('GET', '/api/map'); return MAP; };
+  // The crew's own game's map: the standard one or the game's random net.
+  const loadMap = async token => { if (!MAP) MAP = await api('GET', '/api/crew/' + token + '/map'); return MAP; };
   const hostName = i => (MAP && MAP.hosts[i]) ? MAP.hosts[i].name : ('host ' + i);
 
   const match = location.pathname.match(/^\/join\/([0-9a-f]+)$/);
@@ -194,6 +204,11 @@
   function createMode() {
     $('create').hidden = false;
     $('ginstant').addEventListener('change', () => { $('ghours').disabled = $('ginstant').checked; });
+    $('gmap').addEventListener('change', () => {
+      const random = $('gmap').value === 'random';
+      $('ghosts').disabled = !random;
+      $('gmapnote').hidden = !random;
+    });
     const form = $('crewsForm');
     const defaults = ['Ghostline', 'Blackice', 'Nullset', 'Rootkit'];
     defaults.forEach((name, i) => {
@@ -216,10 +231,15 @@
       };
       if ($('ghook').value.trim()) body.notify_url = $('ghook').value.trim();
       if (seed) body.seed = Number(seed);
+      if ($('gmap').value === 'random') {
+        body.map = 'random';
+        body.hosts = Number($('ghosts').value);
+      }
       $('createMsg').textContent = 'Creating…';
       try {
         const created = await api('POST', '/api/games', body);
-        $('createMsg').textContent = 'Created ' + created.id;
+        const net = created.map && created.map.Random ? ' on a random net of ' + created.map.Random.hosts + ' servers' : '';
+        $('createMsg').textContent = 'Created ' + created.id + net;
         const list = $('inviteList');
         list.innerHTML = created.crews.map(c => c.bot
           ? '<div><b>' + esc(c.name) + '</b> <span class="muted">plays itself (bot)</span></div>'
@@ -241,7 +261,7 @@
 
   async function play(token) {
     $('play').hidden = false;
-    await loadMap();
+    try { await loadMap(token); } catch (e) { $('sub').textContent = 'cannot load crew: ' + e.message; return; }
     const base = '/api/crew/' + token;
     const refresh = async () => {
       try { status = await api('GET', base); }
@@ -327,6 +347,7 @@
     $('gameInfo').innerHTML =
       '<b>Turn</b><span>' + s.turn + ' / ' + s.game.last_turn + '</span>' +
       '<b>Difficulty</b><span>' + esc(s.game.difficulty) + '</span>' +
+      '<b>Map</b><span>' + (s.game.map && s.game.map.Random ? 'random, ' + s.game.map.Random.hosts + ' servers' : 'standard') + '</span>' +
       (s.over ? '<b>Game over</b><span class="ok">' + endText() + '</span>'
               : '<b>Sweep at</b><span>trace ' + v.sweep_at + '</span>' +
                 '<b>You</b><span>' + (s.submitted ? '<span class="ok">handed in</span>' : 'not handed in') + '</span>');

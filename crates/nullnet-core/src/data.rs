@@ -1,15 +1,17 @@
-//! The map every game is played on, and the fixed catalogs: the four
-//! weaknesses, the districts, the upgrades and the prices.
+//! The standard map, and the fixed catalogs: the four weaknesses, the
+//! districts, the upgrades and the prices.
 //!
-//! The map is a fixed template, so players learn it, but each host's
-//! security, ICE and weakness are rolled when a game is created (see
-//! [`World::new_game`](crate::World::new_game)).
+//! The standard map is a fixed template, so players learn it, but each
+//! host's security, ICE and weakness are rolled when a game is created (see
+//! [`World::new_game`](crate::World::new_game)). A game can also be played on
+//! a random map instead (see [`crate::mapgen`]).
 
 use std::collections::{BTreeSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
 use crate::ids::HostId;
+use crate::mapgen::MapSpec;
 
 /// What a host is open to, and what a hacker specialises in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -507,7 +509,7 @@ const LINKS: [(&str, &str); 60] = [
 ];
 
 impl GameData {
-    /// The map every game is played on.
+    /// The standard map, the same in every game played on it.
     pub fn standard() -> Self {
         let mut hideouts = [HostId(0); 4];
         let mut corner = 0u8;
@@ -539,6 +541,25 @@ impl GameData {
             HostId(index as u16)
         };
         let links: Vec<(HostId, HostId)> = LINKS.iter().map(|&(a, b)| (find(a), find(b))).collect();
+        let data = GameData::from_parts(hosts, links);
+        debug_assert_eq!(data.hideouts, hideouts);
+        data
+    }
+
+    /// The map for a game's [`MapSpec`]: the standard map or a random one.
+    pub fn for_map(spec: MapSpec) -> Self {
+        spec.data()
+    }
+
+    /// A map from its hosts and links. Every host marked as the hideout of a
+    /// corner is that corner's hideout.
+    pub(crate) fn from_parts(hosts: Vec<HostDef>, links: Vec<(HostId, HostId)>) -> Self {
+        let mut hideouts = [HostId(0); 4];
+        for (index, host) in hosts.iter().enumerate() {
+            if let Some(corner) = host.hideout {
+                hideouts[usize::from(corner)] = HostId(index as u16);
+            }
+        }
         let mut neighbours = vec![Vec::new(); hosts.len()];
         for &(a, b) in &links {
             neighbours[a.index()].push(b);

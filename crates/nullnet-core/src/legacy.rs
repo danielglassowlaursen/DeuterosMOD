@@ -127,6 +127,7 @@ mod tests {
             Settings {
                 difficulty: Difficulty::Hard,
                 last_turn: 50,
+                ..Settings::default()
             },
         );
         (data, world)

@@ -12,16 +12,29 @@ mod ui;
 mod voice;
 
 use bevy::prelude::*;
-use nullnet_core::GameData;
+use nullnet_core::{GameData, MapSpec};
 
-/// The map every game is played on, loaded once.
+/// The map the crew's game is played on: the standard one until the first
+/// status says otherwise, then whatever the game's spec builds.
 #[derive(Resource)]
-pub struct Rules(pub GameData);
+pub struct Rules {
+    pub data: GameData,
+    pub map: MapSpec,
+}
+
+impl Rules {
+    pub fn new(map: MapSpec) -> Self {
+        Rules {
+            data: GameData::for_map(map),
+            map,
+        }
+    }
+}
 
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::BLACK))
-        .insert_resource(Rules(GameData::standard()))
+        .insert_resource(Rules::new(MapSpec::Standard))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "NullNet".into(),

@@ -4,7 +4,7 @@
 //! Every crew is identified by the secret token in its invite link; its
 //! routes hang under `/api/crew/{token}`.
 
-use nullnet_core::{Command, CrewView, PlayerId, TurnReport};
+use nullnet_core::{Command, CrewView, MapSpec, PlayerId, TurnReport};
 use serde::{Deserialize, Serialize};
 
 /// `POST /api/games`
@@ -27,9 +27,16 @@ pub struct CreateGame {
     /// has run and when the game ends.
     #[serde(default)]
     pub notify_url: Option<String>,
-    /// The map's seed; random if left out.
+    /// The game's seed, which also makes a random map; random if left out.
     #[serde(default)]
     pub seed: Option<u64>,
+    /// `standard` (the default) or `random`: a new map made for the game.
+    #[serde(default)]
+    pub map: Option<String>,
+    /// About how many hosts a random map has, 20 to 100. Default 41. It is
+    /// rounded to what four equal corners and Cortex in the middle make.
+    #[serde(default)]
+    pub hosts: Option<u32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -50,6 +57,9 @@ pub struct GameInfo {
     /// Whether the game posts to a webhook when turns run.
     #[serde(default)]
     pub notifies: bool,
+    /// The map the game is played on.
+    #[serde(default)]
+    pub map: MapSpec,
 }
 
 /// The answer to `POST /api/games`.

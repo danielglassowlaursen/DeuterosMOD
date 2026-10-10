@@ -1,8 +1,10 @@
-//! Plays bot crews against each other on the standard map and prints what
-//! happened: a timeline of the game's events and where each crew ended.
+//! Plays bot crews against each other and prints what happened: a timeline
+//! of the game's events and where each crew ended. The standard map unless
+//! `--hosts` asks for a random one of about that many hosts.
 //!
 //! ```text
 //! cargo run -p nullnet-sim -- --seed 7 --crews 3 --turns 50 --difficulty normal
+//! cargo run -p nullnet-sim -- --seed 7 --hosts 60
 //! ```
 //!
 //! With `--json` it writes the whole game turn by turn instead, for a replay
@@ -12,8 +14,10 @@ mod replay;
 
 use std::process::ExitCode;
 
+use nullnet_core::mapgen::{MAX_HOSTS, MIN_HOSTS};
 use nullnet_core::{
-    Difficulty, GameData, Orders, PlayerId, Settings, World, bot_orders, resolve_turn, scores,
+    Difficulty, GameData, MapSpec, Orders, PlayerId, Settings, World, bot_orders, resolve_turn,
+    scores,
 };
 
 use crate::replay::{Replay, describe};
@@ -25,6 +29,8 @@ struct Options {
     crews: usize,
     turns: u32,
     difficulty: Difficulty,
+    /// About how many hosts a random map has; the standard map if unset.
+    hosts: Option<u32>,
     verbose: bool,
     json: bool,
 }
@@ -35,6 +41,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Options, String> {
         crews: 2,
         turns: 50,
         difficulty: Difficulty::Normal,
+        hosts: None,
         verbose: false,
         json: false,
     };
@@ -55,6 +62,9 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Options, String> {
             "--seed" => options.seed = value()?.parse().map_err(|e| format!("--seed: {e}"))?,
             "--crews" => options.crews = value()?.parse().map_err(|e| format!("--crews: {e}"))?,
             "--turns" => options.turns = value()?.parse().map_err(|e| format!("--turns: {e}"))?,
+            "--hosts" => {
+                options.hosts = Some(value()?.parse().map_err(|e| format!("--hosts: {e}"))?)
+            }
             "--difficulty" => {
                 options.difficulty = match value()?.to_lowercase().as_str() {
                     "easy" => Difficulty::Easy,
@@ -72,6 +82,12 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Options, String> {
     if options.turns == 0 {
         return Err("--turns must be at least 1".to_string());
     }
+    if options
+        .hosts
+        .is_some_and(|h| !(MIN_HOSTS..=MAX_HOSTS).contains(&h))
+    {
+        return Err(format!("--hosts must be {MIN_HOSTS} to {MAX_HOSTS}"));
+    }
     Ok(options)
 }
 
@@ -84,13 +100,18 @@ fn main() -> ExitCode {
         }
     };
 
-    let data = GameData::standard();
+    let map = match options.hosts {
+        Some(hosts) => MapSpec::random(options.seed, hosts),
+        None => MapSpec::Standard,
+    };
+    let data = GameData::for_map(map);
     let names: Vec<(PlayerId, &str)> = (0..options.crews)
         .map(|i| (PlayerId(i as u8), NAMES[i]))
         .collect();
     let settings = Settings {
         difficulty: options.difficulty,
         last_turn: options.turns,
+        map,
     };
     let mut world = World::new_game(&data, options.seed, &names, settings);
     let mut record = options.json.then(|| Replay::new(&data, &world, &names));

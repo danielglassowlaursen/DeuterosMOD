@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::data::{GameData, Role, Upgrade, Weakness, Yields, rules};
 use crate::ids::{HackerId, HostId, PlayerId};
+use crate::mapgen::MapSpec;
 use crate::rng::Rng;
 use crate::score::GameEnd;
 
@@ -67,6 +68,10 @@ pub struct Settings {
     pub difficulty: Difficulty,
     /// The game ends when this turn has run.
     pub last_turn: u32,
+    /// The map the game is played on. Games saved before random maps were
+    /// all on the standard map.
+    #[serde(default)]
+    pub map: MapSpec,
 }
 
 impl Default for Settings {
@@ -74,6 +79,7 @@ impl Default for Settings {
         Settings {
             difficulty: Difficulty::Normal,
             last_turn: rules::DEFAULT_LAST_TURN,
+            map: MapSpec::Standard,
         }
     }
 }

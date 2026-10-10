@@ -4,11 +4,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::data::{GameData, Weakness, Yields, rules};
+use crate::data::{GameData, Weakness, Yields};
 use crate::ids::{HackerId, HostId, PlayerId};
 use crate::legacy;
+use crate::mapgen::MapSpec;
 use crate::score::{Score, scores};
-use crate::world::{Controller, Crew, Difficulty, Settings, Subnet, World};
+use crate::world::{Controller, Crew, Difficulty, Subnet, World};
 
 /// A host as a crew sees it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,6 +54,9 @@ pub struct CrewView {
     pub turn: u32,
     pub last_turn: u32,
     pub difficulty: Difficulty,
+    /// The map the game is played on, which the client builds from this.
+    #[serde(default)]
+    pub map: MapSpec,
     pub player: PlayerId,
     /// The crew in full.
     pub me: Crew,
@@ -125,6 +129,7 @@ pub fn crew_view(data: &GameData, world: &World, player: PlayerId) -> Option<Cre
         turn: world.turn,
         last_turn: world.settings.last_turn,
         difficulty: world.settings.difficulty,
+        map: world.settings.map,
         player,
         bandwidth: world.bandwidth(data, player),
         income: world.income(data, player),
@@ -137,22 +142,10 @@ pub fn crew_view(data: &GameData, world: &World, player: PlayerId) -> Option<Cre
     })
 }
 
-/// Settings are part of a view request in a couple of places; keep the type
-/// reachable through the view module too.
-pub use crate::world::Settings as ViewSettings;
-
-const _: () = {
-    // Keep these in the view's reach for the server and client.
-    let _ = rules::DEFAULT_LAST_TURN;
-    let _ = Settings {
-        difficulty: Difficulty::Normal,
-        last_turn: 0,
-    };
-};
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::world::Settings;
 
     #[test]
     fn fog_hides_unscanned_intel() {

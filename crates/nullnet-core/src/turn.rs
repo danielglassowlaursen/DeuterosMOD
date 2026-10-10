@@ -1225,6 +1225,7 @@ mod tests {
             Settings {
                 difficulty: Difficulty::Easy,
                 last_turn: 10,
+                ..Settings::default()
             },
         );
         for _ in 0..10 {

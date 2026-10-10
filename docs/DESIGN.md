@@ -59,7 +59,7 @@ Fire ressourcer, uden forskningstræ og uden transport: det, en vært producerer
 
 ## Kortet
 
-En fast skabelon med 41 værter i ni distrikter, så man lærer kortet at kende, men sikkerhed, svaghed og ICE slås nye for hvert spil. Sikkerheden stiger indad.
+Standardkortet er en fast skabelon med 41 værter i ni distrikter, så man lærer kortet at kende, men sikkerhed, svaghed og ICE slås nye for hvert spil. Sikkerheden stiger indad.
 
 - **Metro** (bynettet): fire startområder, ét i hvert hjørne, med svage værter omkring hvert skjulested.
 - **Bankwire** (credits), **Nimbus** (computerkraft), **Orbital** (båndbredde) og **Foundry** (lidt af det hele) langs siderne.
@@ -67,6 +67,8 @@ En fast skabelon med 41 værter i ni distrikter, så man lærer kortet at kende,
 - **Lattice** i midten: AI-regnenettet, hvor The Legacy Net blev født. Højeste sikkerhed, mest data.
 
 Hvert crew starter i sit eget hjørne. Man kan kun bryde ind i værter, der er forbundet til en vært, man ejer (skjulestedet medregnet), så man arbejder sig indad vært for vært. Kortet vises som en graf af noder og forbindelser, som man kan zoome ind på og trække rundt i.
+
+**Tilfældigt kort:** når man opretter et spil, kan man i stedet vælge et tilfældigt kort med 20-100 værter (rundet til fire ens hjørner plus Cortex, dvs. 21-101). Kortet laves ud fra spillets seed: ét hjørnes del af nettet vokser som grene ud fra skjulestedet og drejes så en kvart omgang ad gangen rundt om midten, så alle fire hjørner er ens, og intet crew starter bedre end de andre. Hvor mange ekstra forbindelser kortet får, slås også tilfældigt: nogle kort forgrener sig med blindgyder, andre bliver et tæt spindelvæv. Reglerne fra standardkortet gælder stadig: The Legacy Net holder midten (Cortex, en ring af grid-værter og sine højborge), griddet nås kun gennem en højborg, et skjulested har to veje ud, og crewenes hjørner hænger altid sammen gennem frie værter. En værts rolle (og dermed sikkerhed, ICE og hvad den giver) afhænger af, hvor mange led den ligger fra et skjulested. Generatoren bruger kun heltal, så serveren og browseren bygger præcis samme kort ud fra samme seed.
 
 **Sub-net:** 2-4 tilfældige værter pr. spil (aldrig skjulestederne eller værterne lige omkring dem) gemmer et forseglet sub-net, som en scanning afslører. Låsen er to bestemte specialer: to hackere, der har netop de to specialer, åbner det sammen fra en vært, crewet ejer. Der er ingen terning — det rigtige crew er nøglen — men det koster 2 båndbredde og giver 2 trace. Et åbent sub-net giver 6 ekstra credits hver tur til den, der ejer værten, også hvis værten skifter ejer.
 

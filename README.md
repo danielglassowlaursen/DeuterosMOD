@@ -23,6 +23,8 @@ cargo test -p nullnet-core
 
 # Se bot-crews spille et helt spil (--verbose viser hver begivenhed)
 cargo run -p nullnet-sim -- --seed 7 --crews 3 --turns 50 --difficulty normal
+# ... på et tilfældigt kort med ca. 60 værter
+cargo run -p nullnet-sim -- --seed 7 --crews 3 --hosts 60
 
 # Byg web-klienten og start serveren på din egen maskine, uden Docker (hurtigst på en laptop;
 # scriptet siger, hvad der mangler). Åbn derefter http://localhost:8080/console

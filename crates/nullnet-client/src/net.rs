@@ -251,7 +251,7 @@ fn announce(
         events
             .iter()
             .filter(|e| notable(e))
-            .map(|e| text::event(e, &rules.0, session))
+            .map(|e| text::event(e, &rules.data, session))
             .filter(|line| !line.is_empty())
             .take(8),
     );
@@ -272,7 +272,7 @@ fn announce(
 fn receive(
     api: Res<Api>,
     inbox: Res<Inbox>,
-    rules: Res<Rules>,
+    mut rules: ResMut<Rules>,
     mut session: ResMut<Session>,
     mut clock: ResMut<Clock>,
     mut toast: ResMut<Toast>,
@@ -286,6 +286,11 @@ fn receive(
         match reply {
             Reply::Status(Ok(status)) => {
                 let status = *status;
+                // A game on a random map: build its map before anything
+                // names a host.
+                if rules.map != status.view.map {
+                    *rules = Rules::new(status.view.map);
+                }
                 let previous = session.status.as_ref().map(|s| s.turn);
                 if let Some(previous) = previous
                     && status.turn != previous

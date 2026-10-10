@@ -318,7 +318,7 @@ fn refresh(
     children: Query<&Children>,
     mut nodes: Query<&mut Node>,
 ) {
-    let data = &rules.0;
+    let data = &rules.data;
     for (entity, content) in &containers {
         let panel = content.0;
         // The toast's content is owned by fade_toast, not rebuilt here.
@@ -591,7 +591,10 @@ fn build_selection(
         return;
     };
     let view = &status.view;
-    let Some(host) = selected.0 else {
+    let Some(host) = selected
+        .0
+        .filter(|h| h.index() < view.hosts.len() && h.index() < data.hosts.len())
+    else {
         muted(p, "Click a host on the map.");
         return;
     };

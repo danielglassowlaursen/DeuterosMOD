@@ -54,7 +54,13 @@ impl Plugin for MapPlugin {
                 (
                     navigate.before(fit_camera),
                     fit_camera,
-                    (recolor, relabel).run_if(resource_changed::<Session>),
+                    (
+                        build_graph.run_if(resource_changed::<Rules>),
+                        (recolor, relabel).run_if(
+                            resource_changed::<Session>.or_eager(resource_changed::<Rules>),
+                        ),
+                    )
+                        .chain(),
                     animate_highlight,
                 ),
             );
@@ -103,6 +109,10 @@ pub struct MapBlocked(pub bool);
 #[derive(Component)]
 struct HostLabel(HostId);
 
+/// Part of the drawn graph, cleared when the map changes.
+#[derive(Component)]
+struct GraphPart;
+
 #[derive(Component)]
 struct MapNode {
     host: HostId,
@@ -122,14 +132,23 @@ pub fn crew_color(me: PlayerId, crew: PlayerId) -> &'static str {
     CREW_COLORS[1 + index.min(2)]
 }
 
+/// How much smaller nodes and names are drawn on a crowded map, so they
+/// keep clear of each other: 1 for the standard map's 41 hosts.
+fn crowding(data: &GameData) -> f32 {
+    (41.0 / data.hosts.len().max(1) as f32)
+        .sqrt()
+        .clamp(0.7, 1.0)
+}
+
 fn node_radius(data: &GameData, host: HostId) -> f32 {
     use nullnet_core::Role::*;
-    match data.host(host).role {
+    let radius = match data.host(host).role {
         Hideout => 22.0,
         Cortex => 26.0,
         Grid | Stronghold => 20.0,
         _ => 16.0,
-    }
+    };
+    radius * crowding(data)
 }
 
 fn node_params(fill: Vec4, ring: Vec4, seed: f32) -> NodeParams {
@@ -149,13 +168,8 @@ fn world(data: &GameData, host: HostId) -> Vec2 {
 fn spawn_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut nodes: ResMut<Assets<NodeMaterial>>,
-    mut links: ResMut<Assets<LinkMaterial>>,
     mut backgrounds: ResMut<Assets<BackgroundMaterial>>,
-    rules: Res<Rules>,
 ) {
-    let data = &rules.0;
-
     commands.spawn((
         Camera2d,
         Projection::Orthographic(OrthographicProjection {
@@ -176,6 +190,27 @@ fn spawn_scene(
         })),
         Transform::from_xyz(0.0, 0.0, -10.0),
     ));
+}
+
+/// Draws the map's hosts and links, again whenever the map changes (a game
+/// on a random map brings its own once its first status arrives).
+#[allow(clippy::too_many_arguments)]
+fn build_graph(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut nodes: ResMut<Assets<NodeMaterial>>,
+    mut links: ResMut<Assets<LinkMaterial>>,
+    rules: Res<Rules>,
+    old: Query<Entity, With<GraphPart>>,
+    mut selected: ResMut<Selected>,
+    mut view: ResMut<MapView>,
+) {
+    for entity in &old {
+        commands.entity(entity).despawn();
+    }
+    selected.set_if_neq(Selected(None));
+    *view = MapView::default();
+    let data = &rules.data;
 
     for &(a, b) in &data.links {
         let from = world(data, a);
@@ -192,9 +227,11 @@ fn spawn_scene(
             })),
             Transform::from_translation(((from + to) * 0.5).extend(-5.0))
                 .with_rotation(Quat::from_rotation_z(delta.y.atan2(delta.x))),
+            GraphPart,
         ));
     }
 
+    let label_size = LABEL_SIZE * crowding(data).max(0.85);
     for host in data.host_ids() {
         let radius = node_radius(data, host);
         let def = data.host(host);
@@ -211,15 +248,17 @@ fn spawn_scene(
                 target: 0.0,
             },
             Transform::from_translation(world(data, host).extend(1.0)),
+            GraphPart,
         ));
         commands.spawn((
             Text2d::new(def.name.to_uppercase()),
-            TextFont::from_font_size(LABEL_SIZE),
+            TextFont::from_font_size(label_size),
             TextColor(LABEL),
             HostLabel(host),
             Transform::from_translation(
-                (world(data, host) + Vec2::new(0.0, -radius - 14.0)).extend(2.0),
+                (world(data, host) + Vec2::new(0.0, -radius - label_size * 0.8)).extend(2.0),
             ),
+            GraphPart,
         ));
     }
 }
@@ -245,7 +284,9 @@ fn controller_colors(session: &Session, host: HostId) -> (Vec4, Vec4) {
     };
     let view = &status.view;
     let me = view.player;
-    let hv = &view.hosts[host.index()];
+    let Some(hv) = view.hosts.get(host.index()) else {
+        return rest_colors(false);
+    };
     let is_my_hideout = host == view.me.hideout;
     match (hv.controller, is_my_hideout) {
         (_, true) => (
@@ -288,8 +329,14 @@ fn relabel(
 ) {
     let view = session.status.as_ref().map(|s| &s.view);
     for (label, mut text, mut color) in labels {
-        let name = rules.0.host(label.0).name.to_uppercase();
-        let subnet = view.and_then(|v| v.hosts[label.0.index()].intel.and_then(|i| i.subnet));
+        let Some(def) = rules.data.hosts.get(label.0.index()) else {
+            continue;
+        };
+        let name = def.name.to_uppercase();
+        let subnet = view
+            .and_then(|v| v.hosts.get(label.0.index()))
+            .and_then(|h| h.intel)
+            .and_then(|i| i.subnet);
         let (line, tint) = match subnet {
             Some(s) if s.open => (format!("{name} · SUB-NET +"), LABEL_SUBNET_OPEN),
             Some(_) => (format!("{name} · SUB-NET"), LABEL_SUBNET),
@@ -531,11 +578,8 @@ fn animate_highlight(
     let step = time.delta_secs() * 6.0;
     for (mut node, handle) in nodes {
         let reachable = view
-            .map(|v| {
-                let hv = &v.hosts[node.host.index()];
-                hv.can_break_in || hv.can_scan || hv.access
-            })
-            .unwrap_or(false);
+            .and_then(|v| v.hosts.get(node.host.index()))
+            .is_some_and(|hv| hv.can_break_in || hv.can_scan || hv.access);
         node.target = if selected.0 == Some(node.host) {
             1.0
         } else if reachable {

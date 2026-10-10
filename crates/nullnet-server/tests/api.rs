@@ -509,3 +509,76 @@ async fn the_console_and_invite_pages_are_served() {
     let response = client.app().oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
 }
+
+#[tokio::test]
+async fn a_game_can_be_played_on_a_random_map() {
+    let client = Client::in_memory();
+    let game = |map: Value, hosts: Value| {
+        json!({
+            "name": "Somewhere new",
+            "crews": [{ "name": "Solo" }, { "name": "Bot", "bot": true }],
+            "deadline_hours": 0,
+            "seed": 11,
+            "map": map,
+            "hosts": hosts
+        })
+    };
+    for (map, hosts) in [
+        (json!("random"), json!(5)),
+        (json!("random"), json!(500)),
+        (json!("maze"), json!(41)),
+    ] {
+        let (status, _) = client
+            .call(Method::POST, "/api/games", Some(game(map, hosts)))
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    let (status, created) = client
+        .call(
+            Method::POST,
+            "/api/games",
+            Some(game(json!("random"), json!(60))),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(
+        created["map"]["Random"]["hosts"], 61,
+        "rounded to four corners and Cortex"
+    );
+    let me = token(&created, 0);
+
+    let (_, status) = client.get(&format!("/api/crew/{me}")).await;
+    assert_eq!(status["view"]["map"]["Random"]["hosts"], 61);
+    assert_eq!(status["view"]["hosts"].as_array().unwrap().len(), 61);
+
+    // The crew's map is the game's own, not the standard one.
+    let (code, map) = client.get(&format!("/api/crew/{me}/map")).await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(map["hosts"].as_array().unwrap().len(), 61);
+    let (_, standard) = client.get("/api/map").await;
+    assert_eq!(standard["hosts"].as_array().unwrap().len(), 41);
+
+    // Turns run on it like on any other map.
+    let target = status["view"]["hosts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|h| h["can_scan"] == true)
+        .unwrap()["host"]
+        .as_u64()
+        .unwrap() as u32;
+    let hacker = status["view"]["me"]["hackers"][0]["id"].as_u64().unwrap() as u32;
+    let (_, receipt) = client
+        .call(
+            Method::PUT,
+            &format!("/api/crew/{me}/orders"),
+            Some(json!([scan(hacker, target)])),
+        )
+        .await;
+    assert_eq!(receipt["rejected"], json!([]));
+    assert_eq!(receipt["resolved"], true);
+    let (_, status) = client.get(&format!("/api/crew/{me}")).await;
+    assert_eq!(status["turn"], 2);
+    assert!(!status["view"]["hosts"][target as usize]["intel"].is_null());
+}
