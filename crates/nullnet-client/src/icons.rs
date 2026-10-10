@@ -3,7 +3,9 @@
 //! the glyphs named here: after adding one, run `scripts/subset-icons.py`
 //! with the full `lucide.ttf` from the `lucide-static` npm package.
 
-use nullnet_core::{ItemType, StaffKind, VesselKind};
+#![allow(dead_code)]
+
+use nullnet_core::{Operation, Upgrade, Weakness};
 
 pub const CPU: char = '\u{E0A9}';
 pub const HARD_DRIVE: char = '\u{E0ED}';
@@ -63,51 +65,40 @@ pub const CHEVRON: char = '\u{E06F}';
 pub const RADAR: char = '\u{E497}';
 pub const ROUTE: char = '\u{E53E}';
 
-/// The icon for a resource or an item.
-pub fn item(item: ItemType) -> char {
-    match item {
-        ItemType::Compute => CPU,
-        ItemType::Storage => HARD_DRIVE,
-        ItemType::Memory => MEMORY,
-        ItemType::Code => CODE,
-        ItemType::Credentials => KEY_ROUND,
-        ItemType::Bandwidth => RADIO_TOWER,
-        ItemType::ExitNodes => DOOR_OPEN,
-        ItemType::Proxies => SHUFFLE,
-        ItemType::Keys => KEY,
-        ItemType::ZeroDays => BUG,
-        ItemType::Crypto => BITCOIN,
-        ItemType::Certificates => BADGE,
-        ItemType::SigningKeys => SIGNATURE,
-        ItemType::Firmware => CIRCUIT,
-        ItemType::ProxyChains | ItemType::OnionRoutes => FUEL,
-        ItemType::Tap => PLUG,
-        ItemType::CitadelModule => CASTLE,
-        ItemType::DropperCore | ItemType::DropperEngine => PACKAGE,
-        ItemType::WormCore | ItemType::WormEngine => ROCKET,
-        ItemType::TunnelCore | ItemType::TunnelEngine => ORBIT,
-        ItemType::Daemon | ItemType::HunterDaemon => BOT,
-        ItemType::C2Controller => RADAR,
-        ItemType::ExfilScript => ROUTE,
-        ItemType::SourceFragment | ItemType::LegacyExploit => SKULL,
-        _ => HEXAGON,
+// Resource icons.
+pub const CREDITS: char = BITCOIN;
+pub const COMPUTE: char = CPU;
+pub const DATA: char = HARD_DRIVE;
+pub const BANDWIDTH: char = RADIO_TOWER;
+pub const TRACE: char = FLAME;
+
+/// The icon for a host's weakness, and a hacker's specialty.
+pub fn weakness(weakness: Weakness) -> char {
+    match weakness {
+        Weakness::Web => RADIO_TOWER,
+        Weakness::Database => HARD_DRIVE,
+        Weakness::Network => CIRCUIT,
+        Weakness::People => USERS,
     }
 }
 
-/// The icon for a kind of staff.
-pub fn staff(kind: StaffKind) -> char {
-    match kind {
-        StaffKind::Analyst => MICROSCOPE,
-        StaffKind::Coder => TERMINAL,
-        StaffKind::Operator => HEADSET,
+/// The icon for an operation.
+pub fn operation(op: Operation) -> char {
+    match op {
+        Operation::Scan => RADAR,
+        Operation::BreakIn => KEY_ROUND,
+        Operation::Backdoor => DOOR_OPEN,
+        Operation::StealData => HARD_DRIVE,
+        Operation::Defend => SHIELD,
     }
 }
 
-/// The icon for a kind of vessel.
-pub fn vessel(kind: VesselKind) -> char {
-    match kind {
-        VesselKind::Dropper => PACKAGE,
-        VesselKind::Worm => ROCKET,
-        VesselKind::Tunneler => ORBIT,
+/// The icon for a hideout upgrade.
+pub fn upgrade(upgrade: Upgrade) -> char {
+    match upgrade {
+        Upgrade::Rigs => CPU,
+        Upgrade::Lines => RADIO_TOWER,
+        Upgrade::Firewall => SHIELD,
+        Upgrade::Safehouse => USER_PLUS,
     }
 }

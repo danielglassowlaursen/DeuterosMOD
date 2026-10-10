@@ -1,406 +1,121 @@
-//! Words for the things the client shows: items, vessels, orders and
-//! events, in plain English and plain ASCII, which is all the built-in
-//! font has.
+//! Turning the core's commands and events into the short lines the client
+//! shows: order rows, the turn log and toasts.
 
-use nullnet_core::{
-    Berth, Command, Destination, EndReason, Event, GameData, ItemType, Module, RaidGoal, Staff,
-    Vessel, VesselId, VesselKind, VesselState, WorkshopRef,
-};
-use std::collections::BTreeMap;
+use nullnet_core::{Command, Event, GameData, HostId, Outcome, PlayerId};
 
-/// `DropperCore` as "dropper core".
-pub fn item(item: ItemType) -> String {
-    spaced(&format!("{item:?}"))
+use crate::net::Session;
+
+/// A host's name.
+pub fn host(data: &GameData, host: HostId) -> &str {
+    data.hosts.get(host.index()).map(|h| h.name).unwrap_or("?")
 }
 
-pub fn spaced(name: &str) -> String {
-    let mut out = String::new();
-    for (i, c) in name.chars().enumerate() {
-        if c.is_ascii_uppercase() && i > 0 {
-            out.push(' ');
-        }
-        out.push(c.to_ascii_lowercase());
-    }
-    out
-}
-
-pub fn kind(kind: VesselKind) -> &'static str {
-    match kind {
-        VesselKind::Dropper => "dropper",
-        VesselKind::Worm => "worm",
-        VesselKind::Tunneler => "tunneler",
-    }
-}
-
-pub fn vessel(id: VesselId, vessels: &BTreeMap<VesselId, Vessel>) -> String {
-    match vessels.get(&id) {
-        Some(v) => format!("{} {}", kind(v.kind), id.0),
-        None => format!("vessel {}", id.0),
-    }
-}
-
-pub fn berth(berth: Berth) -> &'static str {
-    match berth {
-        Berth::Planted => "inside",
-        Berth::Connected => "at the citadel",
-        Berth::Lurking => "outside",
-    }
-}
-
-pub fn state(state: VesselState, data: &GameData) -> String {
-    match state {
-        VesselState::At(b) => berth(b).to_string(),
-        VesselState::Exfiltrating { until } => format!("exfiltrating, out on day {until}"),
-        VesselState::Injecting { until } => format!("injecting, inside on day {until}"),
-        VesselState::Disconnecting { until } => format!("disconnecting, out on day {until}"),
-        VesselState::Connecting => "connecting to the citadel".into(),
-        VesselState::Routing { to, until } => {
-            format!("routing to {}, there on day {until}", data.host(to).name)
-        }
-    }
-}
-
-pub fn team(staff: &Staff) -> String {
-    format!(
-        "{} ({} {}s, level {})",
-        staff.leader,
-        staff.count,
-        format!("{:?}", staff.kind).to_lowercase(),
-        staff.level()
-    )
-}
-
-pub fn module(module: &Module) -> String {
-    match module {
-        Module::Empty => "empty slot".into(),
-        Module::DataContainer(None) => "data container, empty".into(),
-        Module::DataContainer(Some(c)) => format!("data container: {} {}", c.count, item(c.item)),
-        Module::ToolModule(None) => "tool module, empty".into(),
-        Module::ToolModule(Some(c)) => format!("tool module: {} {}", c.count, item(c.item)),
-        Module::SessionPod(None) => "session pod, empty".into(),
-        Module::SessionPod(Some(t)) => format!("session pod: {}", team(t)),
-    }
-}
-
-fn destination(to: Destination, data: &GameData) -> String {
-    format!("{} {}", berth(to.berth), data.host(to.host).name)
-}
-
-fn workshop(at: WorkshopRef, data: &GameData) -> String {
-    match at {
-        WorkshopRef::Hideout => "in the hideout".into(),
-        WorkshopRef::Citadel(nullnet_core::SiteRef::Hideout) => "in the hideout citadel".into(),
-        WorkshopRef::Citadel(nullnet_core::SiteRef::Host(h)) => {
-            format!("in the citadel at {}", data.host(h).name)
-        }
-    }
-}
-
-pub fn command(cmd: &Command, data: &GameData, vessels: &BTreeMap<VesselId, Vessel>) -> String {
-    let v = |id: VesselId| vessel(id, vessels);
+/// A one-line label for an order in the draft list.
+pub fn command(cmd: &Command, data: &GameData) -> String {
     match cmd {
-        Command::SetResearch { item: i } => format!("Research {}", item(*i)),
-        Command::Recruit { kind, count } => {
-            format!("Recruit {count} {}s", format!("{kind:?}").to_lowercase())
-        }
-        Command::Build { at, item: i } => format!("Build {} {}", item(*i), workshop(*at, data)),
-        Command::InstallTaps { site, count } => match site {
-            nullnet_core::SiteRef::Hideout => format!("Install {count} tap(s) in the hideout"),
-            nullnet_core::SiteRef::Host(h) => {
-                format!("Install {count} tap(s) at {}", data.host(*h).name)
-            }
-        },
-        Command::Automate { item: i, mode, .. } => {
-            format!("Queue {} on the build-bot ({mode:?})", item(*i))
-        }
-        Command::AssignCoders { at, .. } => format!("Put coders to work {}", workshop(*at, data)),
-        Command::ReleaseCoders { at } => format!("Release the coders {}", workshop(*at, data)),
-        Command::Assemble {
-            host,
-            berth: b,
-            kind: k,
-        } => format!(
-            "Assemble a {} {} {}",
-            kind(*k),
-            berth(*b),
-            data.host(*host).name
-        ),
-        Command::Refuel { vessel, amount } => format!("Refuel {} with {amount}", v(*vessel)),
-        Command::Fit {
-            vessel,
-            slot,
-            module: Some(m),
-        } => format!(
-            "Fit {} in slot {} of {}",
-            spaced(&format!("{m:?}")),
-            slot + 1,
-            v(*vessel)
-        ),
-        Command::Fit {
-            vessel,
-            slot,
-            module: None,
-        } => format!("Clear slot {} of {}", slot + 1, v(*vessel)),
-        Command::Load {
-            vessel,
-            slot,
-            item: i,
-            count,
-        } => format!(
-            "Load {count} {} into slot {} of {}",
-            item(*i),
-            slot + 1,
-            v(*vessel)
-        ),
-        Command::Unload { vessel, slot } => format!("Unload slot {} of {}", slot + 1, v(*vessel)),
-        Command::Board { vessel, seat, team } => match seat {
-            nullnet_core::Seat::Pilot => format!("Team {} pilots {}", team + 1, v(*vessel)),
-            nullnet_core::Seat::Pod(slot) => {
-                format!(
-                    "Team {} boards pod {} of {}",
-                    team + 1,
-                    slot + 1,
-                    v(*vessel)
-                )
-            }
-        },
-        Command::Disembark { vessel, seat } => match seat {
-            nullnet_core::Seat::Pilot => format!("The pilot leaves {}", v(*vessel)),
-            nullnet_core::Seat::Pod(slot) => {
-                format!("Pod {} of {} disembarks", slot + 1, v(*vessel))
-            }
-        },
-        Command::Dispatch { vessel, to } => {
-            format!("Send {} {}", v(*vessel), destination(*to, data))
-        }
-        Command::Deploy { vessel, slot } => format!("Install slot {} of {}", slot + 1, v(*vessel)),
-        Command::InstallScript { vessel } => format!("Install an exfil script in {}", v(*vessel)),
-        Command::ConfigureScript {
-            vessel,
-            route: Some(r),
-        } => format!(
-            "Run {} on a route {} -> {}",
-            v(*vessel),
-            destination(r.from, data),
-            destination(r.to, data)
-        ),
-        Command::ConfigureScript {
-            vessel,
-            route: None,
+        Command::Scan { host: h, .. } => format!("Scan {}", host(data, *h)),
+        Command::BreakIn {
+            host: h,
+            zero_day,
+            boost,
+            ..
         } => {
-            format!("Stop the route of {}", v(*vessel))
+            let mut extra = String::new();
+            if *boost > 0 {
+                extra.push_str(&format!(" +{boost}"));
+            }
+            if *zero_day {
+                extra.push_str(" (0-day)");
+            }
+            format!("Break into {}{extra}", host(data, *h))
         }
-        Command::InstallLink { host } => {
-            format!("Install an encrypted link at {}", data.host(*host).name)
-        }
-        Command::LoadDaemons { vessel, count } => {
-            format!("Load {count} daemons aboard {}", v(*vessel))
-        }
-        Command::UnloadDaemons { vessel, count } => {
-            format!("Unload {count} daemons from {}", v(*vessel))
-        }
-        Command::InstallC2 { vessel } => format!("Install a C2 controller in {}", v(*vessel)),
-        Command::Attack { vessel } => format!("{} attacks the Legacy Net", v(*vessel)),
-        Command::Raid { vessel, goal } => {
-            format!("{} raids the host to {}", v(*vessel), raid_goal(*goal))
-        }
-        Command::ConfigureLink { host, target, .. } => match target {
-            Some(target) => format!(
-                "Link {} to {}",
-                data.host(*host).name,
-                data.host(*target).name
-            ),
-            None => format!("Unlink {}", data.host(*host).name),
-        },
+        Command::Backdoor { host: h, .. } => format!("Backdoor {}", host(data, *h)),
+        Command::StealData { host: h, .. } => format!("Steal from {}", host(data, *h)),
+        Command::Defend { host: h, .. } => format!("Defend {}", host(data, *h)),
+        Command::Hire { .. } => "Hire a hacker".to_string(),
+        Command::Dismiss { .. } => "Let a hacker go".to_string(),
+        Command::BuyKit { weakness } => format!("Buy {}", weakness.kit()),
+        Command::BuyZeroDay => "Buy a zero-day".to_string(),
+        Command::Upgrade { upgrade } => format!("Upgrade {}", upgrade.name()),
     }
 }
 
-pub fn event(ev: &Event, data: &GameData, vessels: &BTreeMap<VesselId, Vessel>) -> String {
-    let host = |h: nullnet_core::HostId| data.host(h).name.clone();
-    match ev {
-        Event::ResearchCompleted { item: i, .. } => format!("Researched {}", item(*i)),
-        Event::StaffPromoted { kind, level, .. } => {
-            format!(
-                "A {} team reached level {level}",
-                format!("{kind:?}").to_lowercase()
-            )
-        }
-        Event::RecruitsGraduated { kind, count, .. } => {
-            format!("{count} {}s graduated", format!("{kind:?}").to_lowercase())
-        }
-        Event::ItemBuilt { item: i, at, .. } => {
-            format!("Built {} {}", item(*i), workshop(*at, data))
-        }
-        Event::HostClaimed {
-            player, host: h, ..
-        } => {
-            format!("Crew {} claimed {}", player.0 + 1, host(*h))
-        }
-        Event::Installed {
-            host: h,
-            item: i,
-            installed,
-            ..
-        } => format!("{} {installed} installed at {}", item(*i), host(*h)),
-        Event::VesselArrived {
-            vessel: id,
-            host: h,
-            berth: b,
-            ..
-        } => format!("{} is {} {}", vessel(*id, vessels), berth(*b), host(*h)),
-        Event::VesselStopped {
-            vessel: id, reason, ..
-        } => format!(
-            "{} stopped: {}",
-            vessel(*id, vessels),
-            spaced(&format!("{reason:?}"))
-        ),
-        Event::VesselBurned {
-            vessel: id,
-            host: h,
-            ..
-        } => {
-            format!(
-                "{} was traced and burned at {}",
-                vessel(*id, vessels),
-                host(*h)
-            )
-        }
-        Event::Unlocked { milestone, .. } => {
-            format!("Milestone: {}", spaced(&format!("{milestone:?}")))
-        }
-        Event::WarDeclared { .. } => "AT WAR with the Legacy Net".into(),
-        Event::FleetSighted {
-            host: h,
-            arrives,
-            daemons,
-            ..
-        } => format!(
-            "A Legacy swarm of {daemons} daemons is heading for {}, arriving {}",
-            host(*h),
-            nullnet_core::date(*arrives)
-        ),
-        Event::UnderAttack {
-            host: h,
-            captured_on,
-            ..
-        } => format!(
-            "{} is under siege; it falls on {} unless the swarm is driven off",
-            host(*h),
-            nullnet_core::date(*captured_on)
-        ),
-        Event::AttackRepelled { host: h, .. } => {
-            format!("The swarm attacking {} was driven off", host(*h))
-        }
-        Event::HostCaptured {
-            player, host: h, ..
-        } => {
-            format!("Crew {} lost {} to the Legacy Net", player.0 + 1, host(*h))
-        }
-        Event::HostFreed {
-            player, host: h, ..
-        } => {
-            format!("Crew {} freed {}", player.0 + 1, host(*h))
-        }
-        Event::BattleFought {
-            host: h,
-            vessel: id,
-            report,
-            ..
-        } => format!(
-            "{} fought at {}: {} vs {} daemons, {}; {} vs {} left",
-            match id {
-                Some(id) => vessel(*id, vessels),
-                None => "The garrison".to_string(),
-            },
-            host(*h),
-            report.attacker.daemons,
-            report.defender.daemons,
-            outcome(report.outcome),
-            report.attacker_left(),
-            report.defender_left()
-        ),
-        Event::Raid {
-            player,
-            defender,
-            host: h,
-            goal,
-            report,
-            loot,
-            ..
-        } => {
-            let mut line = format!(
-                "Crew {} raided crew {}'s {} to {}: {} vs {} daemons, {}",
-                player.0 + 1,
-                defender.0 + 1,
-                host(*h),
-                raid_goal(*goal),
-                report.attacker.daemons,
-                report.defender.daemons,
-                outcome(report.outcome)
-            );
-            if !loot.is_empty() {
-                let taken: Vec<String> = loot
-                    .iter()
-                    .map(|(i, n)| format!("{n} {}", item(*i)))
-                    .collect();
-                line.push_str(&format!("; took {}", taken.join(", ")));
-            }
-            line
-        }
-        Event::HostTaken {
-            player,
-            from,
-            host: h,
-            ..
-        } => format!(
-            "Crew {} took {} from crew {}",
-            player.0 + 1,
-            host(*h),
-            from.0 + 1
-        ),
-        Event::GameOver { player, reason, .. } => format!(
-            "GAME OVER: crew {} wins {}",
-            player.0 + 1,
-            match reason {
-                EndReason::Domination => "by holding most of the home network",
-                EndReason::DayLimit => "on points at the last day",
-            }
-        ),
-        Event::VesselLost {
-            vessel: id,
-            host: h,
-            ..
-        } => format!("{} was lost at {}", vessel(*id, vessels), host(*h)),
-        Event::CacheFound {
-            vessel: id,
-            resource,
-            size,
-            ..
-        } => format!(
-            "{} found a cache of {} (size {size} of 8)",
-            vessel(*id, vessels),
-            item(*resource)
-        ),
-        Event::FragmentFound { vessel: id, .. } => format!(
-            "{} found a fragment of the Legacy Net's source code",
-            vessel(*id, vessels)
-        ),
-    }
-}
-
-pub fn raid_goal(goal: RaidGoal) -> &'static str {
-    match goal {
-        RaidGoal::Exfiltrate => "exfiltrate its stores",
-        RaidGoal::PlantTap => "plant a tap",
-        RaidGoal::TakeOver => "take it over",
-    }
-}
-
-pub fn outcome(outcome: nullnet_core::Outcome) -> &'static str {
+/// How a break-in or backdoor turned out.
+pub fn outcome(outcome: Outcome) -> String {
     match outcome {
-        nullnet_core::Outcome::AttackerWon => "the attacker won",
-        nullnet_core::Outcome::DefenderWon => "the defender won",
-        nullnet_core::Outcome::DefenderFled => "the defender fled",
+        Outcome::Done => "got access".to_string(),
+        Outcome::Failed => "failed".to_string(),
+        Outcome::Caught { until } => format!("caught, out until turn {until}"),
+    }
+}
+
+/// A line for an event in the turn log or a toast.
+pub fn event(ev: &Event, data: &GameData, session: &Session) -> String {
+    let h = |host_id: HostId| host(data, host_id).to_string();
+    let crew = |p: PlayerId| crew(session, p);
+    match ev {
+        Event::Scanned { host, .. } => format!("Scanned {}", h(*host)),
+        Event::BrokeIn {
+            host,
+            chance,
+            outcome: o,
+            ..
+        } => format!("Break-in on {} ({chance}%): {}", h(*host), outcome(*o)),
+        Event::Intrusion { host, intruder, .. } => {
+            format!("{} broke into your {}", crew(*intruder), h(*host))
+        }
+        Event::BackdoorPlanted { host, .. } => format!("Took {}", h(*host)),
+        Event::BackdoorFailed { host, .. } => format!("Backdoor on {} failed", h(*host)),
+        Event::HostLost { host, taker, .. } => {
+            format!("Lost {} to {}", h(*host), controller(session, *taker))
+        }
+        Event::AccessPurged { host, .. } => format!("Thrown out of {}", h(*host)),
+        Event::DataStolen { host, amount, .. } => {
+            format!("Stole {amount} data from {}", h(*host))
+        }
+        Event::DataLost { host, amount, .. } => format!("Lost {amount} data from {}", h(*host)),
+        Event::Income { .. } => String::new(),
+        Event::Wages { paid, .. } => {
+            if *paid > 0 {
+                format!("Paid {paid} in wages")
+            } else {
+                String::new()
+            }
+        }
+        Event::HackerQuit { handle, .. } => format!("{handle} left the crew"),
+        Event::HackerHired { handle, .. } => format!("Hired {handle}"),
+        Event::LevelUp { handle, level, .. } => format!("{handle} reached level {level}"),
+        Event::Bought { what, .. } => format!("Bought {what}"),
+        Event::Swept { host, lost, .. } => {
+            if *lost {
+                format!("The Legacy Net swept you and took {}", h(*host))
+            } else {
+                format!("The Legacy Net swept you, but {} held", h(*host))
+            }
+        }
+        Event::LegacySpread { host, .. } => {
+            format!("The Legacy Net spread to {}", h(*host))
+        }
+        Event::GameEnded { winner, .. } => match winner {
+            Some(p) => format!("Game over: {} wins", crew(*p)),
+            None => "Game over: a tie".to_string(),
+        },
+    }
+}
+
+/// A crew's name, from the status's crew list.
+pub fn crew(session: &Session, player: PlayerId) -> String {
+    session
+        .status
+        .as_ref()
+        .and_then(|s| s.crews.iter().find(|c| c.player == player))
+        .map(|c| c.name.clone())
+        .unwrap_or_else(|| format!("crew {}", player.0))
+}
+
+fn controller(session: &Session, controller: nullnet_core::Controller) -> String {
+    match controller {
+        nullnet_core::Controller::Crew(p) => crew(session, p),
+        nullnet_core::Controller::Legacy => "the Legacy Net".to_string(),
     }
 }

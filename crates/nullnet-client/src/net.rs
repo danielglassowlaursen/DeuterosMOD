@@ -8,7 +8,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 
 use bevy::prelude::*;
 use nullnet_api::{CrewStatus, OrdersReceipt, crew_path};
-use nullnet_core::{Citadel, Command, Event, ItemType, PlayerId};
+use nullnet_core::{Command, Event};
 
 use crate::Rules;
 use crate::notify;
@@ -111,6 +111,7 @@ pub struct Session {
 
 impl Session {
     /// Seconds until the running turn's deadline, from the last status.
+    #[allow(dead_code)]
     pub fn seconds_left(&self, clock: &Clock) -> Option<i64> {
         let status = self.status.as_ref()?;
         Some(status.deadline - status.now - clock.since_fetch as i64)
@@ -207,47 +208,26 @@ fn connect(api: Res<Api>, inbox: Res<Inbox>, mut session: ResMut<Session>) {
     }
 }
 
-/// Whether an event is worth a line in the toast of the turn that ran.
-fn notable(event: &Event, me: PlayerId) -> bool {
-    match event {
-        Event::HostClaimed { player, .. } => *player == me,
-        Event::Installed {
-            item: ItemType::CitadelModule,
-            installed,
-            ..
-        } => *installed == Citadel::MODULES,
-        Event::ResearchCompleted { .. }
-        | Event::Unlocked { .. }
-        | Event::VesselBurned { .. }
-        | Event::VesselStopped { .. }
-        | Event::WarDeclared { .. }
-        | Event::FleetSighted { .. }
-        | Event::UnderAttack { .. }
-        | Event::AttackRepelled { .. }
-        | Event::HostCaptured { .. }
-        | Event::HostFreed { .. }
-        | Event::BattleFought { .. }
-        | Event::VesselLost { .. }
-        | Event::FragmentFound { .. }
-        | Event::Raid { .. }
-        | Event::HostTaken { .. }
-        | Event::GameOver { .. } => true,
-        _ => false,
-    }
+/// Whether an event is worth a line in the toast of the turn that ran. The
+/// quiet book-keeping (income, wages, a plain scan) is left out.
+fn notable(event: &Event) -> bool {
+    !matches!(
+        event,
+        Event::Income { .. } | Event::Wages { .. } | Event::Scanned { .. }
+    )
 }
 
-/// The cue for the turn that ran: an alarm when the crew is under threat,
-/// a fanfare when the game is over, a chime otherwise.
-fn cue_for(events: &[Event], me: PlayerId) -> Cue {
-    if events.iter().any(|e| matches!(e, Event::GameOver { .. })) {
+/// The cue for the turn that ran: a fanfare when the game is over, an alarm
+/// when the crew was swept or broken into, a chime otherwise.
+fn cue_for(events: &[Event]) -> Cue {
+    if events.iter().any(|e| matches!(e, Event::GameEnded { .. })) {
         return Cue::GameOver;
     }
-    let threatened = events.iter().any(|e| match e {
-        Event::FleetSighted { player, .. }
-        | Event::UnderAttack { player, .. }
-        | Event::HostCaptured { player, .. } => *player == me,
-        Event::Raid { defender, .. } | Event::HostTaken { from: defender, .. } => *defender == me,
-        _ => false,
+    let threatened = events.iter().any(|e| {
+        matches!(
+            e,
+            Event::Swept { .. } | Event::Intrusion { .. } | Event::HostLost { .. }
+        )
     });
     if threatened { Cue::Alarm } else { Cue::TurnRan }
 }
@@ -258,26 +238,24 @@ fn announce(
     status: &CrewStatus,
     previous: u32,
     rules: &Rules,
+    session: &Session,
     toast: &mut Toast,
     play: &mut MessageWriter<Play>,
 ) {
-    let mut lines = vec![format!(
-        "Turn {previous} has run. It is now {}.",
-        nullnet_core::date(status.day)
-    )];
+    let mut lines = vec![format!("Turn {previous} has run.")];
     let events: &[Event] = status
         .last_turn
         .as_ref()
         .map_or(&[], |t| t.report.events.as_slice());
-    let me = status.player;
-    lines.extend(events.iter().filter(|e| notable(e, me)).take(8).map(|e| {
-        format!(
-            "{}  {}",
-            nullnet_core::date(e.day()),
-            text::event(e, &rules.0, &status.view.vessels)
-        )
-    }));
-    let cue = cue_for(events, me);
+    lines.extend(
+        events
+            .iter()
+            .filter(|e| notable(e))
+            .map(|e| text::event(e, &rules.0, session))
+            .filter(|line| !line.is_empty())
+            .take(8),
+    );
+    let cue = cue_for(events);
     play.write(Play(cue));
     let body = lines[1..].join("\n");
     notify::notify(
@@ -312,13 +290,10 @@ fn receive(
                 if let Some(previous) = previous
                     && status.turn != previous
                 {
-                    session.notice = Some(format!(
-                        "Turn {previous} has run. It is now {}.",
-                        nullnet_core::date(status.day)
-                    ));
+                    session.notice = Some(format!("Turn {previous} has run."));
                     session.draft.clear();
                     session.receipt = None;
-                    announce(&status, previous, &rules, &mut toast, &mut play);
+                    announce(&status, previous, &rules, &session, &mut toast, &mut play);
                 }
                 if !status.submitted && session.draft.is_empty() && !status.orders.is_empty() {
                     session.draft = status.orders.clone();

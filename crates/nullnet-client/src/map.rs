@@ -1,237 +1,119 @@
-//! The network map: the home network's hosts as nodes along a trunk from
-//! the backbone, each host's subsystems hanging under it, data lines
-//! between them, and the crew's vessels at their berths. Clicking selects
-//! a host or vessel; while a vessel is being routed, clicking a host sends
-//! it there.
+//! The map: the network as a graph of nodes and links. Every host is a
+//! hexagon whose ring shows who holds it; the links between them are the
+//! paths a crew works along. The camera fits the graph into the room the
+//! panels leave. Clicking a node selects it.
 //!
-//! The layout comes from the game's data, the colours from the crew's view
-//! of the world.
-
-use std::collections::HashMap;
+//! The nodes, links and backdrop are drawn by the shaders in
+//! [`crate::materials`], so the client still ships no images.
 
 use bevy::camera::ScalingMode;
 use bevy::prelude::*;
-use bevy::sprite::Anchor;
 use bevy::window::PrimaryWindow;
-use nullnet_core::{
-    Berth, Citadel, Command, Controller, CrewView, Destination, Event, GameData, HostDef, HostId,
-    ItemType, NetworkDef, PlayerId, VesselId, VesselState,
-};
+use nullnet_core::{Controller, GameData, HostId, PlayerId};
 
 use crate::Rules;
 use crate::materials::{
-    BackgroundMaterial, BackgroundParams, LinkMaterial, LinkParams, NodeKind, NodeMaterial,
-    NodeParams, linear,
+    BackgroundMaterial, BackgroundParams, LinkMaterial, LinkParams, NodeMaterial, NodeParams,
+    linear,
 };
 use crate::net::Session;
-use crate::ui::OverUi;
 
-/// The area the backdrop covers around the network, in world units.
-const VIEW_SIZE: Vec2 = Vec2::new(1600.0, 900.0);
-/// How far a subsystem's name reaches right of its node, in world units.
-const SUBSYSTEM_LABEL: f32 = 80.0;
-/// Where the backbone beam stands.
-const BACKBONE_X: f32 = -445.0;
-/// The trunk every host sits on.
-const TRUNK_Y: f32 = 150.0;
-/// The first host's x and the spacing between hosts along the trunk.
-const FIRST_HOST_X: f32 = -365.0;
-const HOST_SPACING: f32 = 77.0;
-/// Where a host's first subsystem hangs, and the spacing down the column.
-const SUBSYSTEM_DROP: f32 = 64.0;
-const SUBSYSTEM_SPACING: f32 = 34.0;
-const SUBSYSTEM_RADIUS: f32 = 8.0;
-const MARKER_RADIUS: f32 = 5.0;
+/// World units per map unit (host positions run −100 to 100).
+const SCALE: f32 = 5.0;
+/// The graph plus a margin, for the camera to frame.
+const VIEW: Vec2 = Vec2::new(1180.0, 1180.0);
 
-const TRUNK_COLOR: &str = "4f8fb3";
-const FREE_RING: &str = "4e7f9e";
-const LEGACY_RING: &str = "ff4d6a";
-const CACHE_COLOR: &str = "9c8a62";
-/// The crew's own colour, then its rivals' in player order.
-const CREW_COLORS: [&str; 4] = ["3fe0c8", "f09357", "b58cff", "9bd36a"];
+const CREW_COLORS: [&str; 4] = ["4fd08a", "e0a441", "6fb8e0", "c874d8"];
+const LEGACY_RING: &str = "e06a5a";
+const FREE_RING: &str = "6a7a8a";
 
 pub struct MapPlugin;
 
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Hovered>()
-            .init_resource::<Selected>()
-            .init_resource::<Routing>()
-            .init_resource::<Layout>()
+        app.init_resource::<Selected>()
             .init_resource::<MapInsets>()
-            .init_resource::<Bounds>()
             .add_systems(Startup, spawn_scene)
             .add_systems(
                 Update,
                 (
                     fit_camera,
-                    update_hover,
                     click,
+                    recolor.run_if(resource_changed::<Session>),
                     animate_highlight,
-                    decay_flash,
-                    parallax,
-                    (recolor, place_vessels).run_if(resource_changed::<Session>),
-                    place_vessels.run_if(resource_changed::<Selected>),
                 ),
             );
     }
 }
 
-/// What a node on the map stands for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Target {
-    Backbone,
-    Host(HostId),
-    Vessel(VesselId),
-}
+/// The host the player has clicked, if any.
+#[derive(Resource, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Selected(pub Option<HostId>);
 
-/// A node the cursor can pick.
-#[derive(Component)]
-pub struct MapNode {
-    pub target: Target,
-    /// How far from the centre the cursor still counts as over the node.
-    reach: f32,
-}
-
-/// A vessel's marker; rebuilt whenever the view changes.
-#[derive(Component)]
-struct VesselMarker;
-
-#[derive(Resource, Default, PartialEq)]
-pub struct Hovered(pub Option<Target>);
-
-/// What the player has clicked on.
-#[derive(Resource, Default, PartialEq, Eq)]
-pub struct Selected {
-    pub host: Option<HostId>,
-    pub vessel: Option<VesselId>,
-}
-
-/// A vessel waiting for the player to click the host to route it to.
-#[derive(Resource, Default, PartialEq, Eq)]
-pub struct Routing(pub Option<VesselId>);
-
-/// Where each host sits, for markers and the HUD.
-#[derive(Resource, Default)]
-pub struct Layout {
-    pub hosts: HashMap<HostId, (Vec2, f32)>,
-}
-
-/// How much of the screen the panels cover at each edge, in logical
-/// pixels: x left, y top, z right, w bottom. The UI keeps it up to date,
-/// and the camera fits the network into what is left.
-#[derive(Resource, Clone, Copy, PartialEq)]
+/// How much of the screen the panels cover: left, top, right, bottom, in
+/// logical pixels. The camera frames the graph in what is left.
+#[derive(Resource, Clone, Copy)]
 pub struct MapInsets(pub Vec4);
 
 impl Default for MapInsets {
     fn default() -> Self {
-        MapInsets(Vec4::new(68.0, 56.0, 284.0, 8.0))
+        // A guess until the UI measures itself on the first frame.
+        MapInsets(Vec4::new(300.0, 56.0, 16.0, 150.0))
     }
 }
 
-/// The world rectangle the network's nodes and names take up.
-#[derive(Resource)]
-struct Bounds(Rect);
-
-impl Default for Bounds {
-    fn default() -> Self {
-        Bounds(Rect::from_center_size(Vec2::ZERO, VIEW_SIZE))
-    }
+#[derive(Component)]
+struct MapNode {
+    host: HostId,
+    /// How far from the node centre a click still counts, in world units.
+    reach: f32,
+    /// The highlight the node is easing towards (0 rest, up to 1).
+    target: f32,
 }
 
-/// The colour a host or vessel takes from whoever holds it.
+/// The colour a crew is drawn in: you first, then the rivals in turn.
 pub fn crew_color(me: PlayerId, crew: PlayerId) -> &'static str {
     if crew == me {
-        CREW_COLORS[0]
-    } else {
-        let rivals: Vec<u8> = (0..4u8).filter(|&c| c != me.0).collect();
-        let index = rivals.iter().position(|&c| c == crew.0).unwrap_or(0);
-        CREW_COLORS[1 + index.min(2)]
+        return CREW_COLORS[0];
+    }
+    let rivals: Vec<u8> = (0..4u8).filter(|&c| c != me.0).collect();
+    let index = rivals.iter().position(|&c| c == crew.0).unwrap_or(0);
+    CREW_COLORS[1 + index.min(2)]
+}
+
+fn node_radius(data: &GameData, host: HostId) -> f32 {
+    use nullnet_core::Role::*;
+    match data.host(host).role {
+        Hideout => 22.0,
+        Cortex => 26.0,
+        Grid | Stronghold => 20.0,
+        _ => 16.0,
     }
 }
 
-fn controller_colors(
-    data: &GameData,
-    view: Option<&CrewView>,
-    id: HostId,
-    def: &HostDef,
-) -> (Vec4, Vec4) {
-    let me = view.map(|v| v.player);
-    let controller = view
-        .map(|v| v.hosts[usize::from(id.0)].controller)
-        .unwrap_or(def.legacy.then_some(Controller::Legacy));
-    let is_home = id == data.hideout.host;
-    let (ring, strength, fill) = match (controller, is_home, me) {
-        (_, true, Some(me)) => (crew_color(me, me), 0.9, "2a2612"),
-        (_, true, None) => ("ffd27a", 0.9, "2a2612"),
-        (Some(Controller::Legacy), _, _) => (LEGACY_RING, 1.0, "33121f"),
-        (Some(Controller::Crew(crew)), _, Some(me)) => (crew_color(me, crew), 0.9, "12302a"),
-        (Some(Controller::Crew(_)), _, None) => (CREW_COLORS[1], 0.9, "12302a"),
-        (None, _, _) => (FREE_RING, 0.45, "16293c"),
-    };
-    let mut ring = linear(ring);
-    ring.w = strength;
-    (linear(fill), ring)
-}
-
-/// The network the hideouts are in: the one the map shows.
-pub fn home_network(data: &GameData) -> &NetworkDef {
-    &data.networks[usize::from(data.host(data.hideout.host).network.0)]
-}
-
-fn node_params(kind: NodeKind, fill: Vec4, ring: Vec4, seed: f32, extent: f32) -> NodeParams {
-    let kind = match kind {
-        NodeKind::Host => 0.0,
-        NodeKind::Subsystem => 1.0,
-        NodeKind::Backbone => 2.0,
-        NodeKind::CacheField => 3.0,
-    };
+fn node_params(fill: Vec4, ring: Vec4, seed: f32) -> NodeParams {
     NodeParams {
         fill,
         ring,
-        shape: Vec4::new(kind, seed, 0.0, 1.6),
-        quad: Vec4::new(extent, 1.0, 0.0, 0.0),
+        shape: Vec4::new(0.0, seed, 0.0, 1.6),
+        quad: Vec4::new(1.25, 1.0, 0.0, 0.0),
     }
 }
 
-fn spawn_link(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    links: &mut Assets<LinkMaterial>,
-    from: Vec2,
-    to: Vec2,
-    thickness: f32,
-    seed: f32,
-) {
-    let delta = to - from;
-    let length = delta.length();
-    commands.spawn((
-        Mesh2d(meshes.add(Rectangle::new(length, thickness))),
-        MeshMaterial2d(links.add(LinkMaterial {
-            params: LinkParams {
-                color: linear(TRUNK_COLOR),
-                shape: Vec4::new(length, thickness, 90.0, seed),
-            },
-        })),
-        Transform::from_translation(((from + to) * 0.5).extend(-5.0))
-            .with_rotation(Quat::from_rotation_z(delta.y.atan2(delta.x))),
-    ));
+fn world(data: &GameData, host: HostId) -> Vec2 {
+    let (x, y) = data.host(host).pos;
+    Vec2::new(f32::from(x), f32::from(y)) * SCALE
 }
 
-#[allow(clippy::too_many_arguments)]
 fn spawn_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut nodes: ResMut<Assets<NodeMaterial>>,
     mut links: ResMut<Assets<LinkMaterial>>,
     mut backgrounds: ResMut<Assets<BackgroundMaterial>>,
-    mut layout: ResMut<Layout>,
-    mut bounds: ResMut<Bounds>,
     rules: Res<Rules>,
 ) {
     let data = &rules.0;
-    let home = home_network(data);
-    let home_id = data.host(data.hideout.host).network;
 
     commands.spawn((
         Camera2d,
@@ -242,213 +124,136 @@ fn spawn_scene(
     ));
 
     commands.spawn((
-        Mesh2d(meshes.add(Rectangle::new(VIEW_SIZE.x * 4.0, VIEW_SIZE.y * 4.0))),
+        Mesh2d(meshes.add(Rectangle::new(VIEW.x * 4.0, VIEW.y * 4.0))),
         MeshMaterial2d(backgrounds.add(BackgroundMaterial {
             params: BackgroundParams {
                 offset: Vec4::ZERO,
-                grid: linear("23405a"),
+                grid: linear("1d2a3a"),
                 fog_a: linear("07121c"),
-                fog_b: linear("0a2a33"),
+                fog_b: linear("0a1f28"),
             },
         })),
         Transform::from_xyz(0.0, 0.0, -10.0),
     ));
 
-    // The backbone: a beam the trunk line leaves from.
-    let beam = Vec2::new(120.0, VIEW_SIZE.y * 1.2);
-    let mut params = node_params(
-        NodeKind::Backbone,
-        linear("1b3f5a"),
-        linear("8fd8ff"),
-        0.3,
-        1.0,
-    );
-    params.quad.y = beam.y / beam.x;
-    commands.spawn((
-        Mesh2d(meshes.add(Rectangle::new(beam.x, beam.y))),
-        MeshMaterial2d(nodes.add(NodeMaterial { params })),
-        Transform::from_xyz(BACKBONE_X, 0.0, -4.0),
-        MapNode {
-            target: Target::Backbone,
-            reach: beam.x * 0.35,
-        },
-    ));
-    commands.spawn((
-        Text2d::new(home.name.to_uppercase()),
-        TextFont::from_font_size(11.0),
-        TextColor(Color::srgba(0.72, 0.84, 0.95, 0.75)),
-        Transform::from_xyz(BACKBONE_X, TRUNK_Y + 60.0, 1.0),
-    ));
-
-    let hosts: Vec<(HostId, &HostDef)> = data
-        .hosts
-        .iter()
-        .enumerate()
-        .map(|(index, def)| (HostId(index as u16), def))
-        .filter(|(_, def)| def.network == home_id)
-        .collect();
-    let subsystems_of = |parent: HostId| -> Vec<(HostId, &HostDef)> {
-        hosts
-            .iter()
-            .filter(|(_, def)| def.parent == Some(parent))
-            .copied()
-            .collect()
-    };
-    let top: Vec<(HostId, &HostDef)> = hosts
-        .iter()
-        .filter(|(_, def)| def.parent.is_none())
-        .copied()
-        .collect();
-    let last_x = FIRST_HOST_X + HOST_SPACING * (top.len() - 1) as f32;
-    spawn_link(
-        &mut commands,
-        &mut meshes,
-        &mut links,
-        Vec2::new(BACKBONE_X + 30.0, TRUNK_Y),
-        Vec2::new(last_x + 40.0, TRUNK_Y),
-        8.0,
-        0.5,
-    );
-
-    let label = TextColor(Color::srgba(0.72, 0.84, 0.95, 0.75));
-    let small_label = TextColor(Color::srgba(0.6, 0.72, 0.85, 0.6));
-
-    for (host, def) in &top {
-        let subsystems = subsystems_of(*host);
-        let x = FIRST_HOST_X + HOST_SPACING * def.order as f32;
-        let centre = Vec2::new(x, TRUNK_Y);
-        let seed = def.order as f32 * 1.37 + 0.5;
-        let (fill, ring) = controller_colors(data, None, *host, def);
-
-        let radius = if def.cache_field || *host == data.hideout.host {
-            26.0
-        } else {
-            18.0 + 1.2 * subsystems.len() as f32
-        };
-        layout.hosts.insert(*host, (centre, radius));
-        if def.cache_field {
-            let mut color = linear(CACHE_COLOR);
-            color.w = 0.6;
-            commands.spawn((
-                Mesh2d(meshes.add(Rectangle::from_length(2.0 * 1.2 * radius))),
-                MeshMaterial2d(nodes.add(NodeMaterial {
-                    params: node_params(NodeKind::CacheField, linear("5b5240"), color, seed, 1.2),
-                })),
-                Transform::from_translation(centre.extend(0.0)),
-                MapNode {
-                    target: Target::Host(*host),
-                    reach: radius,
+    for &(a, b) in &data.links {
+        let from = world(data, a);
+        let to = world(data, b);
+        let delta = to - from;
+        let length = delta.length();
+        commands.spawn((
+            Mesh2d(meshes.add(Rectangle::new(length, 2.5))),
+            MeshMaterial2d(links.add(LinkMaterial {
+                params: LinkParams {
+                    color: linear("3a5a74"),
+                    shape: Vec4::new(length, 2.5, 80.0, (a.0 + b.0) as f32),
                 },
-            ));
-        } else {
-            let extent = 1.7;
-            commands.spawn((
-                Mesh2d(meshes.add(Rectangle::from_length(2.0 * extent * radius))),
-                MeshMaterial2d(nodes.add(NodeMaterial {
-                    params: node_params(NodeKind::Host, fill, ring, seed, extent),
-                })),
-                Transform::from_translation(centre.extend(0.0)),
-                MapNode {
-                    target: Target::Host(*host),
-                    reach: radius * 1.15,
-                },
-            ));
-        }
+            })),
+            Transform::from_translation(((from + to) * 0.5).extend(-5.0))
+                .with_rotation(Quat::from_rotation_z(delta.y.atan2(delta.x))),
+        ));
+    }
+
+    for host in data.host_ids() {
+        let radius = node_radius(data, host);
+        let def = data.host(host);
+        let (fill, ring) = rest_colors(def.legacy);
+        let seed = f32::from(host.0) * 0.137;
+        commands.spawn((
+            Mesh2d(meshes.add(Rectangle::from_length(2.0 * 1.25 * radius))),
+            MeshMaterial2d(nodes.add(NodeMaterial {
+                params: node_params(fill, ring, seed),
+            })),
+            MapNode {
+                host,
+                reach: radius * 1.2,
+                target: 0.0,
+            },
+            Transform::from_translation(world(data, host).extend(1.0)),
+        ));
         commands.spawn((
             Text2d::new(def.name.to_uppercase()),
-            TextFont::from_font_size(10.0),
-            label,
-            Transform::from_xyz(x, TRUNK_Y + 46.0, 1.0),
-        ));
-
-        if subsystems.is_empty() {
-            continue;
-        }
-        let bottom = TRUNK_Y - SUBSYSTEM_DROP - SUBSYSTEM_SPACING * (subsystems.len() - 1) as f32;
-        spawn_link(
-            &mut commands,
-            &mut meshes,
-            &mut links,
-            Vec2::new(x, TRUNK_Y - 8.0),
-            Vec2::new(x, bottom),
-            4.0,
-            seed + 3.0,
-        );
-        for (index, (sub, sub_def)) in subsystems.iter().enumerate() {
-            let y = TRUNK_Y - SUBSYSTEM_DROP - SUBSYSTEM_SPACING * index as f32;
-            let centre = Vec2::new(x, y);
-            layout.hosts.insert(*sub, (centre, SUBSYSTEM_RADIUS));
-            let (fill, ring) = controller_colors(data, None, *sub, sub_def);
-            let extent = 2.2;
-            commands.spawn((
-                Mesh2d(meshes.add(Rectangle::from_length(2.0 * extent * SUBSYSTEM_RADIUS))),
-                MeshMaterial2d(nodes.add(NodeMaterial {
-                    params: node_params(
-                        NodeKind::Subsystem,
-                        fill,
-                        ring,
-                        seed + index as f32 * 0.71,
-                        extent,
-                    ),
-                })),
-                Transform::from_translation(centre.extend(0.0)),
-                MapNode {
-                    target: Target::Host(*sub),
-                    reach: SUBSYSTEM_RADIUS * 1.8,
-                },
-            ));
-            commands.spawn((
-                Text2d::new(sub_def.name.clone()),
-                TextFont::from_font_size(9.0),
-                small_label,
-                TextLayout::justify(Justify::Left),
-                Anchor::CENTER_LEFT,
-                Transform::from_xyz(x + SUBSYSTEM_RADIUS + 7.0, y, 1.0),
-            ));
-        }
-    }
-
-    // What the camera has to show: the backbone and its name, every node,
-    // the hosts' names above them and the subsystems' to their right.
-    let mut rect = Rect::from_center_size(Vec2::new(BACKBONE_X, TRUNK_Y), Vec2::new(90.0, 140.0));
-    for (id, &(centre, radius)) in &layout.hosts {
-        let subsystem = data.host(*id).parent.is_some();
-        let (right, above) = if subsystem {
-            (radius + 7.0 + SUBSYSTEM_LABEL, radius)
-        } else {
-            (radius, radius + 56.0)
-        };
-        rect = rect.union(Rect::new(
-            centre.x - radius,
-            centre.y - radius,
-            centre.x + right,
-            centre.y + above,
+            TextFont::from_font_size(11.0),
+            TextColor(Color::srgba(0.82, 0.88, 0.94, 0.85)),
+            Transform::from_translation(
+                (world(data, host) + Vec2::new(0.0, -radius - 9.0)).extend(2.0),
+            ),
         ));
     }
-    bounds.0 = rect;
 }
 
-/// Fits the network into the part of the screen the panels leave free,
-/// and glides there when that part changes, as when a window opens.
+/// The colours a host rests in before any game state is known.
+fn rest_colors(legacy: bool) -> (Vec4, Vec4) {
+    if legacy {
+        (linear("33121f"), with_strength(linear(LEGACY_RING), 1.0))
+    } else {
+        (linear("16293c"), with_strength(linear(FREE_RING), 0.45))
+    }
+}
+
+fn with_strength(mut color: Vec4, strength: f32) -> Vec4 {
+    color.w = strength;
+    color
+}
+
+/// Colours a host by who holds it, from the crew's own view.
+fn controller_colors(session: &Session, host: HostId) -> (Vec4, Vec4) {
+    let Some(status) = session.status.as_ref() else {
+        return rest_colors(false);
+    };
+    let view = &status.view;
+    let me = view.player;
+    let hv = &view.hosts[host.index()];
+    let is_my_hideout = host == view.me.hideout;
+    match (hv.controller, is_my_hideout) {
+        (_, true) => (
+            linear("2a2612"),
+            with_strength(linear(crew_color(me, me)), 0.95),
+        ),
+        (Some(Controller::Legacy), _) => {
+            (linear("33121f"), with_strength(linear(LEGACY_RING), 1.0))
+        }
+        (Some(Controller::Crew(crew)), _) => (
+            linear("12302a"),
+            with_strength(linear(crew_color(me, crew)), 0.9),
+        ),
+        (None, _) => (linear("16293c"), with_strength(linear(FREE_RING), 0.45)),
+    }
+}
+
+fn recolor(
+    session: Res<Session>,
+    selected: Res<Selected>,
+    nodes: Query<(&mut MapNode, &MeshMaterial2d<NodeMaterial>)>,
+    mut materials: ResMut<Assets<NodeMaterial>>,
+) {
+    let _ = &selected; // highlight is set by its own system
+    for (node, handle) in nodes {
+        if let Some(mut material) = materials.get_mut(handle.id()) {
+            let (fill, ring) = controller_colors(&session, node.host);
+            material.params.fill = fill;
+            material.params.ring = ring;
+        }
+    }
+}
+
 fn fit_camera(
     time: Res<Time>,
     window: Single<&Window, With<PrimaryWindow>>,
     insets: Res<MapInsets>,
-    bounds: Res<Bounds>,
     camera: Single<(&mut Transform, &mut Projection), With<Camera2d>>,
     mut placed: Local<bool>,
 ) {
     let size = window.size();
     let inset = insets.0;
     let free =
-        Vec2::new(size.x - inset.x - inset.z, size.y - inset.y - inset.w).max(Vec2::splat(120.0));
-    let content = bounds.0.size();
+        Vec2::new(size.x - inset.x - inset.z, size.y - inset.y - inset.w).max(Vec2::splat(140.0));
     // World units per logical pixel, with a little room around the edges.
-    let scale = (content.x / free.x).max(content.y / free.y) * 1.06;
-    let centre = bounds.0.center();
+    let scale = (VIEW.x / free.x).max(VIEW.y / free.y) * 1.04;
+    // Shift the camera so the graph centres in the free area, not the window.
     let target = Vec2::new(
-        centre.x - (inset.x - inset.z) * 0.5 * scale,
-        centre.y + (inset.y - inset.w) * 0.5 * scale,
+        (inset.x - inset.z) * 0.5 * scale,
+        -(inset.y - inset.w) * 0.5 * scale,
     );
 
     let (mut transform, mut projection) = camera.into_inner();
@@ -462,305 +267,86 @@ fn fit_camera(
     };
     *placed = true;
     let next_scale = current.scale + (scale - current.scale) * follow;
-    if (next_scale - current.scale).abs() > 1e-5
-        && let Projection::Orthographic(ortho) = projection.as_mut()
-    {
+    if let Projection::Orthographic(ortho) = projection.as_mut() {
         ortho.scale = next_scale;
     }
     let now = transform.translation.truncate();
     let next = now.lerp(target, follow);
-    if now.distance_squared(next) > 1e-4 {
-        transform.translation.x = next.x;
-        transform.translation.y = next.y;
-    }
+    transform.translation.x = next.x;
+    transform.translation.y = next.y;
 }
 
-/// The usual pulse of a node's glow, and the faster ones of a host with a
-/// swarm on its way or at its gate.
-const PULSE: f32 = 1.6;
-const PULSE_SIGHTED: f32 = 4.5;
-const PULSE_SIEGE: f32 = 9.0;
-
-/// Recolours every host by whoever holds it in the latest view, makes the
-/// threatened ones pulse, and flashes those that changed hands in the turn
-/// that just ran.
-fn recolor(
-    session: Res<Session>,
-    rules: Res<Rules>,
-    nodes: Query<(&MapNode, &MeshMaterial2d<NodeMaterial>)>,
-    mut materials: ResMut<Assets<NodeMaterial>>,
-    mut flashed_turn: Local<Option<u32>>,
-) {
-    let Some(status) = &session.status else {
-        return;
-    };
-    let data = &rules.0;
-    let flash_now = *flashed_turn != Some(status.turn);
-    *flashed_turn = Some(status.turn);
-    let changed: Vec<HostId> = status
-        .last_turn
-        .iter()
-        .flat_map(|t| &t.report.events)
-        .filter_map(|e| match e {
-            Event::HostClaimed { host, .. }
-            | Event::HostCaptured { host, .. }
-            | Event::HostFreed { host, .. }
-            | Event::HostTaken { host, .. } => Some(*host),
-            Event::Installed {
-                host,
-                item: ItemType::CitadelModule,
-                installed,
-                ..
-            } if *installed == Citadel::MODULES => Some(*host),
-            _ => None,
-        })
-        .collect();
-    for (node, material) in &nodes {
-        let Target::Host(id) = node.target else {
-            continue;
-        };
-        let def = data.host(id);
-        if def.cache_field {
-            continue;
-        }
-        let (fill, mut ring) = controller_colors(data, Some(&status.view), id, def);
-        let threat = status.view.threats.iter().find(|t| t.host == id);
-        let pulse = match threat {
-            Some(t) if t.siege_until.is_some() => {
-                ring = linear(LEGACY_RING);
-                ring.w = 1.3;
-                PULSE_SIEGE
-            }
-            Some(_) => {
-                ring.w += 0.3;
-                PULSE_SIGHTED
-            }
-            None => PULSE,
-        };
-        if let Some(mut material) = materials.get_mut(material.id()) {
-            material.params.fill = fill;
-            material.params.ring = ring;
-            material.params.shape.w = pulse;
-            if flash_now && changed.contains(&id) {
-                material.params.quad.z = 1.0;
-            }
-        }
-    }
-}
-
-/// Lets a flash die down over a couple of seconds.
-fn decay_flash(time: Res<Time>, mut materials: ResMut<Assets<NodeMaterial>>) {
-    let step = time.delta_secs() * 0.4;
-    let flashing: Vec<AssetId<NodeMaterial>> = materials
-        .iter()
-        .filter(|(_, m)| m.params.quad.z > 0.0)
-        .map(|(id, _)| id)
-        .collect();
-    for id in flashing {
-        if let Some(mut material) = materials.get_mut(id) {
-            material.params.quad.z = (material.params.quad.z - step).max(0.0);
-        }
-    }
-}
-
-/// Where a vessel's marker sits beside its host.
-fn berth_offset(state: VesselState, radius: f32, slot: usize) -> Vec2 {
-    let stack = slot as f32 * (2.0 * MARKER_RADIUS + 3.0);
-    match state {
-        VesselState::At(Berth::Planted) | VesselState::Injecting { .. } => {
-            Vec2::new(-(radius + 12.0) - stack, -8.0)
-        }
-        VesselState::At(Berth::Connected) | VesselState::Connecting => {
-            Vec2::new(stack - 6.0, radius + 12.0)
-        }
-        _ => Vec2::new(radius + 12.0 + stack, 8.0),
-    }
-}
-
-/// Rebuilds the vessel markers from the latest view.
-fn place_vessels(
-    mut commands: Commands,
-    session: Res<Session>,
-    selected: Res<Selected>,
-    layout: Res<Layout>,
-    old: Query<Entity, With<VesselMarker>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut nodes: ResMut<Assets<NodeMaterial>>,
-) {
-    for entity in &old {
-        commands.entity(entity).despawn();
-    }
-    let Some(status) = &session.status else {
-        return;
-    };
-    let mut slots: HashMap<(HostId, u8), usize> = HashMap::new();
-    for (&id, vessel) in &status.view.vessels {
-        let Some(&(centre, radius)) = layout.hosts.get(&vessel.host) else {
-            continue;
-        };
-        let group = match vessel.state {
-            VesselState::At(Berth::Planted) | VesselState::Injecting { .. } => 0,
-            VesselState::At(Berth::Connected) | VesselState::Connecting => 1,
-            _ => 2,
-        };
-        let slot = slots.entry((vessel.host, group)).or_default();
-        let position = centre + berth_offset(vessel.state, radius, *slot);
-        *slot += 1;
-
-        let color = crew_color(status.player, vessel.owner);
-        let mut ring = linear(color);
-        ring.w = if vessel.owner == status.player {
-            0.9
-        } else {
-            0.6
-        };
-        let mut params = node_params(
-            NodeKind::Subsystem,
-            linear(color) * 0.5,
-            ring,
-            id.0 as f32 * 0.37,
-            2.4,
-        );
-        params.shape.z = if selected.vessel == Some(id) {
-            1.0
-        } else {
-            0.0
-        };
-        commands.spawn((
-            VesselMarker,
-            Mesh2d(meshes.add(Rectangle::from_length(2.0 * 2.4 * MARKER_RADIUS))),
-            MeshMaterial2d(nodes.add(NodeMaterial { params })),
-            Transform::from_translation(position.extend(0.5)),
-            MapNode {
-                target: Target::Vessel(id),
-                reach: MARKER_RADIUS * 2.2,
-            },
-        ));
-    }
-}
-
-fn update_hover(
-    window: Single<&Window, With<PrimaryWindow>>,
-    camera: Single<(&Camera, &GlobalTransform)>,
-    nodes: Query<(&MapNode, &GlobalTransform)>,
-    over_ui: Res<OverUi>,
-    mut hovered: ResMut<Hovered>,
-) {
-    let (camera, camera_transform) = *camera;
-    let found = window
-        .cursor_position()
-        .filter(|_| !over_ui.0)
-        .and_then(|cursor| camera.viewport_to_world_2d(camera_transform, cursor).ok())
-        .and_then(|point| {
-            // The nearest node whose reach covers the cursor, so a marker
-            // beside a big host still wins when the cursor is on it.
-            nodes
-                .iter()
-                .filter_map(|(node, transform)| {
-                    let distance = transform.translation().truncate().distance(point);
-                    (node.reach > 0.0 && distance < node.reach)
-                        .then_some((node.target, distance / node.reach))
-                })
-                .min_by(|a, b| a.1.total_cmp(&b.1))
-                .map(|(target, _)| target)
-        });
-    hovered.set_if_neq(Hovered(found));
-}
-
-/// Selects what is clicked, or routes the vessel being sent.
 fn click(
     mouse: Res<ButtonInput<MouseButton>>,
-    hovered: Res<Hovered>,
-    over_ui: Res<OverUi>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    insets: Res<MapInsets>,
+    camera: Single<(&Camera, &GlobalTransform)>,
+    nodes: Query<(&MapNode, &GlobalTransform)>,
     mut selected: ResMut<Selected>,
-    mut routing: ResMut<Routing>,
-    mut session: ResMut<Session>,
 ) {
-    if !mouse.just_pressed(MouseButton::Left) || over_ui.0 {
+    if !mouse.just_pressed(MouseButton::Left) {
         return;
     }
-    match (routing.0, hovered.0) {
-        (Some(vessel), Some(Target::Host(host))) => {
-            session.draft.push(Command::Dispatch {
-                vessel,
-                to: Destination {
-                    host,
-                    berth: Berth::Lurking,
-                },
-            });
-            routing.0 = None;
-        }
-        (Some(_), _) => routing.0 = None,
-        (None, Some(Target::Host(host))) => {
-            *selected = Selected {
-                host: Some(host),
-                vessel: None,
-            };
-        }
-        (None, Some(Target::Vessel(id))) => {
-            let host = session
-                .status
-                .as_ref()
-                .and_then(|s| s.view.vessels.get(&id))
-                .map(|v| v.host);
-            *selected = Selected {
-                host,
-                vessel: Some(id),
-            };
-        }
-        (None, Some(Target::Backbone)) | (None, None) => {
-            selected.set_if_neq(Selected::default());
-        }
+    let Some(cursor) = window.cursor_position() else {
+        return;
+    };
+    // Ignore clicks over the panels.
+    let size = window.size();
+    let inset = insets.0;
+    if cursor.x < inset.x
+        || cursor.x > size.x - inset.z
+        || cursor.y < inset.y
+        || cursor.y > size.y - inset.w
+    {
+        return;
+    }
+    let (camera, camera_transform) = *camera;
+    let Ok(point) = camera.viewport_to_world_2d(camera_transform, cursor) else {
+        return;
+    };
+    let found = nodes
+        .iter()
+        .filter_map(|(node, transform)| {
+            let distance = transform.translation().truncate().distance(point);
+            (distance < node.reach).then_some((node.host, distance))
+        })
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(host, _)| host);
+    if let Some(host) = found {
+        *selected = Selected(Some(host));
+    } else {
+        *selected = Selected(None);
     }
 }
 
+/// Eases each node's glow towards its target: bright when selected, a softer
+/// glow when the crew can reach it this turn.
 fn animate_highlight(
     time: Res<Time>,
-    hovered: Res<Hovered>,
+    session: Res<Session>,
     selected: Res<Selected>,
-    nodes: Query<(&MapNode, &MeshMaterial2d<NodeMaterial>)>,
+    nodes: Query<(&mut MapNode, &MeshMaterial2d<NodeMaterial>)>,
     mut materials: ResMut<Assets<NodeMaterial>>,
 ) {
+    let view = session.status.as_ref().map(|s| &s.view);
     let step = time.delta_secs() * 6.0;
-    for (node, material) in &nodes {
-        let is_selected = match node.target {
-            Target::Host(h) => selected.host == Some(h) && selected.vessel.is_none(),
-            Target::Vessel(v) => selected.vessel == Some(v),
-            Target::Backbone => false,
-        };
-        let target = if hovered.0 == Some(node.target) || is_selected {
+    for (mut node, handle) in nodes {
+        let reachable = view
+            .map(|v| {
+                let hv = &v.hosts[node.host.index()];
+                hv.can_break_in || hv.can_scan || hv.access
+            })
+            .unwrap_or(false);
+        node.target = if selected.0 == Some(node.host) {
             1.0
+        } else if reachable {
+            0.45
         } else {
             0.0
         };
-        let Some(current) = materials.get(material.id()).map(NodeMaterial::highlight) else {
-            continue;
-        };
-        if current != target
-            && let Some(mut material) = materials.get_mut(material.id())
-        {
-            material.set_highlight(current + (target - current).clamp(-step, step));
+        if let Some(mut material) = materials.get_mut(handle.id()) {
+            let current = material.params.shape.z;
+            material.params.shape.z = current + (node.target - current).clamp(-step, step);
         }
-    }
-}
-
-/// Shifts the backdrop slightly against the cursor for a sense of depth.
-fn parallax(
-    time: Res<Time>,
-    window: Single<&Window, With<PrimaryWindow>>,
-    background: Single<&MeshMaterial2d<BackgroundMaterial>>,
-    mut materials: ResMut<Assets<BackgroundMaterial>>,
-    mut smoothed: Local<Vec2>,
-) {
-    let target = window
-        .cursor_position()
-        .map(|cursor| (cursor / window.size() - 0.5) * Vec2::new(-60.0, 60.0))
-        .unwrap_or(Vec2::ZERO);
-    let previous = *smoothed;
-    *smoothed = previous.lerp(target, 1.0 - (-time.delta_secs() * 3.0).exp());
-    if previous.distance_squared(*smoothed) > 1e-6
-        && let Some(mut material) = materials.get_mut(background.id())
-    {
-        material.params.offset = smoothed.extend(0.0).extend(0.0);
     }
 }

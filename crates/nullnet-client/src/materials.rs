@@ -29,6 +29,7 @@ fn embedded_shader(path: AssetPath<'static>) -> ShaderRef {
 
 /// What a node on the map stands for; the shader draws each differently.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[allow(dead_code)]
 pub enum NodeKind {
     /// A server, mainframe or facility: a hexagonal node.
     Host,
@@ -58,6 +59,7 @@ pub struct NodeMaterial {
     pub params: NodeParams,
 }
 
+#[allow(dead_code)]
 impl NodeMaterial {
     pub fn highlight(&self) -> f32 {
         self.params.shape.z

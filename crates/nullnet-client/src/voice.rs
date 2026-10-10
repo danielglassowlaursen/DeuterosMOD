@@ -4,9 +4,15 @@
 //! make sound after a click, so the story is read aloud from the first page
 //! turn, or from the page's Listen button. On the desktop there is no voice.
 
-/// Where the clip for a page of the story is served, counting pages from 0.
-fn story_clip(page: usize) -> String {
-    format!("/voice/story-{}.mp3", page + 1)
+/// Pages with a recorded narration. The first two (ResetN00L and NullNet)
+/// are unchanged; pages 3-5 were rewritten for the new rules and wait to be
+/// recorded again, so they are read in silence for now.
+const VOICED: usize = 2;
+
+/// Where the clip for a page of the story is served, counting pages from 0,
+/// or nothing when the page has no up-to-date recording.
+fn story_clip(page: usize) -> Option<String> {
+    (page < VOICED).then(|| format!("/voice/story-{}.mp3", page + 1))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -53,10 +59,14 @@ mod browser {
 #[cfg(target_arch = "wasm32")]
 pub use browser::play_quietly;
 
-/// Reads a page of the story aloud, stopping whatever was being read.
+/// Reads a page of the story aloud, stopping whatever was being read. Pages
+/// with no current recording are read in silence.
 #[cfg(target_arch = "wasm32")]
 pub fn play_story(page: usize) {
-    browser::play(&story_clip(page));
+    match story_clip(page) {
+        Some(url) => browser::play(&url),
+        None => browser::stop(),
+    }
 }
 
 /// Stops the narrator.

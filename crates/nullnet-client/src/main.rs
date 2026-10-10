@@ -14,14 +14,14 @@ mod voice;
 use bevy::prelude::*;
 use nullnet_core::GameData;
 
-/// The rules data, loaded once.
+/// The map every game is played on, loaded once.
 #[derive(Resource)]
 pub struct Rules(pub GameData);
 
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::BLACK))
-        .insert_resource(Rules(GameData::classic()))
+        .insert_resource(Rules(GameData::standard()))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "NullNet".into(),

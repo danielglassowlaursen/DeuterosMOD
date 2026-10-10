@@ -68,6 +68,7 @@ pub fn stop() {
 
 /// Lowers the music under the narrator, or raises it again.
 #[cfg(target_arch = "wasm32")]
+#[allow(dead_code)]
 pub fn duck(ducked: bool) {
     browser::PLAYER.with(|player| {
         let mut player = player.borrow_mut();
@@ -85,4 +86,5 @@ pub fn start() {}
 pub fn stop() {}
 
 #[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)]
 pub fn duck(_ducked: bool) {}
