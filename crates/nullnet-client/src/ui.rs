@@ -8,6 +8,7 @@
 
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 
 use nullnet_core::{
     Command, Controller, CrewView, Event, GameData, HackerId, HostId, HostView, Operation, Outcome,
@@ -17,7 +18,7 @@ use nullnet_core::{
 use crate::Rules;
 use crate::guide;
 use crate::icons;
-use crate::map::{MapInsets, Selected};
+use crate::map::{MapBlocked, MapInsets, Selected};
 use crate::net::{Api, Inbox, Session, hand_in, withdraw};
 use crate::sound::{Cue, Play, Sounds};
 use crate::theme::{self, FG, MUTED, PanelMaterial};
@@ -40,6 +41,8 @@ impl Plugin for UiPlugin {
                 Update,
                 (
                     watch_turn,
+                    block_map,
+                    unlock_audio.before(press_buttons),
                     press_buttons,
                     style_buttons,
                     scroll_column,
@@ -50,8 +53,13 @@ impl Plugin for UiPlugin {
     }
 }
 
-fn changed(session: Res<Session>, selected: Res<Selected>, hud: Res<Hud>) -> bool {
-    session.is_changed() || selected.is_changed() || hud.is_changed()
+fn changed(
+    session: Res<Session>,
+    selected: Res<Selected>,
+    hud: Res<Hud>,
+    sounds: Res<Sounds>,
+) -> bool {
+    session.is_changed() || selected.is_changed() || hud.is_changed() || sounds.is_changed()
 }
 
 /// A short message shown over the map when a turn runs.
@@ -401,7 +409,16 @@ fn build_bar(p: &mut ChildSpawnerCommands, session: &Session, sounds: &Sounds, h
         },
         Action::ToggleMute,
     );
-    icon_button(p, icons::MUSIC, Action::ToggleMusic);
+    icon_button_tinted(
+        p,
+        icons::MUSIC,
+        Action::ToggleMusic,
+        if sounds.music && !sounds.muted {
+            ACCENT
+        } else {
+            MUTED
+        },
+    );
     if matches!(notify::permission(), notify::Permission::Ask) {
         icon_button(p, icons::BELL, Action::RequestNotify);
     }
@@ -626,6 +643,7 @@ fn build_selection(
     if !hv.can_scan && !hv.can_break_in && !hv.access && !mine {
         muted(p, "Out of reach — take a linked host first.");
     }
+    subnet_section(p, view, &session.draft, host);
 }
 
 fn build_orders(p: &mut ChildSpawnerCommands, session: &Session, data: &GameData) {
@@ -713,10 +731,24 @@ fn build_guide(p: &mut ChildSpawnerCommands, session: &Session, hud: &Hud) {
     let Some(status) = session.status.as_ref() else {
         return;
     };
+    // The hand-in button lives here too, so it is in reach however long
+    // the panels in the left column grow.
+    let hand_in = |r: &mut ChildSpawnerCommands| {
+        r.spawn(text(deadline_line(session), 12.0, MUTED));
+        r.spawn(primary_sized(
+            if status.submitted {
+                "Handed in"
+            } else {
+                "Hand in"
+            },
+            Action::HandIn,
+            Val::Auto,
+        ));
+    };
     if !hud.show_guide {
-        // Just the hand-in line when the guide is off.
         p.spawn(row()).with_children(|r| {
-            r.spawn(text(deadline_line(session), 12.5, MUTED));
+            r.spawn(spacer());
+            hand_in(r);
         });
         return;
     }
@@ -730,7 +762,7 @@ fn build_guide(p: &mut ChildSpawnerCommands, session: &Session, hud: &Hud) {
             ACCENT,
         ));
         r.spawn(spacer());
-        r.spawn(text(deadline_line(session), 12.0, MUTED));
+        hand_in(r);
     });
     p.spawn(theme::bold(step.title.clone(), 14.0, FG));
     p.spawn(text(step.hint.clone(), 12.5, MUTED));
@@ -847,6 +879,7 @@ fn classify(event: &Event) -> (char, Color) {
         }
         | BackdoorPlanted { .. }
         | DataStolen { .. }
+        | SubnetOpened { .. }
         | LevelUp { .. }
         | HackerHired { .. }
         | Bought { .. } => (icons::CHECK, theme::GOOD),
@@ -904,10 +937,7 @@ fn controller_name(session: &Session, hv: &HostView) -> String {
 /// A ready hacker for an operation, preferring a specialty match, skipping
 /// any already busy in the draft.
 fn pick_hacker(view: &CrewView, draft: &[Command], want: Option<Weakness>) -> Option<HackerId> {
-    let used: Vec<HackerId> = draft
-        .iter()
-        .filter_map(|c| c.operation().map(|(_, h, _)| h))
-        .collect();
+    let used: Vec<HackerId> = draft.iter().flat_map(Command::hackers).collect();
     let ready: Vec<&nullnet_core::Hacker> = view
         .me
         .hackers
@@ -960,8 +990,99 @@ fn op_button(
         Operation::Backdoor => Command::Backdoor { hacker, host },
         Operation::StealData => Command::StealData { hacker, host },
         Operation::Defend => Command::Defend { hacker, host },
+        // A sub-net takes two hackers and has its own button.
+        Operation::OpenSubnet => return,
     };
     small(r, label, Action::Order(command));
+}
+
+/// The sealed sub-net behind a host, if the crew knows of one: its lock, and
+/// a button to open it when the crew holds the host and has the right pair.
+fn subnet_section(p: &mut ChildSpawnerCommands, view: &CrewView, draft: &[Command], host: HostId) {
+    let hv = &view.hosts[host.index()];
+    let Some(subnet) = hv.intel.and_then(|i| i.subnet) else {
+        return;
+    };
+    let [a, b] = subnet.lock;
+    if subnet.open {
+        p.spawn(row()).with_children(|r| {
+            r.spawn(theme::icon(icons::KEY, 13.0, theme::GOLD));
+            r.spawn(text(
+                format!(
+                    "Sub-net open: +{} credits a turn to whoever holds it",
+                    rules::SUBNET_CREDITS
+                ),
+                12.5,
+                FG,
+            ));
+        });
+        return;
+    }
+    p.spawn(row()).with_children(|r| {
+        r.spawn(theme::icon(icons::KEY, 13.0, theme::GOOD));
+        r.spawn(text(
+            format!(
+                "Sealed sub-net: opens for a {} and a {} hacker together, +{} credits a turn",
+                a.name(),
+                b.name(),
+                rules::SUBNET_CREDITS
+            ),
+            12.5,
+            FG,
+        ));
+    });
+    if hv.controller != Some(Controller::Crew(view.player)) {
+        muted(p, "Take the host to open it.");
+        return;
+    }
+    if draft
+        .iter()
+        .any(|c| matches!(c, Command::OpenSubnet { host: h, .. } if *h == host))
+    {
+        muted(p, "Ordered: it opens when the turn runs.");
+        return;
+    }
+    let used: Vec<HackerId> = draft.iter().flat_map(Command::hackers).collect();
+    let free = |want: Weakness, skip: Option<HackerId>| {
+        view.me
+            .hackers
+            .iter()
+            .find(|h| {
+                h.specialty == want
+                    && h.out_until <= view.turn
+                    && !used.contains(&h.id)
+                    && Some(h.id) != skip
+            })
+            .map(|h| h.id)
+    };
+    match free(a, None).and_then(|first| free(b, Some(first)).map(|second| [first, second])) {
+        Some(hackers) => {
+            p.spawn(wrap()).with_children(|r| {
+                small(
+                    r,
+                    "Open sub-net",
+                    Action::Order(Command::OpenSubnet { host, hackers }),
+                );
+            });
+        }
+        None => {
+            let has = |want: Weakness| view.me.hackers.iter().any(|h| h.specialty == want);
+            let hint = if has(a) && has(b) {
+                format!(
+                    "Your {} and {} hackers are not both free this turn.",
+                    a.name(),
+                    b.name()
+                )
+            } else {
+                format!(
+                    "You need a {} and a {} hacker; hire them on the market.",
+                    a.name(),
+                    b.name()
+                )
+            };
+            muted(p, hint);
+        }
+    }
 }
 
 /// The attack a break-in would have, worked out from the view alone (the
@@ -1118,6 +1239,10 @@ fn small_disabled(r: &mut ChildSpawnerCommands, label: &str) {
 }
 
 fn icon_button(p: &mut ChildSpawnerCommands, glyph: char, action: Action) {
+    icon_button_tinted(p, glyph, action, ACCENT);
+}
+
+fn icon_button_tinted(p: &mut ChildSpawnerCommands, glyph: char, action: Action, color: Color) {
     p.spawn((
         looked(
             action,
@@ -1132,11 +1257,15 @@ fn icon_button(p: &mut ChildSpawnerCommands, glyph: char, action: Action) {
                 ..default()
             },
         ),
-        children![theme::icon(glyph, 16.0, ACCENT)],
+        children![theme::icon(glyph, 16.0, color)],
     ));
 }
 
 fn primary(label: impl Into<String>, action: Action) -> impl Bundle {
+    primary_sized(label, action, Val::Percent(100.0))
+}
+
+fn primary_sized(label: impl Into<String>, action: Action, width: Val) -> impl Bundle {
     (
         looked(
             action,
@@ -1147,7 +1276,7 @@ fn primary(label: impl Into<String>, action: Action) -> impl Bundle {
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(8.0),
-                width: Val::Percent(100.0),
+                width,
                 flex_shrink: 0.0,
                 ..default()
             },
@@ -1160,6 +1289,32 @@ fn primary(label: impl Into<String>, action: Action) -> impl Bundle {
 }
 
 // ------------------------------------------------------------ systems
+
+/// While an overlay covers the map, clicks, drags and the wheel belong to it.
+fn block_map(hud: Res<Hud>, mut blocked: ResMut<MapBlocked>) {
+    blocked.set_if_neq(MapBlocked(
+        hud.show_story || hud.show_help || hud.show_report,
+    ));
+}
+
+/// A browser lets a page make sound only after the player has clicked or
+/// typed. The first press unlocks the cues and starts the background music.
+fn unlock_audio(
+    mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut sounds: ResMut<Sounds>,
+) {
+    if sounds.unlocked {
+        return;
+    }
+    if mouse.get_just_pressed().next().is_none() && keys.get_just_pressed().next().is_none() {
+        return;
+    }
+    sounds.unlocked = true;
+    if sounds.music && !sounds.muted {
+        music::start();
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 fn press_buttons(
@@ -1279,7 +1434,15 @@ fn style_buttons(
     }
 }
 
-fn scroll_column(mut wheel: MessageReader<MouseWheel>, mut scrolls: Query<&mut ScrollPosition>) {
+/// Scrolls the panels and overlays with the wheel, unless the cursor is over
+/// the open map, where the wheel zooms instead.
+fn scroll_column(
+    mut wheel: MessageReader<MouseWheel>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    insets: Res<MapInsets>,
+    blocked: Res<MapBlocked>,
+    mut scrolls: Query<&mut ScrollPosition>,
+) {
     let mut delta = 0.0;
     for event in wheel.read() {
         delta += match event.unit {
@@ -1287,7 +1450,13 @@ fn scroll_column(mut wheel: MessageReader<MouseWheel>, mut scrolls: Query<&mut S
             MouseScrollUnit::Pixel => event.y,
         };
     }
-    if delta != 0.0 {
+    let size = window.size();
+    let inset = insets.0;
+    let over_map = !blocked.0
+        && window.cursor_position().is_some_and(|c| {
+            c.x >= inset.x && c.x <= size.x - inset.z && c.y >= inset.y && c.y <= size.y - inset.w
+        });
+    if delta != 0.0 && !over_map {
         for mut scroll in &mut scrolls {
             scroll.0.y = (scroll.0.y - delta).max(0.0);
         }

@@ -68,6 +68,14 @@ pub fn help() -> Vec<(&'static str, Vec<&'static str>)> {
                 "Plant backdoor: with access, take the host.",
                 "Steal data: with access, take its data without taking the host.",
                 "Defend: guard one of your hosts and throw out intruders.",
+                "Open sub-net: a few hosts hide a sealed sub-net, which a scan reveals. Two hackers whose specialties match its lock open it together, and from then on it pays extra credits every turn to whoever holds the host.",
+            ],
+        ),
+        (
+            "The map",
+            vec![
+                "Scroll to zoom in towards the cursor, drag to move the map, and press 0 to see the whole net again. + and - and the arrow keys work too.",
+                "Hosts marked SUB-NET hide a sealed sub-net; SUB-NET + means it is open.",
             ],
         ),
         (
@@ -82,10 +90,7 @@ pub fn help() -> Vec<(&'static str, Vec<&'static str>)> {
 
 /// A hacker that can act this turn and is not already busy in the draft.
 fn free_hacker(view: &CrewView, draft: &[Command], want: Option<Weakness>) -> Option<HackerId> {
-    let used: Vec<HackerId> = draft
-        .iter()
-        .filter_map(|c| c.operation().map(|(_, h, _)| h))
-        .collect();
+    let used: Vec<HackerId> = draft.iter().flat_map(Command::hackers).collect();
     let ready: Vec<&nullnet_core::Hacker> = view
         .me
         .hackers

@@ -32,6 +32,7 @@ pub fn command(cmd: &Command, data: &GameData) -> String {
         Command::Backdoor { host: h, .. } => format!("Backdoor {}", host(data, *h)),
         Command::StealData { host: h, .. } => format!("Steal from {}", host(data, *h)),
         Command::Defend { host: h, .. } => format!("Defend {}", host(data, *h)),
+        Command::OpenSubnet { host: h, .. } => format!("Open the sub-net on {}", host(data, *h)),
         Command::Hire { .. } => "Hire a hacker".to_string(),
         Command::Dismiss { .. } => "Let a hacker go".to_string(),
         Command::BuyKit { weakness } => format!("Buy {}", weakness.kit()),
@@ -93,6 +94,11 @@ pub fn event(ev: &Event, data: &GameData, session: &Session) -> String {
                 format!("The Legacy Net swept you, but {} held", h(*host))
             }
         }
+        Event::SubnetOpened { host, .. } => format!(
+            "Opened the sub-net on {}: +{} credits a turn",
+            h(*host),
+            nullnet_core::rules::SUBNET_CREDITS
+        ),
         Event::LegacySpread { host, .. } => {
             format!("The Legacy Net spread to {}", h(*host))
         }

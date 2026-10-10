@@ -90,6 +90,7 @@ pub fn operation(op: Operation) -> char {
         Operation::Backdoor => DOOR_OPEN,
         Operation::StealData => HARD_DRIVE,
         Operation::Defend => SHIELD,
+        Operation::OpenSubnet => KEY,
     }
 }
 
