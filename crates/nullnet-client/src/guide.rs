@@ -200,12 +200,33 @@ pub fn steps(status: &CrewStatus, draft: &[Command]) -> Vec<Step> {
         Step {
             title: "Buy a kit".into(),
             done: !view.me.kits.is_empty(),
-            hint: "Buy a kit for a weakness you keep meeting. It helps every break-in on that weakness.".into(),
-            action: a_break
-                .as_ref()
-                .and_then(|h| h.intel.map(|i| i.weakness))
-                .filter(|w| !view.me.kits.contains(w))
-                .map(|weakness| Command::BuyKit { weakness }),
+            hint: if view.me.credits >= rules::KIT_PRICE {
+                "Buy a kit for a weakness you keep meeting. It helps every break-in on that weakness.".into()
+            } else {
+                format!(
+                    "A kit costs {} credits and you have {}. Take a few more hosts to raise your income first.",
+                    rules::KIT_PRICE, view.me.credits
+                )
+            },
+            action: (view.me.credits >= rules::KIT_PRICE)
+                .then(|| {
+                    // A weakness worth a kit: one a nearby scanned host has,
+                    // else one of our hackers' specialties, else any we lack.
+                    a_break
+                        .as_ref()
+                        .and_then(|h| h.intel.map(|i| i.weakness))
+                        .or_else(|| {
+                            view.me
+                                .hackers
+                                .iter()
+                                .map(|h| h.specialty)
+                                .find(|w| !view.me.kits.contains(w))
+                        })
+                        .filter(|w| !view.me.kits.contains(w))
+                        .or_else(|| Weakness::ALL.into_iter().find(|w| !view.me.kits.contains(w)))
+                        .map(|weakness| Command::BuyKit { weakness })
+                })
+                .flatten(),
         },
         Step {
             title: "Hold three hosts".into(),

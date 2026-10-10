@@ -438,6 +438,15 @@ fn build_crew(p: &mut ChildSpawnerCommands, session: &Session, _data: &GameData)
                     theme::WARN,
                 ));
             }
+            // Let a hacker go to cut wages, as long as one is left.
+            if me.hackers.len() > 1 {
+                r.spawn(spacer());
+                small(
+                    r,
+                    "Let go",
+                    Action::Order(Command::Dismiss { hacker: hacker.id }),
+                );
+            }
         });
     }
     if !me.kits.is_empty() {
