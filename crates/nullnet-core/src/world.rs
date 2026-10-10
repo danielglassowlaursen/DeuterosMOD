@@ -1,236 +1,500 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::command::CommandError;
-use crate::data::GameData;
-use crate::ids::{Day, HostId, NetworkId, PlayerId};
-use crate::items::ItemType;
-use crate::legacy::Legacy;
-use crate::recruitment::Recruitment;
-use crate::research::{ResearchDef, ResearchProgress};
+use crate::data::{GameData, Role, Upgrade, Weakness, Yields, rules};
+use crate::ids::{HackerId, HostId, PlayerId};
 use crate::rng::Rng;
 use crate::score::GameEnd;
-use crate::site::{Citadel, Site};
-use crate::staff::Staff;
-use crate::transport::{Vessel, VesselId};
-use crate::unlocks::Milestones;
-use crate::workshop::{SiteRef, Workshop};
 
-/// The complete mutable state of one game.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct World {
-    pub day: Day,
-    /// Turns resolved so far. Which crew's orders go first rotates with it.
-    pub turn: u32,
-    pub rng: Rng,
-    pub players: BTreeMap<PlayerId, Player>,
-    /// Indexed by [`HostId`], parallel to `GameData::hosts`.
-    pub hosts: Vec<HostState>,
-    /// Index of the next team leader's handle.
-    pub next_handle: u32,
-    pub vessels: BTreeMap<VesselId, Vessel>,
-    pub next_vessel: u32,
-    pub legacy: Legacy,
-    /// The day the game ends on if nobody has won by then; `None` for no
-    /// limit.
-    #[serde(default)]
-    pub end_day: Option<Day>,
-    /// Set once the game has ended; turns no longer change anything.
-    #[serde(default)]
-    pub ended: Option<GameEnd>,
+/// How hard the Legacy Net and the hosts are, chosen when a game is created.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Difficulty {
+    Easy,
+    #[default]
+    Normal,
+    Hard,
 }
 
-/// Who holds a host.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+impl Difficulty {
+    pub const ALL: [Difficulty; 3] = [Difficulty::Easy, Difficulty::Normal, Difficulty::Hard];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Difficulty::Easy => "Easy",
+            Difficulty::Normal => "Normal",
+            Difficulty::Hard => "Hard",
+        }
+    }
+
+    /// Trace at which the Legacy Net sweeps a crew.
+    pub fn sweep_at(self) -> u32 {
+        match self {
+            Difficulty::Easy => 9,
+            Difficulty::Normal => 6,
+            Difficulty::Hard => 4,
+        }
+    }
+
+    /// The first turn the Legacy Net spreads, and how many turns apart.
+    pub fn spread(self) -> (u32, u32) {
+        match self {
+            Difficulty::Easy => (15, 6),
+            Difficulty::Normal => (10, 4),
+            Difficulty::Hard => (6, 3),
+        }
+    }
+
+    /// Added to every host's rolled security, which stays within 1 to 5.
+    pub fn security_shift(self) -> i8 {
+        match self {
+            Difficulty::Easy => -1,
+            Difficulty::Normal => 0,
+            Difficulty::Hard => 1,
+        }
+    }
+
+    pub fn start_credits(self) -> u32 {
+        match self {
+            Difficulty::Easy => 60,
+            Difficulty::Normal | Difficulty::Hard => 40,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Settings {
+    pub difficulty: Difficulty,
+    /// The game ends when this turn has run.
+    pub last_turn: u32,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings {
+            difficulty: Difficulty::Normal,
+            last_turn: rules::DEFAULT_LAST_TURN,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Controller {
     Crew(PlayerId),
     Legacy,
 }
 
+/// A crew's way into a host it broke into, good for the next turn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Access {
+    pub crew: PlayerId,
+    /// The last turn it can be used.
+    pub until: u32,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostState {
     pub controller: Option<Controller>,
-    pub site: Site,
-    /// Times the Legacy Net has attacked it; it goes for the least attacked.
-    pub attacked: u32,
+    pub security: u8,
+    pub weakness: Weakness,
+    pub ice: u8,
+    pub access: Vec<Access>,
+    /// Crews that know this host's security, weakness and ICE.
+    pub scanned: BTreeSet<PlayerId>,
 }
 
-impl World {
-    /// An empty world with no hosts or players.
-    pub fn new(seed: u64) -> Self {
-        World {
-            day: 0,
-            turn: 0,
-            rng: Rng::new(seed, 0),
-            players: BTreeMap::new(),
-            hosts: Vec::new(),
-            next_handle: 0,
-            vessels: BTreeMap::new(),
-            next_vessel: 0,
-            legacy: Legacy::default(),
-            end_day: None,
-            ended: None,
+impl HostState {
+    pub fn has_access(&self, crew: PlayerId, turn: u32) -> bool {
+        self.access
+            .iter()
+            .any(|a| a.crew == crew && a.until >= turn)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Hacker {
+    pub id: HackerId,
+    pub handle: String,
+    pub specialty: Weakness,
+    pub level: u8,
+    pub xp: u32,
+    /// The first turn the hacker can work again after being caught.
+    pub out_until: u32,
+}
+
+impl Hacker {
+    pub fn ready(&self, turn: u32) -> bool {
+        turn >= self.out_until
+    }
+
+    pub fn wage(&self) -> u32 {
+        rules::wage(self.level)
+    }
+
+    /// Experience still needed for the next level, if there is one.
+    pub fn xp_to_level(&self) -> Option<u32> {
+        let next = rules::LEVEL_XP.get(usize::from(self.level).checked_sub(1)?)?;
+        Some(next.saturating_sub(self.xp))
+    }
+}
+
+/// A hacker for hire.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Offer {
+    pub hacker: Hacker,
+    pub price: u32,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Upgrades {
+    pub rigs: u8,
+    pub lines: u8,
+    pub firewall: u8,
+    pub safehouse: u8,
+}
+
+impl Upgrades {
+    pub fn level(&self, upgrade: Upgrade) -> u8 {
+        match upgrade {
+            Upgrade::Rigs => self.rigs,
+            Upgrade::Lines => self.lines,
+            Upgrade::Firewall => self.firewall,
+            Upgrade::Safehouse => self.safehouse,
         }
     }
 
-    /// A new game on the classic map: every crew gets a hideout on the home
-    /// host, and the Legacy Net holds its fixed hosts plus a random set in
-    /// each other network, all with complete citadels.
-    pub fn new_game(data: &GameData, seed: u64, crews: &[(PlayerId, &str)]) -> Self {
-        let mut world = World::new(seed);
-        world.hosts = data
+    pub fn level_mut(&mut self, upgrade: Upgrade) -> &mut u8 {
+        match upgrade {
+            Upgrade::Rigs => &mut self.rigs,
+            Upgrade::Lines => &mut self.lines,
+            Upgrade::Firewall => &mut self.firewall,
+            Upgrade::Safehouse => &mut self.safehouse,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Crew {
+    pub name: String,
+    pub hideout: HostId,
+    pub credits: u32,
+    pub compute: u32,
+    /// Points.
+    pub data: u32,
+    pub trace: u32,
+    pub hackers: Vec<Hacker>,
+    pub kits: BTreeSet<Weakness>,
+    pub zero_days: u32,
+    pub upgrades: Upgrades,
+    pub market: Vec<Offer>,
+    /// Hosts the crew has taken from the Legacy Net, each counted once.
+    pub freed: BTreeSet<HostId>,
+}
+
+impl Crew {
+    pub fn hacker(&self, id: HackerId) -> Option<&Hacker> {
+        self.hackers.iter().find(|h| h.id == id)
+    }
+
+    pub fn slots(&self) -> usize {
+        rules::HACKER_SLOTS + usize::from(self.upgrades.safehouse)
+    }
+
+    pub fn wages(&self) -> u32 {
+        self.hackers.iter().map(Hacker::wage).sum()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct World {
+    pub seed: u64,
+    pub rng: Rng,
+    pub settings: Settings,
+    /// The turn being played, from 1.
+    pub turn: u32,
+    pub hosts: Vec<HostState>,
+    pub crews: BTreeMap<PlayerId, Crew>,
+    pub next_hacker: u32,
+    pub ended: Option<GameEnd>,
+}
+
+/// Handles for hackers, in the order they are dealt out.
+pub const HANDLES: [&str; 32] = [
+    "Zer0", "Nyx", "Glitch", "Cipher", "Rook", "Vex", "Kestrel", "Halcyon", "Byte", "Tess", "Echo",
+    "Wraith", "Mantis", "Juno", "Static", "Raven", "Hex", "Lumen", "Onyx", "Specter", "Tamsin",
+    "Volt", "Quill", "Sable", "Nova", "Drift", "Jinx", "Morrow", "Ash", "Kilo", "Pixel", "Loki",
+];
+
+impl World {
+    /// A new game: rolls every host's security, ICE and weakness, puts each
+    /// crew in its corner with two hackers suited to the hosts next door,
+    /// and opens the first market.
+    pub fn new_game(
+        data: &GameData,
+        seed: u64,
+        crews: &[(PlayerId, &str)],
+        settings: Settings,
+    ) -> Self {
+        let mut rng = Rng::new(seed, 0x004e_756c_6c4e_6574);
+        let shift = settings.difficulty.security_shift();
+        let mut rolled = BTreeMap::new();
+        for role in Role::ALL {
+            let (lo, hi) = role.security();
+            let security = rng.range_inclusive(lo.into(), hi.into()) as i8 + shift;
+            let (lo, hi) = role.ice();
+            let ice = rng.range_inclusive(lo.into(), hi.into()) as u8;
+            rolled.insert(role, (security.clamp(1, 5) as u8, ice));
+        }
+        let hosts = data
             .hosts
             .iter()
-            .map(|def| HostState {
-                controller: def.legacy.then_some(Controller::Legacy),
-                site: Site::new(def),
-                attacked: 0,
+            .map(|def| {
+                let (security, ice) = rolled[&def.role];
+                HostState {
+                    controller: def.legacy.then_some(Controller::Legacy),
+                    security,
+                    weakness: Weakness::ALL[rng.below(4) as usize],
+                    ice: ice + u8::from(def.legacy),
+                    access: Vec::new(),
+                    scanned: BTreeSet::new(),
+                }
             })
             .collect();
+        let mut world = World {
+            seed,
+            rng,
+            settings,
+            turn: 1,
+            hosts,
+            crews: BTreeMap::new(),
+            next_hacker: 0,
+            ended: None,
+        };
 
-        for (index, network) in data.networks.iter().enumerate() {
-            let Some(count) = network.random_legacy_hosts else {
-                continue;
+        for (place, &(player, name)) in crews.iter().enumerate() {
+            let hideout = data.hideouts[GameData::start_corner(place)];
+            world.hosts[hideout.index()].controller = Some(Controller::Crew(player));
+            let mut crew = Crew {
+                name: name.to_string(),
+                hideout,
+                credits: settings.difficulty.start_credits(),
+                compute: 5,
+                data: 0,
+                trace: 0,
+                hackers: Vec::new(),
+                kits: BTreeSet::new(),
+                zero_days: 0,
+                upgrades: Upgrades::default(),
+                market: Vec::new(),
+                freed: BTreeSet::new(),
             };
-            let id = NetworkId(index as u8);
-            let mut free: Vec<usize> = (0..data.hosts.len())
-                .filter(|&h| data.hosts[h].network == id && world.hosts[h].controller.is_none())
+            // One hacker for each host next door, the better one for the
+            // first, so the first break-in has a good chance.
+            let mut specialties: Vec<Weakness> = data
+                .neighbours(hideout)
+                .iter()
+                .map(|&h| world.hosts[h.index()].weakness)
                 .collect();
-            for _ in 0..count.min(free.len() as u32) {
-                // The original's Next(Count - 1) could never pick the last host.
-                let pick = free.remove(world.rng.below(free.len() as u32) as usize);
-                world.hosts[pick].controller = Some(Controller::Legacy);
-            }
-        }
-        for host in &mut world.hosts {
-            if host.controller == Some(Controller::Legacy) {
-                host.site.backdoor_parts = Site::BACKDOOR_PARTS;
-                host.site.citadel = Citadel {
-                    modules: Citadel::MODULES,
-                    encrypted_link: true,
-                    kill_switch: true,
-                    workshop: Workshop {
-                        automated: true,
-                        ..Workshop::default()
-                    },
-                    ..Citadel::default()
+            specialties.dedup();
+            for (index, level) in [2, 1].into_iter().enumerate() {
+                let specialty = match specialties.get(index) {
+                    Some(&weakness) => weakness,
+                    None => world.other_specialty(&specialties),
                 };
+                let hacker = world.new_hacker(specialty, level);
+                crew.hackers.push(hacker);
             }
+            world.crews.insert(player, crew);
         }
-
-        crate::legacy::setup(data, &mut world);
-
-        for &(id, name) in crews {
-            world.players.insert(id, Player::new_crew(data, name));
+        for player in world.crews.keys().copied().collect::<Vec<_>>() {
+            world.refresh_market(player);
         }
         world
     }
 
     pub fn host(&self, id: HostId) -> &HostState {
-        &self.hosts[usize::from(id.0)]
+        &self.hosts[id.index()]
     }
 
-    /// A crew's own site: its hideout, or a host it controls.
-    pub(crate) fn crew_site_mut(
-        &mut self,
-        crew: PlayerId,
-        site: SiteRef,
-    ) -> Result<&mut Site, CommandError> {
-        match site {
-            SiteRef::Hideout => self
-                .players
-                .get_mut(&crew)
-                .map(|player| &mut player.hideout)
-                .ok_or(CommandError::UnknownPlayer(crew)),
-            SiteRef::Host(id) => {
-                let host = self
-                    .hosts
-                    .get_mut(usize::from(id.0))
-                    .ok_or(CommandError::UnknownHost(id))?;
-                if host.controller != Some(Controller::Crew(crew)) {
-                    return Err(CommandError::NotYourHost(id));
-                }
-                Ok(&mut host.site)
-            }
+    pub fn controller(&self, id: HostId) -> Option<Controller> {
+        self.host(id).controller
+    }
+
+    pub fn crew(&self, player: PlayerId) -> Option<&Crew> {
+        self.crews.get(&player)
+    }
+
+    /// A hideout a crew plays from; nobody can break into it.
+    pub fn is_hideout(&self, host: HostId) -> bool {
+        self.crews.values().any(|c| c.hideout == host)
+    }
+
+    /// Hosts a crew has a usable way into this turn (from a break-in last
+    /// turn), whoever holds them.
+    pub fn held_access(&self, player: PlayerId) -> Vec<HostId> {
+        self.hosts
+            .iter()
+            .enumerate()
+            .filter(|(_, h)| h.has_access(player, self.turn))
+            .map(|(i, _)| HostId(i as u16))
+            .collect()
+    }
+
+    /// Hosts a crew holds, its hideout included.
+    pub fn held_by(&self, player: PlayerId) -> impl Iterator<Item = HostId> + '_ {
+        self.hosts
+            .iter()
+            .enumerate()
+            .filter(move |(_, h)| h.controller == Some(Controller::Crew(player)))
+            .map(|(i, _)| HostId(i as u16))
+    }
+
+    /// What a crew's hosts and rigs give it each turn.
+    pub fn income(&self, data: &GameData, player: PlayerId) -> Yields {
+        let mut total = Yields::default();
+        for host in self.held_by(player) {
+            total.add(data.host(host).yields);
         }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Player {
-    pub name: String,
-    /// The crew's own site on the home host. It cannot be taken.
-    pub hideout: Site,
-    /// The hideout's own workshop, apart from any citadel above it.
-    pub workshop: Workshop,
-    pub recruitment: Recruitment,
-    /// The single analyst team in the hideout; `None` until recruits graduate.
-    pub research_team: Option<Staff>,
-    pub current_research: Option<ItemType>,
-    /// Research the player has access to, in progress or finished.
-    pub research: BTreeMap<ItemType, ResearchProgress>,
-    pub milestones: Milestones,
-    /// The day the crew went to war with the Legacy Net, once it has.
-    pub war: Option<Day>,
-    /// Heat from the crew's raids; it cools by one a day.
-    #[serde(default)]
-    pub heat: u32,
-    /// Legacy hosts the crew has freed.
-    #[serde(default)]
-    pub freed: u32,
-    /// Hosts the crew has taken from rivals.
-    #[serde(default)]
-    pub taken: u32,
-}
-
-impl Player {
-    pub fn new(name: impl Into<String>) -> Self {
-        Player {
-            name: name.into(),
-            hideout: Site::default(),
-            workshop: Workshop::default(),
-            recruitment: Recruitment::default(),
-            research_team: None,
-            current_research: None,
-            research: BTreeMap::new(),
-            milestones: Milestones::new(),
-            war: None,
-            heat: 0,
-            freed: 0,
-            taken: 0,
+        if let Some(crew) = self.crew(player) {
+            total.compute += 2 * u32::from(crew.upgrades.rigs);
+            total.bandwidth += 2 * u32::from(crew.upgrades.lines);
         }
+        total
     }
 
-    /// A crew as the game starts it: a working backdoor and the starting
-    /// taps in the hideout, and the starter research open.
-    pub fn new_crew(data: &GameData, name: impl Into<String>) -> Self {
-        let mut player = Player::new(name);
-        player.hideout = Site {
-            backdoor_parts: Site::BACKDOOR_PARTS,
-            taps: data.hideout.taps,
-            ..Site::new(data.host(data.hideout.host))
+    /// Bandwidth a crew can use this turn.
+    pub fn bandwidth(&self, data: &GameData, player: PlayerId) -> u32 {
+        self.income(data, player).bandwidth
+    }
+
+    /// Whether `player` may break into `host` this turn: linked to a host
+    /// it holds, not its own, not a hideout, and not a rival's in the first
+    /// turns.
+    pub fn can_break_in(&self, data: &GameData, player: PlayerId, host: HostId) -> bool {
+        self.break_in_error(data, player, host).is_none()
+    }
+
+    pub(crate) fn break_in_error(
+        &self,
+        data: &GameData,
+        player: PlayerId,
+        host: HostId,
+    ) -> Option<crate::CommandError> {
+        use crate::CommandError;
+        let state = self.host(host);
+        if state.controller == Some(Controller::Crew(player)) {
+            return Some(CommandError::OwnHost);
+        }
+        if self.is_hideout(host) {
+            return Some(CommandError::Hideout);
+        }
+        if let Some(Controller::Crew(_)) = state.controller
+            && self.turn <= rules::PEACE_TURNS
+        {
+            return Some(CommandError::Peace {
+                until: rules::PEACE_TURNS + 1,
+            });
+        }
+        let linked = data
+            .neighbours(host)
+            .iter()
+            .any(|&n| self.controller(n) == Some(Controller::Crew(player)));
+        if !linked {
+            return Some(CommandError::OutOfReach);
+        }
+        None
+    }
+
+    /// Hosts a crew can scan this turn.
+    pub fn scan_range(&self, data: &GameData, player: PlayerId) -> BTreeSet<HostId> {
+        data.within(self.held_by(player), rules::SCAN_LINKS)
+    }
+
+    /// Whether a crew knows a host's security, weakness and ICE.
+    pub fn knows(&self, player: PlayerId, host: HostId) -> bool {
+        let state = self.host(host);
+        state.controller == Some(Controller::Crew(player)) || state.scanned.contains(&player)
+    }
+
+    /// A host's defence against a break-in, before any defender.
+    pub fn defence(&self, host: HostId) -> u32 {
+        let state = self.host(host);
+        let firewall = match state.controller {
+            Some(Controller::Crew(owner)) => self
+                .crew(owner)
+                .map_or(0, |c| u32::from(c.upgrades.firewall)),
+            _ => 0,
         };
-        player.recruitment.available = data.recruitment.recruits_available;
-        for (&item, def) in &data.research {
-            if def.available_at_start || def.researched_at_start {
-                player.unlock_research(item, def);
-            }
-            if def.researched_at_start {
-                let progress = player.research.get_mut(&item).expect("just unlocked");
-                progress.percent = 100;
-                progress.researched = true;
-            }
-        }
-        player
+        2 * u32::from(state.security) + u32::from(state.ice) + firewall
     }
 
-    /// Makes an item available for research. Does nothing if it already is,
-    /// so earlier progress is never reset.
-    pub fn unlock_research(&mut self, item: ItemType, def: &ResearchDef) {
-        self.research
-            .entry(item)
-            .or_insert_with(|| ResearchProgress::new(def));
+    pub(crate) fn new_hacker(&mut self, specialty: Weakness, level: u8) -> Hacker {
+        let id = HackerId(self.next_hacker);
+        self.next_hacker += 1;
+        let handle = self.free_handle();
+        Hacker {
+            id,
+            handle,
+            specialty,
+            level,
+            xp: rules::LEVEL_XP
+                .get(usize::from(level).wrapping_sub(2))
+                .copied()
+                .unwrap_or(0),
+            out_until: 0,
+        }
+    }
+
+    fn other_specialty(&mut self, taken: &[Weakness]) -> Weakness {
+        let free: Vec<Weakness> = Weakness::ALL
+            .into_iter()
+            .filter(|w| !taken.contains(w))
+            .collect();
+        free[self.rng.below(free.len() as u32) as usize]
+    }
+
+    /// A handle nobody in the game has, or a numbered one when they run out.
+    fn free_handle(&mut self) -> String {
+        let used: BTreeSet<&str> = self
+            .crews
+            .values()
+            .flat_map(|c| c.hackers.iter().chain(c.market.iter().map(|o| &o.hacker)))
+            .map(|h| h.handle.as_str())
+            .collect();
+        let free: Vec<&str> = HANDLES
+            .iter()
+            .copied()
+            .filter(|h| !used.contains(h))
+            .collect();
+        if free.is_empty() {
+            let base = HANDLES[self.rng.below(HANDLES.len() as u32) as usize];
+            return format!("{base}-{}", self.next_hacker);
+        }
+        free[self.rng.below(free.len() as u32) as usize].to_string()
+    }
+
+    /// New offers on a crew's market; better hackers show up later on.
+    pub(crate) fn refresh_market(&mut self, player: PlayerId) {
+        let Some(crew) = self.crews.get_mut(&player) else {
+            return;
+        };
+        crew.market.clear();
+        let later = (self.turn / 20) as u8;
+        for _ in 0..rules::MARKET_OFFERS {
+            let roll = self.rng.below(100);
+            let level = match roll {
+                0..50 => 1,
+                50..85 => 2,
+                _ => 3,
+            };
+            let level = (level + later).min(rules::MAX_LEVEL);
+            let specialty = Weakness::ALL[self.rng.below(4) as usize];
+            let hacker = self.new_hacker(specialty, level);
+            let price = rules::hacker_price(level);
+            if let Some(crew) = self.crews.get_mut(&player) {
+                crew.market.push(Offer { hacker, price });
+            }
+        }
     }
 }
 
@@ -238,70 +502,102 @@ impl Player {
 mod tests {
     use super::*;
 
-    const CREWS: [(PlayerId, &str); 2] = [(PlayerId(0), "Zer0"), (PlayerId(1), "Kestrel")];
+    fn game(crews: usize) -> (GameData, World) {
+        let data = GameData::standard();
+        let names: Vec<(PlayerId, &str)> = (0..crews)
+            .map(|i| {
+                (
+                    PlayerId(i as u8),
+                    ["Ghostline", "Blackice", "Nullset", "Rootkit"][i],
+                )
+            })
+            .collect();
+        let world = World::new_game(&data, 7, &names, Settings::default());
+        (data, world)
+    }
 
     #[test]
-    fn the_legacy_net_holds_its_fixed_and_random_hosts() {
-        let data = GameData::classic();
-        let world = World::new_game(&data, 42, &CREWS);
-
-        for (index, network) in data.networks.iter().enumerate() {
-            let held = (0..data.hosts.len())
-                .filter(|&h| {
-                    data.hosts[h].network == NetworkId(index as u8)
-                        && world.hosts[h].controller == Some(Controller::Legacy)
-                })
-                .count() as u32;
-            let fixed = data
-                .hosts
+    fn crews_start_in_their_corners_with_two_hackers() {
+        let (data, world) = game(2);
+        assert_eq!(world.crews[&PlayerId(0)].hideout, data.hideouts[0]);
+        assert_eq!(world.crews[&PlayerId(1)].hideout, data.hideouts[2]);
+        for (&player, crew) in &world.crews {
+            assert_eq!(crew.hackers.len(), rules::START_HACKERS);
+            assert_eq!(crew.hackers[0].level, 2);
+            assert_eq!(crew.market.len(), rules::MARKET_OFFERS);
+            assert_eq!(world.held_by(player).collect::<Vec<_>>(), [crew.hideout]);
+            // The first hacker fits a host next door.
+            let next_door: Vec<Weakness> = data
+                .neighbours(crew.hideout)
                 .iter()
-                .filter(|h| h.network == NetworkId(index as u8) && h.legacy)
-                .count() as u32;
-            assert_eq!(
-                held,
-                network.random_legacy_hosts.unwrap_or(0) + fixed,
-                "{}",
-                network.name
-            );
+                .map(|&h| world.host(h).weakness)
+                .collect();
+            assert!(next_door.contains(&crew.hackers[0].specialty));
         }
-        let legacy = world.hosts.iter().filter(|h| h.controller.is_some());
-        assert!(
-            legacy
-                .clone()
-                .all(|h| h.site.citadel.complete() && h.site.backdoor_complete())
-        );
-        assert_eq!(legacy.count(), 81);
+        // Empty corners are free hosts.
+        assert_eq!(world.controller(data.hideouts[1]), None);
+        assert!(!world.is_hideout(data.hideouts[1]));
     }
 
     #[test]
-    fn crews_start_with_a_working_hideout_and_the_starter_research() {
-        let data = GameData::classic();
-        let world = World::new_game(&data, 42, &CREWS);
+    fn handles_are_unique() {
+        let (_, world) = game(4);
+        let handles: Vec<&str> = world
+            .crews
+            .values()
+            .flat_map(|c| c.hackers.iter().chain(c.market.iter().map(|o| &o.hacker)))
+            .map(|h| h.handle.as_str())
+            .collect();
+        let unique: BTreeSet<&str> = handles.iter().copied().collect();
+        assert_eq!(unique.len(), handles.len());
+    }
 
-        for player in world.players.values() {
-            let hideout = &player.hideout;
-            assert!(hideout.backdoor_complete());
-            assert_eq!(hideout.taps, 1);
-            assert_eq!(
-                hideout.veins.len(),
-                data.host(data.hideout.host).resources.len()
-            );
-            assert!(player.research[&ItemType::Tap].researched);
-            assert!(!player.research[&ItemType::DropperCore].researched);
-            assert!(!player.research.contains_key(&ItemType::WormCore));
+    #[test]
+    fn same_roles_get_the_same_security() {
+        let (data, world) = game(4);
+        for role in Role::ALL {
+            let values: BTreeSet<u8> = data
+                .host_ids()
+                .filter(|&h| data.host(h).role == role)
+                .map(|h| world.host(h).security)
+                .collect();
+            assert_eq!(values.len(), 1, "{role:?}");
+        }
+        let cortex = data.find("Cortex").unwrap();
+        assert_eq!(world.controller(cortex), Some(Controller::Legacy));
+        assert_eq!(world.host(cortex).security, 5);
+    }
+
+    #[test]
+    fn difficulty_shifts_security() {
+        let data = GameData::standard();
+        let crews = [(PlayerId(0), "A")];
+        let normal = World::new_game(&data, 3, &crews, Settings::default());
+        let hard = World::new_game(
+            &data,
+            3,
+            &crews,
+            Settings {
+                difficulty: Difficulty::Hard,
+                ..Settings::default()
+            },
+        );
+        for host in data.host_ids() {
+            let expected = (normal.host(host).security + 1).min(5);
+            assert_eq!(hard.host(host).security, expected);
         }
     }
 
     #[test]
-    fn the_same_seed_gives_the_same_map() {
-        let data = GameData::classic();
-        assert_eq!(
-            World::new_game(&data, 7, &CREWS),
-            World::new_game(&data, 7, &CREWS)
-        );
-        assert_ne!(
-            World::new_game(&data, 7, &CREWS).hosts,
-            World::new_game(&data, 8, &CREWS).hosts
-        );
+    fn reach_is_one_link_from_a_held_host() {
+        let (data, world) = game(2);
+        let me = PlayerId(0);
+        let beacon = data.find("Beacon").unwrap();
+        let transit = data.find("Transit").unwrap();
+        let basement = data.find("Basement").unwrap();
+        assert!(world.can_break_in(&data, me, beacon));
+        assert!(!world.can_break_in(&data, me, transit));
+        assert!(!world.can_break_in(&data, me, basement));
+        assert!(world.scan_range(&data, me).contains(&transit));
     }
 }

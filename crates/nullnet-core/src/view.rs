@@ -1,385 +1,176 @@
-//! What one crew is allowed to see. Clients get a [`CrewView`], never the
-//! whole [`World`], so a crew cannot read its rivals' hands.
-//!
-//! A crew sees its own state in full. Of the rest of the world it sees what
-//! is in plain sight on the net: who holds each host and how big the
-//! citadel above it is, and the vessels at hosts it holds or out on the
-//! open net at the home host. Everything inside a rival's hideout, citadel
-//! or held host stays hidden. Scanning with sniffers comes with M4.
-
-use std::collections::BTreeMap;
+//! What one crew is allowed to see: its own crew in full, the map with fog
+//! of war (security, weakness and ICE only for hosts it has scanned or holds)
+//! and a summary of its rivals.
 
 use serde::{Deserialize, Serialize};
 
-use crate::data::GameData;
-use crate::ids::{Day, HostId, PlayerId};
-use crate::score::{GameEnd, Score};
-use crate::site::Site;
-use crate::transport::{Berth, Vessel, VesselId, VesselState};
-use crate::turn::{Event, TurnReport};
-use crate::world::{Controller, Player, World};
+use crate::data::{GameData, Weakness, Yields, rules};
+use crate::ids::{HackerId, HostId, PlayerId};
+use crate::legacy;
+use crate::score::{Score, scores};
+use crate::world::{Controller, Crew, Difficulty, Settings, World};
 
+/// A host as a crew sees it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CrewView {
-    pub day: Day,
-    pub turn: u32,
-    pub player: PlayerId,
-    /// The crew's own state, in full.
-    pub me: Player,
-    /// Every crew in the game and how many hosts it holds.
-    pub crews: Vec<CrewSummary>,
-    /// Every host, indexed by [`HostId`].
-    pub hosts: Vec<HostView>,
-    /// The crew's own vessels, and others' where the crew can see them.
-    pub vessels: BTreeMap<VesselId, Vessel>,
-    /// Legacy swarms heading for or besieging the crew's hosts.
-    pub threats: Vec<Threat>,
-    /// Hosts of rivals the crew has taps planted on, and until when.
-    pub taps_planted: Vec<(HostId, Day)>,
-    /// Every crew's score, highest first.
-    pub scores: Vec<Score>,
-    /// Set once the game is over.
-    pub ended: Option<GameEnd>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Threat {
+pub struct HostView {
     pub host: HostId,
-    pub daemons: u32,
-    pub arrives: Option<Day>,
-    pub siege_until: Option<Day>,
+    pub controller: Option<Controller>,
+    /// Security, weakness, ICE and defence, if the crew has scanned or holds
+    /// the host.
+    pub intel: Option<Intel>,
+    /// The crew has a usable way in from an earlier break-in.
+    pub access: bool,
+    /// The crew may break into it this turn.
+    pub can_break_in: bool,
+    /// The crew may scan it this turn.
+    pub can_scan: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Intel {
+    pub security: u8,
+    pub weakness: Weakness,
+    pub ice: u8,
+    /// The defence a break-in faces, firewall included.
+    pub defence: u32,
+}
+
+/// What a crew knows about a rival.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CrewSummary {
     pub player: PlayerId,
     pub name: String,
     pub hosts: u32,
-    /// Traces the crew has left on the net; the Legacy Net hunts the hottest.
-    pub heat: u32,
+    pub trace: u32,
+    pub hackers: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HostView {
-    pub controller: Option<Controller>,
-    /// Citadel modules installed; visible from the net.
-    pub citadel_modules: u32,
-    /// The site in full, only where the crew holds the host.
-    pub site: Option<Site>,
+pub struct CrewView {
+    pub turn: u32,
+    pub last_turn: u32,
+    pub difficulty: Difficulty,
+    pub player: PlayerId,
+    /// The crew in full.
+    pub me: Crew,
+    /// Bandwidth to spend this turn.
+    pub bandwidth: u32,
+    /// What the crew's hosts and rigs give it each turn.
+    pub income: Yields,
+    /// The trace at which the Legacy Net sweeps.
+    pub sweep_at: u32,
+    pub hosts: Vec<HostView>,
+    pub crews: Vec<CrewSummary>,
+    pub scores: Vec<Score>,
+    pub over: bool,
 }
 
-/// The world as `player` sees it, or `None` if it is not in the game.
+impl CrewView {
+    pub fn host(&self, host: HostId) -> Option<&HostView> {
+        self.hosts.get(host.index())
+    }
+
+    /// The crew's hacker, by id.
+    pub fn hacker(&self, id: HackerId) -> Option<&crate::world::Hacker> {
+        self.me.hacker(id)
+    }
+}
+
 pub fn crew_view(data: &GameData, world: &World, player: PlayerId) -> Option<CrewView> {
-    let home = data.hideout.host;
-    let me = world.players.get(&player)?.clone();
-    let held = |crew: PlayerId| {
-        world
-            .hosts
-            .iter()
-            .filter(|h| h.controller == Some(Controller::Crew(crew)))
-            .count() as u32
-    };
-    let mine = |host: HostId| {
-        world.hosts[usize::from(host.0)].controller == Some(Controller::Crew(player))
-    };
-    Some(CrewView {
-        day: world.day,
-        turn: world.turn,
-        player,
-        crews: world
-            .players
-            .iter()
-            .map(|(&id, p)| CrewSummary {
-                player: id,
-                name: p.name.clone(),
-                hosts: held(id),
-                heat: crate::raid::heat(world, id),
-            })
-            .collect(),
-        hosts: world
-            .hosts
-            .iter()
-            .map(|state| HostView {
+    let me = world.crew(player)?.clone();
+    let scan_range = world.scan_range(data, player);
+    let front = legacy::spread_front(data, world);
+    let _ = front;
+
+    let hosts = data
+        .host_ids()
+        .map(|host| {
+            let state = world.host(host);
+            let knows = world.knows(player, host);
+            let intel = knows.then(|| Intel {
+                security: state.security,
+                weakness: state.weakness,
+                ice: state.ice,
+                defence: world.defence(host),
+            });
+            HostView {
+                host,
                 controller: state.controller,
-                citadel_modules: state.site.citadel.modules,
-                site: (state.controller == Some(Controller::Crew(player)))
-                    .then(|| state.site.clone()),
-            })
-            .collect(),
-        vessels: world
-            .vessels
-            .iter()
-            .filter(|(_, v)| {
-                v.owner == player
-                    || mine(v.host)
-                    || (v.host == home
-                        && !matches!(
-                            v.state,
-                            VesselState::At(Berth::Planted) | VesselState::At(Berth::Connected)
-                        ))
-            })
-            .map(|(&id, v)| (id, v.clone()))
-            .collect(),
-        threats: world
-            .legacy
-            .fleets
-            .iter()
-            .filter_map(|f| {
-                let host = f.target?;
-                mine(host).then_some(Threat {
-                    host,
-                    daemons: f.daemons,
-                    arrives: f.arrives,
-                    siege_until: f.siege_until,
-                })
-            })
-            .collect(),
-        taps_planted: world
-            .hosts
-            .iter()
-            .enumerate()
-            .flat_map(|(h, state)| {
-                state
-                    .site
-                    .siphons
-                    .iter()
-                    .filter(|s| s.player == player)
-                    .map(move |s| (HostId(h as u16), s.until))
-            })
-            .collect(),
-        scores: crate::score::scores(data, world),
-        ended: world.ended.clone(),
+                intel,
+                access: state.has_access(player, world.turn),
+                can_break_in: world.can_break_in(data, player, host),
+                can_scan: !knows && scan_range.contains(&host),
+            }
+        })
+        .collect();
+
+    let crews = world
+        .crews
+        .iter()
+        .filter(|&(&p, _)| p != player)
+        .map(|(&p, crew)| CrewSummary {
+            player: p,
+            name: crew.name.clone(),
+            hosts: world.held_by(p).filter(|&h| h != crew.hideout).count() as u32,
+            trace: crew.trace,
+            hackers: crew.hackers.len(),
+        })
+        .collect();
+
+    Some(CrewView {
+        turn: world.turn,
+        last_turn: world.settings.last_turn,
+        difficulty: world.settings.difficulty,
+        player,
+        bandwidth: world.bandwidth(data, player),
+        income: world.income(data, player),
+        sweep_at: world.settings.difficulty.sweep_at(),
         me,
+        hosts,
+        crews,
+        scores: scores(world),
+        over: world.ended.is_some(),
     })
 }
 
-impl Event {
-    /// The day the event happened.
-    pub fn day(&self) -> Day {
-        match *self {
-            Event::ResearchCompleted { day, .. }
-            | Event::StaffPromoted { day, .. }
-            | Event::RecruitsGraduated { day, .. }
-            | Event::ItemBuilt { day, .. }
-            | Event::HostClaimed { day, .. }
-            | Event::Installed { day, .. }
-            | Event::VesselArrived { day, .. }
-            | Event::VesselStopped { day, .. }
-            | Event::VesselBurned { day, .. }
-            | Event::Unlocked { day, .. }
-            | Event::WarDeclared { day, .. }
-            | Event::FleetSighted { day, .. }
-            | Event::UnderAttack { day, .. }
-            | Event::AttackRepelled { day, .. }
-            | Event::HostCaptured { day, .. }
-            | Event::HostFreed { day, .. }
-            | Event::BattleFought { day, .. }
-            | Event::VesselLost { day, .. }
-            | Event::CacheFound { day, .. }
-            | Event::FragmentFound { day, .. }
-            | Event::Raid { day, .. }
-            | Event::HostTaken { day, .. }
-            | Event::GameOver { day, .. } => day,
-        }
-    }
+/// Settings are part of a view request in a couple of places; keep the type
+/// reachable through the view module too.
+pub use crate::world::Settings as ViewSettings;
 
-    /// The crew the event happened to.
-    pub fn player(&self) -> PlayerId {
-        match *self {
-            Event::ResearchCompleted { player, .. }
-            | Event::StaffPromoted { player, .. }
-            | Event::RecruitsGraduated { player, .. }
-            | Event::ItemBuilt { player, .. }
-            | Event::HostClaimed { player, .. }
-            | Event::Installed { player, .. }
-            | Event::VesselArrived { player, .. }
-            | Event::VesselStopped { player, .. }
-            | Event::VesselBurned { player, .. }
-            | Event::Unlocked { player, .. }
-            | Event::WarDeclared { player, .. }
-            | Event::FleetSighted { player, .. }
-            | Event::UnderAttack { player, .. }
-            | Event::AttackRepelled { player, .. }
-            | Event::HostCaptured { player, .. }
-            | Event::HostFreed { player, .. }
-            | Event::BattleFought { player, .. }
-            | Event::VesselLost { player, .. }
-            | Event::CacheFound { player, .. }
-            | Event::FragmentFound { player, .. }
-            | Event::Raid { player, .. }
-            | Event::HostTaken { player, .. }
-            | Event::GameOver { player, .. } => player,
-        }
-    }
-
-    /// Whether the event happened to `player`: its own, or a raid on it.
-    pub fn involves(&self, player: PlayerId) -> bool {
-        self.player() == player
-            || matches!(self, Event::Raid { defender, .. } if *defender == player)
-    }
-
-    /// Whether every crew learns of the event: a host changing hands and
-    /// the end of the game are seen across the net.
-    pub fn is_public(&self) -> bool {
-        matches!(
-            self,
-            Event::HostClaimed { .. }
-                | Event::HostCaptured { .. }
-                | Event::HostFreed { .. }
-                | Event::HostTaken { .. }
-                | Event::GameOver { .. }
-        )
-    }
-}
-
-impl TurnReport {
-    /// The report as one crew may see it: its own rejected orders, and the
-    /// events that happened to it or in plain sight.
-    pub fn for_crew(&self, player: PlayerId) -> TurnReport {
-        TurnReport {
-            first_day: self.first_day,
-            last_day: self.last_day,
-            rejected: self
-                .rejected
-                .iter()
-                .filter(|r| r.player == player)
-                .cloned()
-                .collect(),
-            events: self
-                .events
-                .iter()
-                .filter(|e| e.involves(player) || e.is_public())
-                .cloned()
-                .collect(),
-        }
-    }
-}
+const _: () = {
+    // Keep these in the view's reach for the server and client.
+    let _ = rules::DEFAULT_LAST_TURN;
+    let _ = Settings {
+        difficulty: Difficulty::Normal,
+        last_turn: 0,
+    };
+};
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::command::CommandError;
-    use crate::data::GameData;
-    use crate::transport::{Module, VesselKind};
-    use crate::turn::{RejectedCommand, resolve_turn};
-
-    const CREW: PlayerId = PlayerId(0);
-    const RIVAL: PlayerId = PlayerId(1);
-
-    fn vessel(owner: PlayerId, host: HostId, berth: Berth) -> Vessel {
-        Vessel {
-            owner,
-            kind: VesselKind::Worm,
-            host,
-            state: VesselState::At(berth),
-            fuel: 10,
-            pilot: None,
-            modules: vec![Module::Empty; 3],
-            destination: None,
-            exposed_days: 0,
-            script: None,
-            daemons: 0,
-            c2: false,
-            cache: None,
-        }
-    }
 
     #[test]
-    fn a_crew_sees_its_own_sites_and_only_the_outside_of_others() {
-        let data = GameData::classic();
-        let mut world = World::new_game(&data, 3, &[(CREW, "Crew"), (RIVAL, "Rival")]);
-        let home = data.hideout.host;
-        let transit = HostId(data.hosts.iter().position(|h| h.name == "Transit").unwrap() as u16);
-        let beacon = HostId(data.hosts.iter().position(|h| h.name == "Beacon").unwrap() as u16);
-        world.hosts[usize::from(transit.0)].controller = Some(Controller::Crew(RIVAL));
-        world.hosts[usize::from(transit.0)].site.citadel.modules = 3;
-        world.hosts[usize::from(transit.0)].site.taps = 2;
-        world.hosts[usize::from(beacon.0)].controller = Some(Controller::Crew(CREW));
-        world
-            .vessels
-            .insert(VesselId(0), vessel(CREW, home, Berth::Connected));
-        world
-            .vessels
-            .insert(VesselId(1), vessel(RIVAL, home, Berth::Connected));
-        world
-            .vessels
-            .insert(VesselId(2), vessel(RIVAL, home, Berth::Lurking));
-        world
-            .vessels
-            .insert(VesselId(3), vessel(RIVAL, beacon, Berth::Lurking));
-        world
-            .vessels
-            .insert(VesselId(4), vessel(RIVAL, transit, Berth::Lurking));
-        resolve_turn(&data, &mut world, &Default::default(), 0);
-
-        let view = crew_view(&data, &world, CREW).unwrap();
-        assert_eq!(view.turn, 1);
-        assert_eq!(view.me.name, "Crew");
-        assert_eq!(
-            view.crews.iter().map(|c| c.hosts).collect::<Vec<_>>(),
-            [1, 1]
+    fn fog_hides_unscanned_intel() {
+        let data = GameData::standard();
+        let world = World::new_game(
+            &data,
+            2,
+            &[(PlayerId(0), "A"), (PlayerId(1), "B")],
+            Settings::default(),
         );
-        let transit_view = &view.hosts[usize::from(transit.0)];
-        assert_eq!(transit_view.controller, Some(Controller::Crew(RIVAL)));
-        assert_eq!(transit_view.citadel_modules, 3);
-        assert!(transit_view.site.is_none(), "a rival's site stays hidden");
-        assert_eq!(
-            view.hosts[usize::from(beacon.0)]
-                .site
-                .as_ref()
-                .map(|s| s.taps),
-            Some(0)
-        );
-        // Own, lurking at home, and at a held host: seen. Inside a rival's
-        // citadel at home, or at the rival's host: not.
-        assert_eq!(
-            view.vessels.keys().copied().collect::<Vec<_>>(),
-            [VesselId(0), VesselId(2), VesselId(3)]
-        );
-        assert!(crew_view(&data, &world, PlayerId(7)).is_none());
-    }
-
-    #[test]
-    fn reports_are_filtered_per_crew() {
-        let report = TurnReport {
-            first_day: 1,
-            last_day: 10,
-            rejected: vec![
-                RejectedCommand {
-                    player: CREW,
-                    index: 0,
-                    error: CommandError::NoCoders,
-                },
-                RejectedCommand {
-                    player: RIVAL,
-                    index: 2,
-                    error: CommandError::NoCoders,
-                },
-            ],
-            events: vec![
-                Event::RecruitsGraduated {
-                    day: 3,
-                    player: RIVAL,
-                    kind: crate::staff::StaffKind::Coder,
-                    count: 5,
-                },
-                Event::HostClaimed {
-                    day: 4,
-                    player: RIVAL,
-                    host: HostId(4),
-                },
-                Event::ResearchCompleted {
-                    day: 5,
-                    player: CREW,
-                    item: crate::items::ItemType::Tap,
-                },
-            ],
-        };
-        let mine = report.for_crew(CREW);
-        assert_eq!(mine.rejected.len(), 1);
-        assert_eq!(mine.rejected[0].player, CREW);
-        assert_eq!(mine.events.len(), 2);
-        assert!(matches!(mine.events[0], Event::HostClaimed { .. }));
-        assert!(matches!(mine.events[1], Event::ResearchCompleted { .. }));
+        let view = crew_view(&data, &world, PlayerId(0)).unwrap();
+        let hideout = view.me.hideout;
+        // The crew knows its own hideout but not a stronghold far away.
+        assert!(view.host(hideout).unwrap().intel.is_some());
+        let cortex = data.find("Cortex").unwrap();
+        assert!(view.host(cortex).unwrap().intel.is_none());
+        // It can break into a neighbour but not scan what it already knows.
+        let neighbour = data.neighbours(hideout)[0];
+        assert!(view.host(neighbour).unwrap().can_break_in);
+        assert!(view.host(neighbour).unwrap().can_scan);
+        assert!(!view.host(hideout).unwrap().can_scan);
+        // It sees one rival, not itself.
+        assert_eq!(view.crews.len(), 1);
     }
 }

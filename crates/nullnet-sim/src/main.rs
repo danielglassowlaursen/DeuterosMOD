@@ -1,29 +1,30 @@
-//! Plays bot crews against each other on the classic map and prints what
-//! happened: a timeline of the game's main events and where each crew ended.
+//! Plays bot crews against each other on the standard map and prints what
+//! happened: a timeline of the game's events and where each crew ended.
 //!
 //! ```text
-//! cargo run -p nullnet-sim -- --seed 7 --crews 3 --days 3000
+//! cargo run -p nullnet-sim -- --seed 7 --crews 3 --turns 50 --difficulty normal
 //! ```
 //!
-//! With `--json` it writes the whole game turn by turn instead: every
-//! crew's orders, the events and each crew's state after each turn.
+//! With `--json` it writes the whole game turn by turn instead, for a replay
+//! viewer.
 
 mod replay;
 
 use std::process::ExitCode;
 
 use nullnet_core::{
-    Command, CommandError, Controller, Event, GameData, Orders, PlayerId, VesselKind, World, bot,
-    date, resolve_turn,
+    Difficulty, GameData, Orders, PlayerId, Settings, World, bot_orders, resolve_turn, scores,
 };
 
-const NAMES: [&str; 4] = ["Ghostline", "Blackice", "Nullsector", "Redshift"];
+use crate::replay::{Replay, describe};
+
+const NAMES: [&str; 4] = ["Ghostline", "Blackice", "Nullset", "Rootkit"];
 
 struct Options {
     seed: u64,
     crews: usize,
-    days: u32,
-    turn: u32,
+    turns: u32,
+    difficulty: Difficulty,
     verbose: bool,
     json: bool,
 }
@@ -32,451 +33,120 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Options, String> {
     let mut options = Options {
         seed: 1,
         crews: 2,
-        days: 3000,
-        turn: 10,
+        turns: 50,
+        difficulty: Difficulty::Normal,
         verbose: false,
         json: false,
     };
     while let Some(arg) = args.next() {
-        if arg == "--verbose" {
-            options.verbose = true;
-            continue;
-        }
-        if arg == "--json" {
-            options.json = true;
-            continue;
+        match arg.as_str() {
+            "--verbose" => {
+                options.verbose = true;
+                continue;
+            }
+            "--json" => {
+                options.json = true;
+                continue;
+            }
+            _ => {}
         }
         let mut value = || args.next().ok_or(format!("{arg} needs a value"));
-        let number = |text: String| text.parse::<u64>().map_err(|e| format!("{arg}: {e}"));
         match arg.as_str() {
-            "--seed" => options.seed = number(value()?)?,
-            "--crews" => options.crews = number(value()?)? as usize,
-            "--days" => options.days = number(value()?)? as u32,
-            "--turn" => options.turn = number(value()?)? as u32,
+            "--seed" => options.seed = value()?.parse().map_err(|e| format!("--seed: {e}"))?,
+            "--crews" => options.crews = value()?.parse().map_err(|e| format!("--crews: {e}"))?,
+            "--turns" => options.turns = value()?.parse().map_err(|e| format!("--turns: {e}"))?,
+            "--difficulty" => {
+                options.difficulty = match value()?.to_lowercase().as_str() {
+                    "easy" => Difficulty::Easy,
+                    "normal" => Difficulty::Normal,
+                    "hard" => Difficulty::Hard,
+                    other => return Err(format!("unknown difficulty {other}")),
+                }
+            }
             _ => return Err(format!("unknown argument {arg}")),
         }
     }
     if !(1..=NAMES.len()).contains(&options.crews) {
         return Err(format!("--crews must be 1 to {}", NAMES.len()));
     }
-    if options.turn == 0 {
-        return Err("--turn must be at least 1".into());
+    if options.turns == 0 {
+        return Err("--turns must be at least 1".to_string());
     }
     Ok(options)
 }
 
 fn main() -> ExitCode {
     let options = match parse(std::env::args().skip(1)) {
-        Ok(options) => options,
+        Ok(o) => o,
         Err(error) => {
-            eprintln!("{error}");
-            eprintln!(
-                "usage: nullnet-sim [--seed N] [--crews 1-4] [--days N] [--turn N] [--verbose] [--json]"
-            );
+            eprintln!("nullnet-sim: {error}");
             return ExitCode::FAILURE;
         }
     };
 
-    let data = GameData::classic();
-    let crews: Vec<(PlayerId, &str)> = (0..options.crews)
+    let data = GameData::standard();
+    let names: Vec<(PlayerId, &str)> = (0..options.crews)
         .map(|i| (PlayerId(i as u8), NAMES[i]))
         .collect();
-    let mut world = World::new_game(&data, options.seed, &crews);
-    let name = |id: PlayerId| NAMES[usize::from(id.0)];
-    let host = |id: nullnet_core::HostId| data.host(id).name.as_str();
+    let settings = Settings {
+        difficulty: options.difficulty,
+        last_turn: options.turns,
+    };
+    let mut world = World::new_game(&data, options.seed, &names, settings);
+    let mut record = options.json.then(|| Replay::new(&data, &world, &names));
 
-    let mut replay = options
-        .json
-        .then(|| replay::Replay::new(&data, options.seed, options.turn, &crews));
-    let mut rejected = 0;
-    while world.day < options.days {
-        let orders: Orders = crews
-            .iter()
-            .map(|&(id, _)| (id, bot::orders(&data, &world, id)))
-            .collect();
-        let days = options.turn.min(options.days - world.day);
-        let report = resolve_turn(&data, &mut world, &orders, days);
-        for r in &report.rejected {
-            let command = &orders[&r.player][r.index];
-            let day = date(report.first_day - 1);
-            match (command, &r.error) {
-                // Two crews installing on the same free host in one turn:
-                // the first applied claims it. Part of the game, not a bot bug.
-                (Command::Deploy { .. }, &CommandError::HostTaken(h)) => {
-                    if !options.json
-                        && (r.index == 0
-                            || !matches!(orders[&r.player][r.index - 1], Command::Deploy { .. }))
-                    {
-                        println!("{day}  {:<10}  lost {} to a rival", name(r.player), host(h));
-                    }
-                }
-                _ => {
-                    rejected += 1;
-                    if !options.json {
-                        println!(
-                            "{day}  {:<10}  REJECTED {command:?}: {}",
-                            name(r.player),
-                            r.error
-                        );
-                    }
-                }
-            }
+    while world.ended.is_none() {
+        let turn = world.turn;
+        let mut orders = Orders::new();
+        for &(player, _) in &names {
+            orders.insert(player, bot_orders(&data, &world, player));
         }
-        if let Some(replay) = &mut replay {
-            replay.record(&world, &orders, &report);
-            continue;
-        }
-        for event in &report.events {
-            let line = match *event {
-                Event::Unlocked {
-                    day,
-                    player,
-                    milestone,
-                } => Some((day, player, format!("milestone {milestone:?}"))),
-                Event::ResearchCompleted { day, player, item } => {
-                    Some((day, player, format!("researched {item:?}")))
+        let report = resolve_turn(&data, &mut world, &orders);
+
+        if let Some(record) = record.as_mut() {
+            record.record(&world, &names, &orders, &report);
+        } else if options.verbose {
+            for event in &report.events {
+                let line = describe(&world, event);
+                if !line.is_empty() {
+                    println!("turn {turn:>3}: {line}");
                 }
-                Event::HostClaimed {
-                    day,
-                    player,
-                    host: h,
-                } => Some((day, player, format!("claimed {}", host(h)))),
-                Event::Installed {
-                    day,
-                    player,
-                    host: h,
-                    item,
-                    installed,
-                } if options.verbose || installed == nullnet_core::Citadel::MODULES => Some((
-                    day,
-                    player,
-                    format!("{item:?} {installed} installed at {}", host(h)),
-                )),
-                Event::VesselBurned {
-                    day,
-                    player,
-                    vessel,
-                    host: h,
-                } => Some((
-                    day,
-                    player,
-                    format!("vessel {} burned at {}", vessel.0, host(h)),
-                )),
-                Event::VesselStopped {
-                    day,
-                    player,
-                    vessel,
-                    reason,
-                } => Some((
-                    day,
-                    player,
-                    format!("vessel {} stopped: {reason:?}", vessel.0),
-                )),
-                Event::WarDeclared { day, player } => {
-                    Some((day, player, "AT WAR with the Legacy Net".to_string()))
-                }
-                Event::FleetSighted {
-                    day,
-                    player,
-                    host: h,
-                    arrives,
-                    daemons,
-                } => Some((
-                    day,
-                    player,
-                    format!(
-                        "Legacy swarm of {daemons} heading for {}, arrives {}",
-                        host(h),
-                        date(arrives)
-                    ),
-                )),
-                Event::UnderAttack {
-                    day,
-                    player,
-                    host: h,
-                    captured_on,
-                } => Some((
-                    day,
-                    player,
-                    format!("{} under siege, falls {}", host(h), date(captured_on)),
-                )),
-                Event::AttackRepelled {
-                    day,
-                    player,
-                    host: h,
-                } => Some((day, player, format!("swarm driven off {}", host(h)))),
-                Event::HostCaptured {
-                    day,
-                    player,
-                    host: h,
-                } => Some((day, player, format!("LOST {} to the Legacy Net", host(h)))),
-                Event::HostFreed {
-                    day,
-                    player,
-                    host: h,
-                } => Some((day, player, format!("FREED {}", host(h)))),
-                Event::BattleFought {
-                    day,
-                    player,
-                    host: h,
-                    ref report,
-                    ..
-                } => Some((
-                    day,
-                    player,
-                    format!(
-                        "battle at {}: {} vs {} daemons, {:?}, {} vs {} left",
-                        host(h),
-                        report.attacker.daemons,
-                        report.defender.daemons,
-                        report.outcome,
-                        report.attacker_left(),
-                        report.defender_left()
-                    ),
-                )),
-                Event::VesselLost {
-                    day,
-                    player,
-                    vessel,
-                    host: h,
-                } => Some((
-                    day,
-                    player,
-                    format!("vessel {} lost at {}", vessel.0, host(h)),
-                )),
-                Event::CacheFound {
-                    day,
-                    player,
-                    resource,
-                    size,
-                    ..
-                } if options.verbose => Some((
-                    day,
-                    player,
-                    format!("cache of {resource:?} found, size {size}"),
-                )),
-                Event::FragmentFound { day, player, .. } => {
-                    Some((day, player, "source fragment found".to_string()))
-                }
-                Event::Raid {
-                    day,
-                    player,
-                    defender,
-                    host: h,
-                    goal,
-                    ref report,
-                    ref loot,
-                    ..
-                } => Some((
-                    day,
-                    player,
-                    format!(
-                        "RAID on {} ({}) for {goal:?}: {} vs {} daemons, {:?}{}",
-                        host(h),
-                        name(defender),
-                        report.attacker.daemons,
-                        report.defender.daemons,
-                        report.outcome,
-                        if loot.is_empty() {
-                            String::new()
-                        } else {
-                            format!(", took {loot:?}")
-                        }
-                    ),
-                )),
-                Event::HostTaken {
-                    day,
-                    player,
-                    from,
-                    host: h,
-                } => Some((day, player, format!("TOOK {} from {}", host(h), name(from)))),
-                Event::GameOver {
-                    day,
-                    player,
-                    reason,
-                } => Some((day, player, format!("GAME OVER: wins by {reason:?}"))),
-                Event::RecruitsGraduated {
-                    day,
-                    player,
-                    kind,
-                    count,
-                } if options.verbose => Some((day, player, format!("{count} {kind:?}s graduated"))),
-                Event::ItemBuilt {
-                    day, player, item, ..
-                } if options.verbose => Some((day, player, format!("built {item:?}"))),
-                Event::VesselArrived {
-                    day,
-                    player,
-                    vessel,
-                    host: h,
-                    berth,
-                } if options.verbose => Some((
-                    day,
-                    player,
-                    format!("vessel {} {berth:?} at {}", vessel.0, host(h)),
-                )),
-                _ => None,
-            };
-            if let Some((day, player, text)) = line {
-                println!("{}  {:<10}  {text}", date(day), name(player));
             }
         }
     }
 
-    if let Some(replay) = &replay {
-        println!("{}", serde_json::to_string(replay).expect("serializable"));
-        return if rejected > 0 {
-            ExitCode::FAILURE
-        } else {
-            ExitCode::SUCCESS
-        };
+    if let Some(record) = record {
+        match serde_json::to_string(&record) {
+            Ok(json) => println!("{json}"),
+            Err(error) => {
+                eprintln!("nullnet-sim: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+        return ExitCode::SUCCESS;
     }
 
-    println!();
-    println!("After {} days ({}):", world.day, date(world.day));
-    for score in nullnet_core::scores(&data, &world) {
+    // The standings.
+    println!(
+        "\nAfter {} turns ({}):",
+        options.turns,
+        options.difficulty.name()
+    );
+    for score in scores(&world) {
+        let crew = world.crew(score.player).unwrap();
         println!(
-            "  {:<10}  {:>4} points: {} citadels, {} hosts, {} freed, {} taken, {} researched, heat {}",
-            name(score.player),
-            score.total,
-            score.citadels,
-            score.hosts,
-            score.freed,
-            score.taken,
-            score.research,
-            nullnet_core::heat(&world, score.player)
+            "  {:<10} {:>3} points  ({} data, {} hosts, {} freed; {} credits, trace {})",
+            crew.name, score.total, score.data, score.hosts, score.freed, crew.credits, crew.trace,
         );
     }
-    for &(id, crew) in &crews {
-        let player = &world.players[&id];
-        let held: Vec<&str> = world
-            .hosts
-            .iter()
-            .enumerate()
-            .filter(|(_, h)| h.controller == Some(Controller::Crew(id)))
-            .map(|(i, h)| {
-                let id = nullnet_core::HostId(i as u16);
-                if h.site.citadel.complete() {
-                    host(id)
-                } else {
-                    "(building)"
-                }
-            })
-            .collect();
-        let vessels = |kind| {
-            world
-                .vessels
-                .values()
-                .filter(|v| v.owner == id && v.kind == kind)
-                .count()
-        };
-        let researched = player.research.values().filter(|r| r.researched).count();
-        let daemons: u32 = world
-            .vessels
-            .values()
-            .filter(|v| v.owner == id)
-            .map(|v| v.daemons)
-            .sum::<u32>()
-            + player
-                .hideout
-                .citadel
-                .store
-                .get(nullnet_core::ItemType::Daemon)
-            + world
-                .hosts
-                .iter()
-                .filter(|h| h.controller == Some(Controller::Crew(id)))
-                .map(|h| h.site.citadel.store.get(nullnet_core::ItemType::Daemon))
-                .sum::<u32>();
-        println!(
-            "  {crew:<10}  taps {}  citadel {}/{}  research {researched}  \
-             droppers {}  worms {}  daemons {daemons}  hosts {held:?}",
-            player.hideout.taps,
-            player.hideout.citadel.modules,
-            nullnet_core::Citadel::MODULES,
-            vessels(VesselKind::Dropper),
-            vessels(VesselKind::Worm),
-        );
-        if options.verbose {
-            let store = |store: &nullnet_core::Store| {
-                store
-                    .iter()
-                    .map(|(item, count)| format!("{item:?} {count}"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            };
-            let teams = |staff: &[nullnet_core::Staff]| {
-                staff
-                    .iter()
-                    .map(|s| format!("{:?} {} L{}", s.kind, s.count, s.level()))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            };
-            println!(
-                "    hideout: {} | staff [{}] | coders {}",
-                store(&player.hideout.store),
-                teams(&player.hideout.staff),
-                player
-                    .workshop
-                    .coders
-                    .as_ref()
-                    .map_or("none".to_string(), |c| format!(
-                        "{} L{}",
-                        c.count,
-                        c.level()
-                    ))
-            );
-            println!(
-                "    citadel: {} | staff [{}] | coders {} | bot {}",
-                store(&player.hideout.citadel.store),
-                teams(&player.hideout.citadel.staff),
-                player.hideout.citadel.workshop.coders.as_ref().map_or(
-                    "none".to_string(),
-                    |c| format!("{} L{}", c.count, c.level())
-                ),
-                player.hideout.citadel.workshop.automated
-            );
-            for (i, h) in world.hosts.iter().enumerate() {
-                if h.controller != Some(Controller::Crew(id)) {
-                    continue;
-                }
-                let site = &h.site;
-                println!(
-                    "    {}: backdoor {}/2, taps {}, coders {}, bot {}, staff [{}], inside [{}], citadel [{}]",
-                    host(nullnet_core::HostId(i as u16)),
-                    site.backdoor_parts,
-                    site.taps,
-                    site.citadel.workshop.coders.is_some(),
-                    site.citadel.workshop.automated,
-                    teams(&site.citadel.staff),
-                    store(&site.store),
-                    store(&site.citadel.store)
-                );
-            }
-            for (vid, v) in world.vessels.iter().filter(|(_, v)| v.owner == id) {
-                println!(
-                    "    vessel {} {:?} at {} {:?} fuel {} pilot {} daemons {} c2 {} script {} modules {:?}",
-                    vid.0,
-                    v.kind,
-                    host(v.host),
-                    v.state,
-                    v.fuel,
-                    v.pilot.is_some(),
-                    v.daemons,
-                    v.c2,
-                    v.script.as_ref().map_or("none", |s| if s.running() {
-                        "running"
-                    } else {
-                        "idle"
-                    }),
-                    v.modules
-                );
-            }
+    if let Some(end) = &world.ended {
+        match end.winner {
+            Some(p) => println!(
+                "Winner: {}",
+                world.crew(p).map_or("?".to_string(), |c| c.name.clone())
+            ),
+            None => println!("A tie."),
         }
-    }
-    if rejected > 0 {
-        println!("{rejected} orders were rejected: the bot gave orders the rules refuse");
-        return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
 }

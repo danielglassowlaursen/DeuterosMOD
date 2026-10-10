@@ -1,59 +1,39 @@
-//! NullNet game rules (built on the rules of Deuteros, 1991): a pure,
-//! deterministic simulation with no engine, clock or I/O.
+//! NullNet game rules: a pure, deterministic hacking game with no engine,
+//! clock or I/O.
 //!
-//! The server owns the authoritative [`World`] and advances it one turn at a
-//! time with [`resolve_turn`]; clients link the same crate to preview what
-//! their orders will do. Everything here must give bit-identical results on
-//! every platform, so the rules use integer arithmetic only, iterate ordered
-//! collections only, and draw randomness from [`Rng`] stored in the world.
+//! Crews work a fixed map of hosts from the corners inward, scanning, breaking
+//! in and planting backdoors, while the Legacy Net holds the middle and sweeps
+//! the crews that make too much noise. The server owns the authoritative
+//! [`World`] and advances it one turn at a time with [`resolve_turn`]; clients
+//! link the same crate to preview their orders with [`check_orders`].
+//!
+//! Everything here gives bit-identical results on every platform: the rules
+//! use integer arithmetic only, iterate ordered collections only, and draw
+//! randomness from [`Rng`] stored in the world.
 
-pub mod battle;
 pub mod bot;
-pub mod caches;
 pub mod command;
 pub mod data;
-pub mod exfil;
 pub mod ids;
-pub mod items;
 pub mod legacy;
-pub mod links;
-pub mod mining;
-pub mod raid;
-pub mod recruitment;
-pub mod research;
 pub mod rng;
 pub mod score;
-pub mod site;
-pub mod staff;
-pub mod store;
-pub mod transport;
 pub mod turn;
-pub mod unlocks;
 pub mod view;
-pub mod workshop;
 pub mod world;
 
-pub use battle::{Outcome, Report as BattleReport, Side as BattleSide};
-pub use caches::Cache;
-pub use command::{Command, CommandError};
-pub use data::{GameData, HostDef, ItemCategory, ItemDef, NetworkDef};
-pub use exfil::{ExfilScript, Route};
-pub use ids::{Day, EPOCH, HostId, NetworkId, PlayerId, date};
-pub use items::ItemType;
-pub use legacy::{Fleet, Legacy};
-pub use links::LinkConfig;
-pub use raid::{PROTECTION_TURNS, RaidGoal, Siphon, heat};
+pub use bot::orders as bot_orders;
+pub use command::{Command, CommandError, Operation};
+pub use data::{District, GameData, HostDef, Role, Upgrade, Weakness, Yields, rules};
+pub use ids::{EPOCH, HackerId, HostId, PlayerId};
+pub use legacy::spread_front;
 pub use rng::Rng;
-pub use score::{EndReason, GameEnd, Score, contested_hosts, score, scores};
-pub use site::{Citadel, STAFF_SLOTS, Site, Vein};
-pub use staff::{Staff, StaffKind};
-pub use store::Store;
-pub use transport::{
-    AbortReason, Berth, Cargo, Destination, Module, ModuleKind, Seat, Vessel, VesselId, VesselKind,
-    VesselState,
+pub use score::{GameEnd, Score, score, scores};
+pub use turn::{
+    Event, Orders, Outcome, RejectedCommand, TurnReport, attack, chance, check_orders, defence,
+    resolve_turn,
 };
-pub use turn::{Event, Orders, TurnReport, resolve_turn};
-pub use unlocks::Milestone;
-pub use view::{CrewSummary, CrewView, HostView, Threat, crew_view};
-pub use workshop::{AutoMode, Job, SiteRef, Workshop, WorkshopRef};
-pub use world::{Controller, HostState, Player, World};
+pub use view::{CrewSummary, CrewView, HostView, Intel, crew_view};
+pub use world::{
+    Access, Controller, Crew, Difficulty, Hacker, HostState, Offer, Settings, Upgrades, World,
+};
