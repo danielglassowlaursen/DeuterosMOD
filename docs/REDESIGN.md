@@ -15,8 +15,8 @@ Vores egne og bliver: turstrukturen, serveren og API'et, klienten og UI'et, raid
 3. Økonomi: få, tydelige ressourcer, folk og værktøjer. Besluttet.
 4. Kortet: vores eget netværk i stedet for Deuteros' stjernesystemer. Besluttet.
 5. Modstanderne: The Legacy Net og de andre crews. Besluttet.
-6. De første ti minutter: guide og historie til de nye regler. I gang.
-7. Bygningen: den nye kerne i Rust, trin for trin, med resten genbrugt.
+6. De første ti minutter: guide og historie til de nye regler. Besluttet.
+7. Bygningen: den nye kerne i Rust, trin for trin, med resten genbrugt. I gang.
 
 ## 1. Kerneløkken (besluttet)
 
@@ -100,3 +100,31 @@ Sikkerheden stiger indad: værterne nær hjørnerne har 1-2, mellemringen 2-4 og
 - 1 point pr. data, som crewet har samlet.
 - 5 point pr. vært, crewet holder ved slutningen.
 - 10 point pr. vært, crewet har taget fra The Legacy Net, hvad enten den holdes til slut eller ej.
+
+## 6. De første ti minutter (besluttet)
+
+**Guiden lægger ordren for dig.** Hvert trin foreslår et konkret mål, fx "Scan Beacon, værten ved siden af dit skjulested", med en *Do it*-knap, der lægger ordren. Man kan stadig gøre det selv. De første trin:
+1. Scan en vært ved siden af skjulestedet.
+2. Bryd ind i den med den hacker, hvis speciale passer.
+3. Plant en bagdør, så værten bliver din.
+4. Hyr en hacker mere på markedet.
+5. Køb et kit, der passer til en svaghed i nærheden.
+6. Hold tre værter.
+7. Stjæl data fra en vært.
+8. Hold din trace under tærsklen, og forsvar en vært.
+9. Bryd ind hos The Legacy Net.
+
+**Øvelsesspil.** Fra konsollen kan man oprette et spil mod en bot. Turen kører, så snart man afleverer, så man kan lære spillet på en aften.
+
+**Sværhedsgrad** vælges, når spillet oprettes. Første bud:
+- *Let*: udrensning ved trace 9, spredning hver sjette tur fra tur 15, værternes sikkerhed 1 lavere (mindst 1), halvanden gang så mange credits fra start.
+- *Normal*: som i trin 5.
+- *Svær*: udrensning ved trace 4, spredning hver tredje tur fra tur 6, værternes sikkerhed 1 højere (højst 5).
+
+**Historien.** Side 1 og 2 (ResetN00L og NullNet) bliver med tekst og stemme. Side 3-5 skrives om til de nye regler og indtales på ny. Udkast:
+
+*3. The Legacy Net.* The AI did not die with the first net. Its remains run on in the forgotten servers as the Legacy Net, and at its heart is Lattice, the compute network that grew it. Its hosts are walled in ICE and full of data. It lets quiet crews be. It sweeps the ones that make noise, and every few weeks it reaches out and takes another host for itself.
+
+*4. The crews.* Reconnecting the old net is work for hacker crews: a handful of handles, a hideout in a corner of the Metro, no permission from anyone. You scan a host to find its weakness, break in, and plant a backdoor; from then on it is yours, and it pays out in credits, compute, bandwidth or data. Every host you hold opens the way to the ones linked to it. Two to four crews work the same net from different corners. For the first five turns they leave each other alone; after that, anything one crew holds, another can take.
+
+*5. Your crew.* Your hideout waits in a corner of the Metro, and your first hackers are ready. Each turn you give them their orders and hand them in; when every crew has, or the deadline passes, the turn runs and the log tells you what happened. The guide at the foot of the map walks you through the first turns and can give the orders for you. Playing again? 'Skip' on any earlier page jumps past the story, and 'Hide guide' keeps the guide away for good. When the last turn runs, data is what counts. Collect it, and stay quiet enough that the Legacy Net does not come for you.
