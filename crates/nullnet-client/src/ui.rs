@@ -46,6 +46,7 @@ impl Plugin for UiPlugin {
                     press_buttons,
                     style_buttons,
                     scroll_column,
+                    show_tip,
                     fade_toast,
                     refresh.run_if(changed),
                 ),
@@ -148,11 +149,29 @@ enum Action {
     ToggleHelp,
     ToggleGuide,
     StoryPage(i32),
+    OpenStory,
     CloseStory,
     Listen,
+    OpenReport,
     CloseReport,
     ToggleReports,
 }
+
+/// What a button or a figure in the top bar is, shown while the mouse rests
+/// on it.
+#[derive(Component, Clone)]
+struct Tip(String);
+
+/// The box the tip under the mouse is shown in, and its text.
+#[derive(Component)]
+struct TipBox;
+
+#[derive(Component)]
+struct TipText;
+
+/// The left column of panels, which the mouse wheel scrolls.
+#[derive(Component)]
+struct LeftColumn;
 
 // ------------------------------------------------------------ build
 
@@ -177,6 +196,7 @@ fn build(mut commands: Commands, mut insets: ResMut<MapInsets>) {
                 ..default()
             },
             ScrollPosition::default(),
+            LeftColumn,
         ))
         .with_children(|col| {
             for (panel, title) in [
@@ -236,14 +256,30 @@ fn build(mut commands: Commands, mut insets: ResMut<MapInsets>) {
         Content(Panel::Story),
     ));
     commands.spawn((
-        overlay_node(560.0),
+        help_node(600.0),
         MaterialNode(theme::OVERLAY),
         Content(Panel::Help),
+        ScrollPosition::default(),
     ));
     commands.spawn((
         overlay_node(540.0),
         MaterialNode(theme::OVERLAY),
         Content(Panel::Report),
+    ));
+
+    // The tip under the mouse, over everything else.
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            max_width: Val::Px(300.0),
+            padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)),
+            display: Display::None,
+            ..default()
+        },
+        MaterialNode(theme::TIP),
+        GlobalZIndex(100),
+        TipBox,
+        children![(text(String::new(), 12.5, FG), TipText)],
     ));
 }
 
@@ -283,6 +319,24 @@ fn content_node() -> Node {
     Node {
         flex_direction: FlexDirection::Column,
         row_gap: Val::Px(4.0),
+        ..default()
+    }
+}
+
+/// The help: as tall as the window allows, scrolled with the mouse wheel.
+fn help_node(width: f32) -> Node {
+    Node {
+        position_type: PositionType::Absolute,
+        left: Val::Percent(50.0),
+        top: Val::Px(TOP_BAR + 16.0),
+        bottom: Val::Px(16.0),
+        width: Val::Px(width),
+        margin: UiRect::left(Val::Px(-width / 2.0)),
+        padding: UiRect::all(Val::Px(20.0)),
+        flex_direction: FlexDirection::Column,
+        row_gap: Val::Px(10.0),
+        overflow: Overflow::scroll_y(),
+        display: Display::None,
         ..default()
     }
 }
@@ -353,7 +407,7 @@ fn refresh(
             Panel::Guide => build_guide(p, &session, &hud),
             Panel::Story => build_story(p, &hud),
             Panel::Help => build_help(p),
-            Panel::Report => build_report(p, &session, data),
+            Panel::Report => build_report(p, &session, data, &hud),
             Panel::Toast => {}
         });
     }
@@ -383,10 +437,34 @@ fn build_bar(p: &mut ChildSpawnerCommands, session: &Session, sounds: &Sounds, h
         13.0,
         FG,
     ));
-    chip(p, icons::CREDITS, me.credits.to_string(), ACCENT);
-    chip(p, icons::COMPUTE, me.compute.to_string(), theme::GOOD);
-    chip(p, icons::DATA, me.data.to_string(), theme::GOOD);
-    chip(p, icons::BANDWIDTH, view.bandwidth.to_string(), FG);
+    chip(
+        p,
+        icons::CREDITS,
+        me.credits.to_string(),
+        ACCENT,
+        "Credits: pay for hackers, kits, zero-days and upgrades, and wages each turn",
+    );
+    chip(
+        p,
+        icons::COMPUTE,
+        me.compute.to_string(),
+        theme::GOOD,
+        "Compute: spend it to boost a break-in, and on upgrades",
+    );
+    chip(
+        p,
+        icons::DATA,
+        me.data.to_string(),
+        theme::GOOD,
+        "Data: your points. The most data at the last turn wins",
+    );
+    chip(
+        p,
+        icons::BANDWIDTH,
+        view.bandwidth.to_string(),
+        FG,
+        "Bandwidth this turn: every operation costs some, and what is left is not saved",
+    );
     let trace_color = if me.trace * 2 >= view.sweep_at {
         theme::WARN
     } else {
@@ -397,6 +475,7 @@ fn build_bar(p: &mut ChildSpawnerCommands, session: &Session, sounds: &Sounds, h
         icons::TRACE,
         format!("{}/{}", me.trace, view.sweep_at),
         trace_color,
+        "Trace: the noise you make. At the second number the Legacy Net sweeps you",
     );
 
     p.spawn(spacer());
@@ -408,6 +487,11 @@ fn build_bar(p: &mut ChildSpawnerCommands, session: &Session, sounds: &Sounds, h
             icons::VOLUME
         },
         Action::ToggleMute,
+        if sounds.muted {
+            "Sound is off: turn it on"
+        } else {
+            "Sound is on: mute everything"
+        },
     );
     icon_button_tinted(
         p,
@@ -418,12 +502,28 @@ fn build_bar(p: &mut ChildSpawnerCommands, session: &Session, sounds: &Sounds, h
         } else {
             MUTED
         },
+        if sounds.music {
+            "Music is on: turn it off"
+        } else {
+            "Music is off: turn it on"
+        },
     );
     if matches!(notify::permission(), notify::Permission::Ask) {
-        icon_button(p, icons::BELL, Action::RequestNotify);
+        icon_button(
+            p,
+            icons::BELL,
+            Action::RequestNotify,
+            "Get a browser notice when a turn has run",
+        );
     }
-    icon_button(p, icons::SCROLL, Action::ToggleReports);
-    icon_button(p, icons::BOOK, Action::ToggleHelp);
+    icon_button(
+        p,
+        icons::SCROLL,
+        Action::OpenStory,
+        "The story: read it again and hear it read aloud",
+    );
+    icon_button(p, icons::LIST, Action::OpenReport, "Last turn's report");
+    icon_button(p, icons::BOOK, Action::ToggleHelp, "How to play");
     icon_button(
         p,
         if hud.show_guide {
@@ -432,6 +532,11 @@ fn build_bar(p: &mut ChildSpawnerCommands, session: &Session, sounds: &Sounds, h
             icons::TARGET
         },
         Action::ToggleGuide,
+        if hud.show_guide {
+            "Hide the guide"
+        } else {
+            "Show the guide"
+        },
     );
 }
 
@@ -776,6 +881,12 @@ fn build_guide(p: &mut ChildSpawnerCommands, session: &Session, hud: &Hud) {
     });
 }
 
+/// Reads a page of the story aloud.
+fn read_aloud(page: usize) {
+    let page_text = &guide::STORY[page.min(guide::STORY.len() - 1)];
+    voice::play_story(page, &format!("{}. {}", page_text.title, page_text.body));
+}
+
 fn build_story(p: &mut ChildSpawnerCommands, hud: &Hud) {
     let page = &guide::STORY[hud.story_page.min(guide::STORY.len() - 1)];
     p.spawn(theme::bold(page.title.to_uppercase(), 18.0, ACCENT));
@@ -810,7 +921,7 @@ fn build_help(p: &mut ChildSpawnerCommands) {
 
 /// The after-turn report: a plain-words recap of what happened, with a green
 /// tick for what went your way and a red mark for what did not.
-fn build_report(p: &mut ChildSpawnerCommands, session: &Session, data: &GameData) {
+fn build_report(p: &mut ChildSpawnerCommands, session: &Session, data: &GameData, hud: &Hud) {
     let Some(status) = session.status.as_ref() else {
         return;
     };
@@ -867,7 +978,15 @@ fn build_report(p: &mut ChildSpawnerCommands, session: &Session, data: &GameData
 
     p.spawn(wrap()).with_children(|r| {
         small(r, "Continue", Action::CloseReport);
-        small(r, "Turn reports off", Action::ToggleReports);
+        small(
+            r,
+            if hud.reports_off {
+                "Show reports after each turn"
+            } else {
+                "Turn reports off"
+            },
+            Action::ToggleReports,
+        );
     });
 }
 
@@ -1117,14 +1236,18 @@ fn deadline_line(session: &Session) -> String {
     }
 }
 
-fn chip(p: &mut ChildSpawnerCommands, glyph: char, value: String, color: Color) {
-    p.spawn(Node {
-        flex_direction: FlexDirection::Row,
-        align_items: AlignItems::Center,
-        column_gap: Val::Px(4.0),
-        flex_shrink: 0.0,
-        ..default()
-    })
+fn chip(p: &mut ChildSpawnerCommands, glyph: char, value: String, color: Color, tip: &str) {
+    p.spawn((
+        Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(4.0),
+            flex_shrink: 0.0,
+            ..default()
+        },
+        Interaction::default(),
+        Tip(tip.to_string()),
+    ))
     .with_children(|c| {
         c.spawn(theme::icon(glyph, 14.0, color));
         c.spawn(text(value, 13.0, FG));
@@ -1241,12 +1364,19 @@ fn small_disabled(r: &mut ChildSpawnerCommands, label: &str) {
     ));
 }
 
-fn icon_button(p: &mut ChildSpawnerCommands, glyph: char, action: Action) {
-    icon_button_tinted(p, glyph, action, ACCENT);
+fn icon_button(p: &mut ChildSpawnerCommands, glyph: char, action: Action, tip: &str) {
+    icon_button_tinted(p, glyph, action, ACCENT, tip);
 }
 
-fn icon_button_tinted(p: &mut ChildSpawnerCommands, glyph: char, action: Action, color: Color) {
+fn icon_button_tinted(
+    p: &mut ChildSpawnerCommands,
+    glyph: char,
+    action: Action,
+    color: Color,
+    tip: &str,
+) {
     p.spawn((
+        Tip(tip.to_string()),
         looked(
             action,
             theme::BUTTON,
@@ -1389,6 +1519,15 @@ fn press_buttons(
             Action::RequestNotify => notify::request_permission(),
             Action::ToggleHelp => {
                 hud.show_help = !hud.show_help;
+                // One overlay at a time; the story is in the top bar again.
+                if hud.show_help {
+                    if hud.show_story {
+                        hud.show_story = false;
+                        voice::stop();
+                        notify::remember_story_seen();
+                    }
+                    hud.show_report = false;
+                }
             }
             Action::ToggleGuide => {
                 hud.show_guide = !hud.show_guide;
@@ -1397,8 +1536,27 @@ fn press_buttons(
             Action::StoryPage(delta) => {
                 hud.story_page = (hud.story_page as i32 + delta).max(0) as usize;
                 if hud.listened {
-                    voice::play_story(hud.story_page);
+                    read_aloud(hud.story_page);
                 }
+            }
+            Action::OpenStory => {
+                hud.show_story = true;
+                hud.show_help = false;
+                hud.show_report = false;
+                hud.story_page = 0;
+                // Opened on purpose: read it out, unless the sound is off.
+                hud.listened = !sounds.muted;
+                if hud.listened {
+                    read_aloud(0);
+                }
+            }
+            Action::OpenReport => {
+                let has_report = session
+                    .status
+                    .as_ref()
+                    .is_some_and(|s| s.last_turn.is_some());
+                hud.show_report = has_report && !hud.show_report;
+                hud.show_help = false;
             }
             Action::CloseStory => {
                 hud.show_story = false;
@@ -1407,7 +1565,7 @@ fn press_buttons(
             }
             Action::Listen => {
                 hud.listened = true;
-                voice::play_story(hud.story_page);
+                read_aloud(hud.story_page);
             }
             Action::CloseReport => {
                 hud.show_report = false;
@@ -1444,7 +1602,8 @@ fn scroll_column(
     window: Single<&Window, With<PrimaryWindow>>,
     insets: Res<MapInsets>,
     blocked: Res<MapBlocked>,
-    mut scrolls: Query<&mut ScrollPosition>,
+    hud: Res<Hud>,
+    mut scrolls: Query<(&mut ScrollPosition, Option<&LeftColumn>, Option<&Content>)>,
 ) {
     let mut delta = 0.0;
     for event in wheel.read() {
@@ -1459,10 +1618,53 @@ fn scroll_column(
         && window.cursor_position().is_some_and(|c| {
             c.x >= inset.x && c.x <= size.x - inset.z && c.y >= inset.y && c.y <= size.y - inset.w
         });
-    if delta != 0.0 && !over_map {
-        for mut scroll in &mut scrolls {
+    if delta == 0.0 || over_map {
+        return;
+    }
+    // The help, while it is open; else the left column.
+    for (mut scroll, column, content) in &mut scrolls {
+        let help = content.is_some_and(|c| c.0 == Panel::Help);
+        if (hud.show_help && help) || (!hud.show_help && column.is_some()) {
             scroll.0.y = (scroll.0.y - delta).max(0.0);
         }
+    }
+}
+
+/// Shows the tip of the button or figure under the mouse, just below it and
+/// kept inside the window.
+fn show_tip(
+    window: Single<&Window, With<PrimaryWindow>>,
+    tips: Query<(&Interaction, &Tip)>,
+    mut tip_box: Single<&mut Node, With<TipBox>>,
+    mut tip_text: Single<&mut Text, With<TipText>>,
+) {
+    let hovered = tips
+        .iter()
+        .find(|(interaction, _)| **interaction != Interaction::None)
+        .map(|(_, tip)| tip.0.as_str());
+    let (Some(tip), Some(cursor)) = (hovered, window.cursor_position()) else {
+        if tip_box.display != Display::None {
+            tip_box.display = Display::None;
+        }
+        return;
+    };
+    if tip_text.0 != tip {
+        tip_text.0 = tip.to_string();
+    }
+    let width = window.width();
+    let (left, right) = if cursor.x > width - 320.0 {
+        (Val::Auto, Val::Px((width - cursor.x - 12.0).max(6.0)))
+    } else {
+        (Val::Px((cursor.x - 12.0).max(6.0)), Val::Auto)
+    };
+    let top = Val::Px(cursor.y + 22.0);
+    let node = &mut **tip_box;
+    if node.display != Display::Flex || node.left != left || node.right != right || node.top != top
+    {
+        node.display = Display::Flex;
+        node.left = left;
+        node.right = right;
+        node.top = top;
     }
 }
 

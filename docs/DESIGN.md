@@ -90,7 +90,7 @@ Tærskel, spredning og værternes sikkerhed afhænger af sværhedsgraden.
 
 ## De første ti minutter
 
-**Historien** (fem sider med tekst og stemme) sætter spilleren ind i ResetN00L, NullNet, The Legacy Net, crewene og ens eget crew. Kan springes over ved genspil.
+**Historien** (fem sider med tekst og stemme) sætter spilleren ind i ResetN00L, NullNet, The Legacy Net, crewene og ens eget crew. Kan springes over og åbnes igen fra topbjælken, som læser den op. Side 1-2 har en indtaling (`web/voice/story-1.mp3` og `story-2.mp3`); en side uden indtaling læses af browserens egen engelske stemme, indtil der lægges en `story-<side>.mp3` i `web/voice`. Topbjælkens ikoner og tal viser, hvad de er, når musen hviler på dem.
 
 **Guiden** ved kortets fod foreslår et konkret mål for hvert af de første trin — scan en nabo, bryd ind, plant en bagdør, hyr, køb et kit, hold tre værter, stjæl data, hold trace nede, bryd ind hos The Legacy Net — med en *Do it*-knap, der lægger ordren. Kan slås fra.
 
