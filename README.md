@@ -24,7 +24,11 @@ cargo test -p nullnet-core
 # Se bot-crews spille et helt spil (--verbose viser hver begivenhed)
 cargo run -p nullnet-sim -- --seed 7 --crews 3 --turns 50 --difficulty normal
 
-# Start en spilserver og opret et spil på http://localhost:8080/console
+# Byg web-klienten og start serveren på din egen maskine, uden Docker (hurtigst på en laptop;
+# scriptet siger, hvad der mangler). Åbn derefter http://localhost:8080/console
+scripts/run-local.sh
+
+# Eller kun serveren (konsollen virker uden web-klienten)
 cargo run -p nullnet-server -- --db nullnet.db --port 8080
 
 # Med web-klienten bygget (se nedenfor) åbner invitationslinkene kortet i stedet for konsollen

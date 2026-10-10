@@ -10,8 +10,11 @@ cd "$(dirname "$0")/.."
 profile="${1:-web}"
 cargo build -p nullnet-client --target wasm32-unknown-unknown --profile "$profile"
 
-target_dir="target/wasm32-unknown-unknown/$profile"
-[ "$profile" = dev ] && target_dir="target/wasm32-unknown-unknown/debug"
+# CARGO_TARGET_DIR moves Cargo's build directory, for example off a slow
+# external drive; follow it to the module.
+target_root="${CARGO_TARGET_DIR:-target}"
+target_dir="$target_root/wasm32-unknown-unknown/$profile"
+[ "$profile" = dev ] && target_dir="$target_root/wasm32-unknown-unknown/debug"
 
 rm -rf dist
 mkdir -p dist
