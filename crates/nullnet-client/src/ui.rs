@@ -10,8 +10,8 @@ use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 
 use nullnet_core::{
-    Command, Controller, CrewView, GameData, HackerId, HostId, HostView, Operation, Upgrade,
-    Weakness, chance, rules,
+    Command, Controller, CrewView, Event, GameData, HackerId, HostId, HostView, Operation, Outcome,
+    Upgrade, Weakness, chance, rules,
 };
 
 use crate::Rules;
@@ -39,6 +39,7 @@ impl Plugin for UiPlugin {
             .add_systems(
                 Update,
                 (
+                    watch_turn,
                     press_buttons,
                     style_buttons,
                     scroll_column,
@@ -75,6 +76,12 @@ struct Hud {
     show_help: bool,
     show_guide: bool,
     listened: bool,
+    /// The turn report overlay is open.
+    show_report: bool,
+    /// The latest turn whose report has already been opened.
+    report_shown_turn: u32,
+    /// The player turned the after-turn report off.
+    reports_off: bool,
 }
 
 impl Default for Hud {
@@ -85,6 +92,9 @@ impl Default for Hud {
             show_help: false,
             show_guide: !notify::guide_hidden(),
             listened: false,
+            show_report: false,
+            report_shown_turn: 0,
+            reports_off: notify::reports_off_preference(),
         }
     }
 }
@@ -101,6 +111,7 @@ enum Panel {
     Guide,
     Story,
     Help,
+    Report,
     Toast,
 }
 
@@ -131,6 +142,8 @@ enum Action {
     StoryPage(i32),
     CloseStory,
     Listen,
+    CloseReport,
+    ToggleReports,
 }
 
 // ------------------------------------------------------------ build
@@ -219,6 +232,11 @@ fn build(mut commands: Commands, mut insets: ResMut<MapInsets>) {
         MaterialNode(theme::OVERLAY),
         Content(Panel::Help),
     ));
+    commands.spawn((
+        overlay_node(540.0),
+        MaterialNode(theme::OVERLAY),
+        Content(Panel::Report),
+    ));
 }
 
 fn open_story(mut hud: ResMut<Hud>) {
@@ -306,15 +324,16 @@ fn refresh(
             }
         }
         // Overlays toggle their own visibility.
-        if let Ok(mut node) = nodes.get_mut(entity) {
+        if matches!(panel, Panel::Story | Panel::Help | Panel::Report)
+            && let Ok(mut node) = nodes.get_mut(entity)
+        {
             let shown = match panel {
                 Panel::Story => hud.show_story,
                 Panel::Help => hud.show_help,
-                _ => true,
+                Panel::Report => hud.show_report,
+                _ => false,
             };
-            if matches!(panel, Panel::Story | Panel::Help) {
-                node.display = if shown { Display::Flex } else { Display::None };
-            }
+            node.display = if shown { Display::Flex } else { Display::None };
         }
         commands.entity(entity).with_children(|p| match panel {
             Panel::Bar => build_bar(p, &session, &sounds, &hud),
@@ -326,6 +345,7 @@ fn refresh(
             Panel::Guide => build_guide(p, &session, &hud),
             Panel::Story => build_story(p, &hud),
             Panel::Help => build_help(p),
+            Panel::Report => build_report(p, &session, data),
             Panel::Toast => {}
         });
     }
@@ -385,6 +405,7 @@ fn build_bar(p: &mut ChildSpawnerCommands, session: &Session, sounds: &Sounds, h
     if matches!(notify::permission(), notify::Permission::Ask) {
         icon_button(p, icons::BELL, Action::RequestNotify);
     }
+    icon_button(p, icons::SCROLL, Action::ToggleReports);
     icon_button(p, icons::BOOK, Action::ToggleHelp);
     icon_button(
         p,
@@ -752,6 +773,120 @@ fn build_help(p: &mut ChildSpawnerCommands) {
     }
 }
 
+/// The after-turn report: a plain-words recap of what happened, with a green
+/// tick for what went your way and a red mark for what did not.
+fn build_report(p: &mut ChildSpawnerCommands, session: &Session, data: &GameData) {
+    let Some(status) = session.status.as_ref() else {
+        return;
+    };
+    let Some(last) = status.last_turn.as_ref() else {
+        return;
+    };
+    p.spawn(row()).with_children(|r| {
+        r.spawn(theme::bold(
+            format!("TURN {} — REPORT", last.turn),
+            18.0,
+            ACCENT,
+        ));
+    });
+
+    let mut income = None;
+    let mut any = false;
+    for event in &last.report.events {
+        if let Event::Income { yields, .. } = event {
+            income = Some(*yields);
+            continue;
+        }
+        if matches!(event, Event::Wages { .. }) {
+            continue;
+        }
+        let line = crate::text::event(event, data, session);
+        if line.is_empty() {
+            continue;
+        }
+        let (glyph, color) = classify(event);
+        p.spawn(row()).with_children(|r| {
+            r.spawn(theme::icon(glyph, 15.0, color));
+            r.spawn(text(line, 13.5, FG));
+        });
+        any = true;
+    }
+    if !any {
+        p.spawn(text("A quiet turn — nothing of note.", 13.5, MUTED));
+    }
+    if let Some(y) = income {
+        let mut parts = Vec::new();
+        if y.credits > 0 {
+            parts.push(format!("{} credits", y.credits));
+        }
+        if y.compute > 0 {
+            parts.push(format!("{} compute", y.compute));
+        }
+        if y.data > 0 {
+            parts.push(format!("{} data", y.data));
+        }
+        if !parts.is_empty() {
+            muted(p, format!("Collected {}.", parts.join(", ")));
+        }
+    }
+
+    p.spawn(wrap()).with_children(|r| {
+        small(r, "Continue", Action::CloseReport);
+        small(r, "Turn reports off", Action::ToggleReports);
+    });
+}
+
+/// A report line's icon and colour: a green tick for a good turn of events,
+/// a red mark for a bad one.
+fn classify(event: &Event) -> (char, Color) {
+    use Event::*;
+    match event {
+        BrokeIn {
+            outcome: Outcome::Done,
+            ..
+        }
+        | BackdoorPlanted { .. }
+        | DataStolen { .. }
+        | LevelUp { .. }
+        | HackerHired { .. }
+        | Bought { .. } => (icons::CHECK, theme::GOOD),
+        Swept { lost, .. } => {
+            if *lost {
+                (icons::ALERT, theme::WARN)
+            } else {
+                (icons::SHIELD, theme::GOOD)
+            }
+        }
+        BrokeIn { .. }
+        | BackdoorFailed { .. }
+        | HostLost { .. }
+        | Intrusion { .. }
+        | AccessPurged { .. }
+        | DataLost { .. }
+        | HackerQuit { .. }
+        | LegacySpread { .. } => (icons::ALERT, theme::WARN),
+        GameEnded { .. } => (icons::TROPHY, theme::GOLD),
+        _ => (icons::CHEVRON, MUTED),
+    }
+}
+
+/// Watches for a freshly resolved turn and opens the report over the map,
+/// unless the player has turned reports off.
+fn watch_turn(session: Res<Session>, mut hud: ResMut<Hud>) {
+    let Some(status) = session.status.as_ref() else {
+        return;
+    };
+    let Some(last) = status.last_turn.as_ref() else {
+        return;
+    };
+    if last.turn > hud.report_shown_turn {
+        hud.report_shown_turn = last.turn;
+        if !hud.reports_off {
+            hud.show_report = true;
+        }
+    }
+}
+
 // ------------------------------------------------------------ helpers
 
 fn controller_name(session: &Session, hv: &HostView) -> String {
@@ -1111,6 +1246,16 @@ fn press_buttons(
             Action::Listen => {
                 hud.listened = true;
                 voice::play_story(hud.story_page);
+            }
+            Action::CloseReport => {
+                hud.show_report = false;
+            }
+            Action::ToggleReports => {
+                hud.reports_off = !hud.reports_off;
+                notify::remember_reports_off(hud.reports_off);
+                if hud.reports_off {
+                    hud.show_report = false;
+                }
             }
         }
     }

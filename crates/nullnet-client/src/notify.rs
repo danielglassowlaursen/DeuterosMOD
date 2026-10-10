@@ -160,3 +160,29 @@ pub fn music_off_preference() -> bool {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn remember_music_off(_off: bool) {}
+
+const REPORTS_KEY: &str = "nullnet.reports-off";
+
+/// Whether the player turned the turn report off in an earlier visit.
+#[cfg(target_arch = "wasm32")]
+pub fn reports_off_preference() -> bool {
+    storage()
+        .and_then(|s| s.get_item(REPORTS_KEY).ok().flatten())
+        .is_some_and(|v| v == "1")
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn remember_reports_off(off: bool) {
+    if let Some(storage) = storage() {
+        let _ = storage.set_item(REPORTS_KEY, if off { "1" } else { "0" });
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn reports_off_preference() -> bool {
+    let _ = REPORTS_KEY;
+    false
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn remember_reports_off(_off: bool) {}
