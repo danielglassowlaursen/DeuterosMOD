@@ -12,8 +12,8 @@ Vores egne og bliver: turstrukturen, serveren og API'et, klienten og UI'et, raid
 
 1. Kerneløkken: hvad man gør hver tur. Besluttet.
 2. Hacking: hvordan et indbrud foregår. Besluttet.
-3. Økonomi: få, tydelige ressourcer, folk og værktøjer. I gang.
-4. Kortet: vores eget netværk i stedet for Deuteros' stjernesystemer.
+3. Økonomi: få, tydelige ressourcer, folk og værktøjer. Besluttet.
+4. Kortet: vores eget netværk i stedet for Deuteros' stjernesystemer. I gang.
 5. Modstanderne: The Legacy Net og de andre crews.
 6. De første ti minutter: guide og historie til de nye regler.
 7. Bygningen: den nye kerne i Rust, trin for trin, med resten genbrugt.
@@ -51,3 +51,17 @@ Vores egne og bliver: turstrukturen, serveren og API'et, klienten og UI'et, raid
 - Chance = 50 % + 10 % pr. point angrebet er over forsvaret, mellem 5 % og 95 %.
 
 **Trace og fejl.** Hver operation efterlader spor, som lægges til crewets trace og falder med 1 pr. tur: scanning 0, lykket indbrud 1, mislykket indbrud 2. Et slemt nederlag, den værste tredjedel af fejlslagene, giver 4 trace og brænder hackeren, så han eller hun er ude i 1-2 ture. Høj trace gør crewet til The Legacy Nets mål (trin 5).
+
+## 3. Økonomi (besluttet)
+
+**Fire ressourcer.** Ingen forskningstræ, ingen opskrifter og ingen transport: det, en vært producerer, lander direkte i crewets beholdning.
+- *Credits*: crewets penge. Hyrer hackere, betaler løn, køber værktøj og opgraderinger. Kommer kun fra værter, mest fra banker og butikker.
+- *Computerkraft*: bruges på en operation for at hæve chancen, op til +3, og på opgraderinger. Kommer fra servere og datacentre.
+- *Data*: point, intet andet. Høstes fra egne værter og stjæles fra andres.
+- *Båndbredde*: en kapacitet pr. tur, ikke en beholdning. Hver operation koster båndbredde, og det, der ikke bruges, gemmes ikke. Første bud: scan 1, bryd ind 2, plant bagdør 1, stjæl data 2, forsvar 1. Skjulestedet giver en grundkapacitet, og værter med netværk giver mere.
+
+**Hackere** hyres på et marked, der skifter hver tur: handle, niveau, speciale og pris. Man starter med to og kan have op til seks. Hver hacker får en lille løn pr. tur efter niveau.
+
+**Værktøjer** købes på det sorte marked og passer til en svaghed. Et kit (fx SQL-injection til databaser) holder, når det er købt. En zero-day passer til alle svagheder, giver mere og er brugt op efter ét indbrud.
+
+**Opgraderinger** afløser forskningstræet: få forbedringer af skjulestedet, købt for credits og computerkraft, fx bedre rigs (mere computerkraft), firewall (bedre forsvar af egne værter), flere linjer (mere båndbredde) og plads til flere hackere.
