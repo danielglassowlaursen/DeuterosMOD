@@ -65,12 +65,42 @@ mod browser {
 
     /// Plays an audio element. A blocked or interrupted one rejects its
     /// promise; that is expected, not an error worth a line in the console.
+    /// One the browser would not start without a touch or click goes on the
+    /// page's list, which starts it on the next one (see `web/index.html`).
     pub fn play_quietly(audio: &HtmlAudioElement) {
         if let Ok(promise) = audio.play() {
-            let ignore = Closure::<dyn FnMut(JsValue)>::new(|_| {});
-            let _ = promise.catch(&ignore);
-            ignore.forget();
+            let element = audio.clone();
+            let blocked = Closure::<dyn FnMut(JsValue)>::new(move |error: JsValue| {
+                let name = js_sys::Reflect::get(&error, &JsValue::from_str("name")).ok();
+                if name.and_then(|n| n.as_string()).as_deref() == Some("NotAllowedError")
+                    && let Some(list) = waiting()
+                {
+                    list.push(&element);
+                }
+            });
+            let _ = promise.catch(&blocked);
+            blocked.forget();
         }
+    }
+
+    /// The page's list of clips waiting for a touch or click to start.
+    fn waiting() -> Option<js_sys::Array> {
+        let window = web_sys::window()?;
+        js_sys::Reflect::get(&window, &JsValue::from_str("nullnetBlocked"))
+            .ok()?
+            .dyn_into::<js_sys::Array>()
+            .ok()
+    }
+
+    /// Takes a clip off the waiting list, so a stopped clip does not start
+    /// with the next touch.
+    pub fn forget(audio: &HtmlAudioElement) {
+        let (Some(window), Some(list)) = (web_sys::window(), waiting()) else {
+            return;
+        };
+        let audio: &JsValue = audio.as_ref();
+        let kept = list.filter(&mut |clip, _, _| clip != *audio);
+        let _ = js_sys::Reflect::set(&window, &JsValue::from_str("nullnetBlocked"), &kept);
     }
 
     pub fn stop() {
@@ -78,6 +108,7 @@ mod browser {
         PLAYING.with(|playing| {
             if let Some(audio) = playing.borrow_mut().take() {
                 let _ = audio.pause();
+                forget(&audio);
             }
         });
         if let Some(speech) = web_sys::window().and_then(|w| w.speech_synthesis().ok()) {
@@ -87,7 +118,7 @@ mod browser {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use browser::play_quietly;
+pub use browser::{forget, play_quietly};
 
 /// Reads a page of the story aloud, stopping whatever was being read: its
 /// recording if there is one, else `text` in the browser's voice.

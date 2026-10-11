@@ -75,6 +75,8 @@ pub fn help() -> Vec<(&'static str, Vec<&'static str>)> {
             "The map",
             vec![
                 "Scroll to zoom in towards the cursor, drag to move the map, and press 0 to see the whole net again. + and - and the arrow keys work too.",
+                "On a touch screen, tap a host to pick it, drag with one finger to move the map and pinch with two to zoom. Drag the panels on the left to scroll them.",
+                "Rest the mouse on an icon or figure in the top bar to see what it is; on a touch screen, hold a finger on it.",
                 "Hosts marked SUB-NET hide a sealed sub-net; SUB-NET + means it is open.",
             ],
         ),

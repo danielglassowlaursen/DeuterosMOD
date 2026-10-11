@@ -62,6 +62,7 @@ pub fn stop() {
     browser::PLAYER.with(|player| {
         if let Some(audio) = &player.borrow().audio {
             let _ = audio.pause();
+            crate::voice::forget(audio);
         }
     });
 }

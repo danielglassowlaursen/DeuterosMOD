@@ -18,7 +18,7 @@ use nullnet_core::{
 use crate::Rules;
 use crate::guide;
 use crate::icons;
-use crate::map::{MapBlocked, MapInsets, Selected};
+use crate::map::{MapBlocked, MapInsets, Selected, TOUCH_SLOP};
 use crate::net::{Api, Inbox, Session, hand_in, withdraw};
 use crate::sound::{Cue, Play, Sounds};
 use crate::theme::{self, FG, MUTED, PanelMaterial};
@@ -172,6 +172,25 @@ struct TipText;
 /// The left column of panels, which the mouse wheel scrolls.
 #[derive(Component)]
 struct LeftColumn;
+
+/// A finger scrolling the panels or the help.
+struct Swipe {
+    start: Vec2,
+    last: Vec2,
+    moving: bool,
+}
+
+/// A button a finger is on, which acts when the finger lifts.
+struct Armed {
+    action: Action,
+    /// Where the finger came down.
+    at: Vec2,
+    /// How long it has been down, in seconds.
+    held: f32,
+}
+
+/// Holding a finger this long, in seconds, shows a tip instead of pressing.
+const LONG_PRESS: f32 = 0.45;
 
 // ------------------------------------------------------------ build
 
@@ -1435,12 +1454,16 @@ fn block_map(hud: Res<Hud>, mut blocked: ResMut<MapBlocked>) {
 fn unlock_audio(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
+    touches: Res<Touches>,
     mut sounds: ResMut<Sounds>,
 ) {
     if sounds.unlocked {
         return;
     }
-    if mouse.get_just_pressed().next().is_none() && keys.get_just_pressed().next().is_none() {
+    if mouse.get_just_pressed().next().is_none()
+        && keys.get_just_pressed().next().is_none()
+        && !touches.any_just_released()
+    {
         return;
     }
     sounds.unlocked = true;
@@ -1460,11 +1483,47 @@ fn press_buttons(
     mut hud: ResMut<Hud>,
     mut sounds: ResMut<Sounds>,
     mut play: MessageWriter<Play>,
+    touches: Res<Touches>,
+    time: Res<Time>,
+    mut armed: Local<Option<Armed>>,
 ) {
+    // A mouse press acts at once. A finger acts when it lifts, and only if
+    // it neither moved (that scrolls) nor was held (that shows the tip).
+    let mut fire: Vec<Action> = Vec::new();
+    let touched = touches.iter_just_pressed().next().map(|t| t.position());
     for (interaction, action) in &interactions {
         if *interaction != Interaction::Pressed {
             continue;
         }
+        match touched {
+            Some(at) => {
+                *armed = Some(Armed {
+                    action: action.clone(),
+                    at,
+                    held: 0.0,
+                })
+            }
+            None => fire.push(action.clone()),
+        }
+    }
+    if let Some(press) = armed.as_mut() {
+        press.held += time.delta_secs();
+        // Only fingers still down: where a lifted one ends is not reliable.
+        let moved = touches
+            .iter()
+            .any(|t| t.position().distance(press.at) > TOUCH_SLOP);
+        if moved {
+            *armed = None;
+        }
+    }
+    if touches.any_just_released()
+        && let Some(press) = armed.take()
+        && press.held < LONG_PRESS
+    {
+        fire.push(press.action);
+    }
+
+    for action in &fire {
         if !sounds.muted {
             play.write(Play(Cue::Click));
         }
@@ -1597,12 +1656,15 @@ fn style_buttons(
 
 /// Scrolls the panels and overlays with the wheel, unless the cursor is over
 /// the open map, where the wheel zooms instead.
+#[allow(clippy::too_many_arguments)]
 fn scroll_column(
     mut wheel: MessageReader<MouseWheel>,
     window: Single<&Window, With<PrimaryWindow>>,
     insets: Res<MapInsets>,
     blocked: Res<MapBlocked>,
     hud: Res<Hud>,
+    touches: Res<Touches>,
+    mut swipe: Local<Option<Swipe>>,
     mut scrolls: Query<(&mut ScrollPosition, Option<&LeftColumn>, Option<&Content>)>,
 ) {
     let mut delta = 0.0;
@@ -1614,6 +1676,43 @@ fn scroll_column(
     }
     let size = window.size();
     let inset = insets.0;
+
+    // A finger dragged up or down over the panels, or over the help, scrolls
+    // them once it has moved far enough not to be a tap.
+    if let Some(first) = touches.iter_just_pressed().next() {
+        let at = first.position();
+        let over_panels = at.x <= inset.x && at.y >= inset.y && at.y <= size.y - inset.w;
+        if hud.show_help || (!blocked.0 && over_panels) {
+            *swipe = Some(Swipe {
+                start: at,
+                last: at,
+                moving: false,
+            });
+        }
+    }
+    match (swipe.as_mut(), touches.iter().next()) {
+        (Some(s), Some(finger)) => {
+            let at = finger.position();
+            if at.distance(s.start) > TOUCH_SLOP {
+                s.moving = true;
+            }
+            if s.moving {
+                delta += at.y - s.last.y;
+            }
+            s.last = at;
+        }
+        (Some(_), None) => *swipe = None,
+        _ => {}
+    }
+    if swipe.as_ref().is_some_and(|s| s.moving) {
+        for (mut scroll, column, content) in &mut scrolls {
+            let help = content.is_some_and(|c| c.0 == Panel::Help);
+            if (hud.show_help && help) || (!hud.show_help && column.is_some()) {
+                scroll.0.y = (scroll.0.y - delta).max(0.0);
+            }
+        }
+        return;
+    }
     let over_map = !blocked.0
         && window.cursor_position().is_some_and(|c| {
             c.x >= inset.x && c.x <= size.x - inset.z && c.y >= inset.y && c.y <= size.y - inset.w
@@ -1632,9 +1731,13 @@ fn scroll_column(
 
 /// Shows the tip of the button or figure under the mouse, just below it and
 /// kept inside the window.
+#[allow(clippy::too_many_arguments)]
 fn show_tip(
     window: Single<&Window, With<PrimaryWindow>>,
     tips: Query<(&Interaction, &Tip)>,
+    touches: Res<Touches>,
+    time: Res<Time>,
+    mut held: Local<f32>,
     mut tip_box: Single<&mut Node, With<TipBox>>,
     mut tip_text: Single<&mut Text, With<TipText>>,
 ) {
@@ -1642,7 +1745,17 @@ fn show_tip(
         .iter()
         .find(|(interaction, _)| **interaction != Interaction::None)
         .map(|(_, tip)| tip.0.as_str());
-    let (Some(tip), Some(cursor)) = (hovered, window.cursor_position()) else {
+    // A finger shows the tip once it has been held still for a moment.
+    let finger = touches.iter().next().map(|t| t.position());
+    *held = if finger.is_some() {
+        *held + time.delta_secs()
+    } else {
+        0.0
+    };
+    let pointer = window
+        .cursor_position()
+        .or(finger.filter(|_| *held >= LONG_PRESS));
+    let (Some(tip), Some(cursor)) = (hovered, pointer) else {
         if tip_box.display != Display::None {
             tip_box.display = Display::None;
         }
@@ -1657,7 +1770,9 @@ fn show_tip(
     } else {
         (Val::Px((cursor.x - 12.0).max(6.0)), Val::Auto)
     };
-    let top = Val::Px(cursor.y + 22.0);
+    // Below the mouse, or well below a finger so the hand does not hide it.
+    let below = if finger.is_some() { 56.0 } else { 22.0 };
+    let top = Val::Px(cursor.y + below);
     let node = &mut **tip_box;
     if node.display != Display::Flex || node.left != left || node.right != right || node.top != top
     {

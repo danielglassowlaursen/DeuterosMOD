@@ -2,11 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>NullNet</title>
   <style>
     html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
     canvas#nullnet { display: block; width: 100%; height: 100%; outline: none; }
+    /* On a touch screen the game takes every gesture: no page zoom, no
+       double-tap zoom, no text selection or long-press menu. */
+    html, body, canvas#nullnet {
+      touch-action: none;
+      -webkit-user-select: none; user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
     #loading {
       position: fixed; inset: 0; display: grid; place-items: center;
       color: #9fb4e8; font: 14px/1.4 ui-monospace, monospace; letter-spacing: 0.2em;
@@ -16,6 +24,39 @@
 <body>
   <div id="loading">CONNECTING TO NULLNET…</div>
   <canvas id="nullnet"></canvas>
+  <script>
+    // Phones and tablets let a page make sound only from inside a touch or
+    // a click, and the game starts its sound from its own frame loop. So
+    // keep the audio contexts the game makes and any clip it could not
+    // start (window.nullnetBlocked), and start them on the next touch,
+    // click or key. A word of silence unlocks the speech voice the same way.
+    (() => {
+      const contexts = [];
+      const Base = window.AudioContext || window.webkitAudioContext;
+      if (Base) {
+        const Kept = class extends Base {
+          constructor(...args) { super(...args); contexts.push(this); }
+        };
+        window.AudioContext = Kept;
+        if (window.webkitAudioContext) window.webkitAudioContext = Kept;
+      }
+      window.nullnetBlocked = [];
+      let spoken = false;
+      const unlock = () => {
+        for (const context of contexts) {
+          if (context.state !== "running") context.resume().catch(() => {});
+        }
+        for (const audio of window.nullnetBlocked.splice(0)) audio.play().catch(() => {});
+        if (!spoken && window.speechSynthesis) {
+          spoken = true;
+          window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+        }
+      };
+      for (const name of ["touchend", "pointerup", "click", "keydown"]) {
+        window.addEventListener(name, unlock, { capture: true, passive: true });
+      }
+    })();
+  </script>
   <script type="module">
     import init from "/nullnet-client.js";
     const loading = document.getElementById("loading");

@@ -3,6 +3,7 @@
 //! paths a crew works along. The camera fits the graph into the room the
 //! panels leave. Clicking a node selects it; the mouse wheel (or + and -)
 //! zooms towards the cursor, dragging moves the map, and 0 resets the view.
+//! On a touch screen a tap selects, one finger drags and two pinch to zoom.
 //!
 //! The nodes, links and backdrop are drawn by the shaders in
 //! [`crate::materials`], so the client still ships no images.
@@ -30,6 +31,10 @@ const MAX_ZOOM: f32 = 6.0;
 const ZOOM_STEP: f32 = 1.2;
 /// A press that moves further than this, in logical pixels, is a drag.
 const DRAG_SLOP: f32 = 4.0;
+/// The same for a finger, which wobbles more than a mouse.
+pub const TOUCH_SLOP: f32 = 10.0;
+/// How near a finger must land to a host to pick it, in logical pixels.
+const FINGER_REACH: f32 = 22.0;
 /// Host names, in world units: they grow on screen as the player zooms in.
 const LABEL_SIZE: f32 = 17.0;
 const LABEL: Color = Color::srgba(0.82, 0.88, 0.94, 0.9);
@@ -390,6 +395,39 @@ struct Drag {
     moved: bool,
 }
 
+/// A gesture on the map with one or two fingers: one drags or taps, two
+/// pinch to zoom and move together to drag.
+#[derive(Default)]
+struct Gesture {
+    start: Option<Vec2>,
+    last: Vec2,
+    moved: bool,
+    /// The distance between two fingers last frame, while pinching.
+    span: Option<f32>,
+    /// The point between them last frame.
+    middle: Vec2,
+}
+
+/// The host nearest to a point on the screen, within `reach` world units of
+/// it or its own size, whichever is more.
+fn host_at(
+    camera: &Camera,
+    camera_transform: &GlobalTransform,
+    nodes: &Query<(&MapNode, &GlobalTransform)>,
+    at: Vec2,
+    reach: f32,
+) -> Option<HostId> {
+    let point = camera.viewport_to_world_2d(camera_transform, at).ok()?;
+    nodes
+        .iter()
+        .filter_map(|(node, transform)| {
+            let distance = transform.translation().truncate().distance(point);
+            (distance < node.reach.max(reach)).then_some((node.host, distance))
+        })
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(host, _)| host)
+}
+
 /// Zooms, drags and selects. The wheel zooms towards the cursor; a press
 /// that moves is a drag, a press that does not is a click on a host.
 #[allow(clippy::too_many_arguments)]
@@ -397,6 +435,7 @@ fn navigate(
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
+    touches: Res<Touches>,
     mut wheel: MessageReader<MouseWheel>,
     window: Single<&Window, With<PrimaryWindow>>,
     insets: Res<MapInsets>,
@@ -406,6 +445,7 @@ fn navigate(
     mut view: ResMut<MapView>,
     mut selected: ResMut<Selected>,
     mut drag: Local<Drag>,
+    mut gesture: Local<Gesture>,
 ) {
     let size = window.size();
     let inset = insets.0;
@@ -483,6 +523,64 @@ fn navigate(
         }
     }
 
+    // Fingers: tap to select, drag to move, pinch to zoom.
+    let fingers: Vec<Vec2> = touches.iter().map(|t| t.position()).collect();
+    if let Some(first) = touches.iter_just_pressed().next()
+        && gesture.start.is_none()
+        && !blocked.0
+        && in_map(first.position(), size, inset)
+    {
+        *gesture = Gesture {
+            start: Some(first.position()),
+            last: first.position(),
+            ..default()
+        };
+    }
+    if let Some(start) = gesture.start {
+        match fingers.as_slice() {
+            [] => {
+                let tapped = !gesture.moved;
+                let at = gesture.last;
+                *gesture = Gesture::default();
+                if tapped {
+                    let found = host_at(camera, camera_transform, &nodes, at, FINGER_REACH * scale);
+                    selected.set_if_neq(Selected(found));
+                }
+            }
+            [finger] => {
+                // Back to one finger after a pinch: carry on from here.
+                if gesture.span.take().is_some() {
+                    gesture.last = *finger;
+                }
+                if finger.distance(start) > TOUCH_SLOP {
+                    gesture.moved = true;
+                }
+                if gesture.moved {
+                    let delta = *finger - gesture.last;
+                    let pan = view.pan - Vec2::new(delta.x * scale, -delta.y * scale);
+                    view.pan = clamp_pan(pan, view.zoom);
+                }
+                gesture.last = *finger;
+            }
+            [a, b, ..] => {
+                let span = a.distance(*b).max(1.0);
+                let middle = (*a + *b) * 0.5;
+                if let Some(previous) = gesture.span {
+                    let zoom = view.zoom * span / previous;
+                    zoom_to(&mut view, zoom, middle);
+                    let delta = middle - gesture.middle;
+                    let pan = view.pan - Vec2::new(delta.x * scale, -delta.y * scale);
+                    view.pan = clamp_pan(pan, view.zoom);
+                }
+                gesture.span = Some(span);
+                gesture.middle = middle;
+                gesture.moved = true;
+                gesture.last = middle;
+            }
+        }
+        return;
+    }
+
     // Drag to move, click to select.
     if mouse.just_pressed(MouseButton::Left)
         && over_map
@@ -518,17 +616,7 @@ fn navigate(
     if was_drag {
         return;
     }
-    let Ok(point) = camera.viewport_to_world_2d(camera_transform, cursor) else {
-        return;
-    };
-    let found = nodes
-        .iter()
-        .filter_map(|(node, transform)| {
-            let distance = transform.translation().truncate().distance(point);
-            (distance < node.reach).then_some((node.host, distance))
-        })
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map(|(host, _)| host);
+    let found = host_at(camera, camera_transform, &nodes, cursor, 0.0);
     selected.set_if_neq(Selected(found));
 }
 
