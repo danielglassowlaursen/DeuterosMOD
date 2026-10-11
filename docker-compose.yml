@@ -1,6 +1,17 @@
 # A NullNet server on any machine with Docker: `docker compose up -d`, then
 # open http://<host>:8080/console. Put it behind a reverse proxy with HTTPS
-# (Caddy, nginx) for use over the internet.
+# (Caddy, nginx) for use over the internet, or let a Cloudflare Tunnel give
+# it an HTTPS address without opening any ports:
+#
+#   docker compose --profile tunnel up -d --build
+#   docker compose logs tunnel | grep trycloudflare
+#
+# That prints a temporary https://….trycloudflare.com address, a new one each
+# time the tunnel starts; open the console there so the invite links carry
+# it. For a fixed address on your own domain, create a tunnel in the
+# Cloudflare dashboard with a public hostname pointing at http://nullnet:8080,
+# put its token in a file called .env as TUNNEL_TOKEN=..., and use the
+# profile `named-tunnel` instead. See docs/HOSTING.md.
 services:
   nullnet:
     build: .
@@ -10,5 +21,26 @@ services:
       - "8080:8080"
     volumes:
       - nullnet-data:/data
+
+  # A quick tunnel: no account, a new random address each start.
+  tunnel:
+    image: cloudflare/cloudflared:2026.9.3
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://nullnet:8080
+    depends_on:
+      - nullnet
+
+  # A tunnel set up in the Cloudflare dashboard, for a fixed address.
+  named-tunnel:
+    image: cloudflare/cloudflared:2026.9.3
+    profiles: ["named-tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - nullnet
+
 volumes:
   nullnet-data:

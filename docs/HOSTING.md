@@ -33,6 +33,27 @@ nullnet.example.org {
 
 Browser-notifikationer og klipbordet i konsollen kræver HTTPS (eller `localhost`).
 
+## Cloudflare Tunnel (HTTPS uden åbne porte)
+
+Compose-filen har en Cloudflare Tunnel med, som giver serveren en HTTPS-adresse, der kan nås overalt, uden at routeren skal åbne porte. Den startes kun, når man beder om den:
+
+```bash
+docker compose --profile tunnel up -d --build
+docker compose logs tunnel | grep trycloudflare
+```
+
+Loggen viser en adresse som `https://noget-tilfældigt.trycloudflare.com`. Åbn konsollen på `https://…trycloudflare.com/console` og opret spillet dér, så invitationslinkene får den adresse. Det kræver ingen Cloudflare-konto, men adressen er ny, hver gang tunnellen starter, og Cloudflare giver ingen garanti for den slags hurtige tunneler: brug dem til test og til at spille med venner en aften. Stop tunnellen med `docker compose stop tunnel`; spillet kører videre på `http://localhost:8080`.
+
+Med HTTPS virker browser-notifikationer og konsollens kopiknap, og en iPad, hvis Safari selv skifter til `https://`, kommer også ind.
+
+**Fast adresse på eget domæne.** Har du et domæne hos Cloudflare, så opret en tunnel i Cloudflare-dashboardet (Zero Trust, Networks, Tunnels, type Cloudflared), giv den et public hostname, fx `nullnet.example.org`, med service `http://nullnet:8080`, og kopiér tunnellens token over i en fil `.env` ved siden af `docker-compose.yml` (den er i `.gitignore`):
+
+```
+TUNNEL_TOKEN=eyJh...
+```
+
+Start den så med `docker compose --profile named-tunnel up -d --build`. Maskinen med Docker skal stadig være tændt, mens der spilles.
+
 ## Fly.io
 
 `fly.toml` ligger klar. Ret `app` og `primary_region`, og kør:

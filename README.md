@@ -55,4 +55,4 @@ Klienten kan også køre som desktop-app: `cargo run -p nullnet-client -- --serv
 
 ## Hosting
 
-`docker compose up -d --build` starter en server med web-klienten på port 8080 og databasen i en volume. `fly.toml` gør det samme på Fly.io. Se [docs/HOSTING.md](docs/HOSTING.md) for indstillinger, HTTPS, backup og notifikationer.
+`docker compose up -d --build` starter en server med web-klienten på port 8080 og databasen i en volume; `docker compose --profile tunnel up -d --build` giver den også en HTTPS-adresse via Cloudflare Tunnel. `fly.toml` gør det samme på Fly.io. Se [docs/HOSTING.md](docs/HOSTING.md) for indstillinger, HTTPS, backup og notifikationer.
