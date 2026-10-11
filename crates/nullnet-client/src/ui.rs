@@ -8,6 +8,7 @@
 
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
+use bevy::ui::{UiGlobalTransform, UiStack};
 use bevy::window::PrimaryWindow;
 
 use nullnet_core::{
@@ -187,6 +188,37 @@ struct Armed {
     at: Vec2,
     /// How long it has been down, in seconds.
     held: f32,
+    /// The button has a tip, which a long press shows instead.
+    tipped: bool,
+}
+
+/// What a hit test reads of a UI node: its box, and whether it is a button
+/// or a panel.
+type HitTest = (
+    &'static ComputedNode,
+    &'static UiGlobalTransform,
+    Option<&'static Action>,
+    Has<MaterialNode<PanelMaterial>>,
+);
+
+/// The button at a point on the screen, in physical pixels: the topmost UI
+/// node there, unless a panel or overlay lies over it.
+fn button_at(point: Vec2, stack: &UiStack, nodes: &Query<HitTest>) -> Option<Action> {
+    for &entity in stack.uinodes.iter().rev() {
+        let Ok((node, transform, action, panel)) = nodes.get(entity) else {
+            continue;
+        };
+        if !node.contains_point(*transform, point) {
+            continue;
+        }
+        if let Some(action) = action {
+            return Some(action.clone());
+        }
+        if panel {
+            return None;
+        }
+    }
+    None
 }
 
 /// Holding a finger this long, in seconds, shows a tip instead of pressing.
@@ -1598,7 +1630,7 @@ fn unlock_audio(
 
 #[allow(clippy::too_many_arguments)]
 fn press_buttons(
-    interactions: Query<(&Interaction, &Action), Changed<Interaction>>,
+    interactions: Query<(&Interaction, &Action, Has<Tip>), Changed<Interaction>>,
     api: Res<Api>,
     inbox: Res<Inbox>,
     rules: Res<Rules>,
@@ -1609,13 +1641,17 @@ fn press_buttons(
     mut play: MessageWriter<Play>,
     touches: Res<Touches>,
     time: Res<Time>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    stack: Res<UiStack>,
+    hits: Query<HitTest>,
     mut armed: Local<Option<Armed>>,
 ) {
-    // A mouse press acts at once. A finger acts when it lifts, and only if
-    // it neither moved (that scrolls) nor was held (that shows the tip).
+    // A mouse press acts at once. A finger acts when it lifts, if it did not
+    // move (that scrolls) and, on a button with a tip, was not held (that
+    // shows the tip).
     let mut fire: Vec<Action> = Vec::new();
     let touched = touches.iter_just_pressed().next().map(|t| t.position());
-    for (interaction, action) in &interactions {
+    for (interaction, action, tipped) in &interactions {
         if *interaction != Interaction::Pressed {
             continue;
         }
@@ -1625,6 +1661,7 @@ fn press_buttons(
                     action: action.clone(),
                     at,
                     held: 0.0,
+                    tipped,
                 })
             }
             None => fire.push(action.clone()),
@@ -1640,11 +1677,30 @@ fn press_buttons(
             *armed = None;
         }
     }
-    if touches.any_just_released()
-        && let Some(press) = armed.take()
-        && press.held < LONG_PRESS
-    {
-        fire.push(press.action);
+    // A finger lifted, or taken over by the browser.
+    if touches.any_just_released() || touches.any_just_canceled() {
+        match armed.take() {
+            Some(press) => {
+                if !(press.tipped && press.held >= LONG_PRESS) {
+                    fire.push(press.action);
+                }
+            }
+            // A tap so quick it went down and up between two frames, which
+            // the UI never sees as a press: find the button under it here.
+            None if touched.is_some() => {
+                let tap = touches
+                    .iter_just_released()
+                    .chain(touches.iter_just_canceled())
+                    .find(|t| t.position().distance(t.start_position()) <= TOUCH_SLOP);
+                if let Some(tap) = tap
+                    && let Some(action) =
+                        button_at(tap.position() * window.scale_factor(), &stack, &hits)
+                {
+                    fire.push(action);
+                }
+            }
+            None => {}
+        }
     }
 
     for action in &fire {
