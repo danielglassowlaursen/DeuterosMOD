@@ -60,10 +60,11 @@ impl Api {
                 .as_ref()
                 .and_then(|l| l.hash().ok())
                 .unwrap_or_default();
+            // Invite codes are lower case; one typed in capitals still opens.
             let token = path
                 .strip_prefix("/join/")
-                .map(str::to_string)
-                .or_else(|| hash.strip_prefix('#').map(str::to_string))
+                .or_else(|| hash.strip_prefix('#'))
+                .map(str::to_ascii_lowercase)
                 .filter(|t| !t.is_empty());
             Api {
                 base: String::new(),

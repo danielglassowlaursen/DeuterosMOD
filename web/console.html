@@ -196,8 +196,9 @@
   const loadMap = async token => { if (!MAP) MAP = await api('GET', '/api/crew/' + token + '/map'); return MAP; };
   const hostName = i => (MAP && MAP.hosts[i]) ? MAP.hosts[i].name : ('host ' + i);
 
-  const match = location.pathname.match(/^\/join\/([0-9a-f]+)$/);
-  const token = match ? match[1] : (location.hash.length > 1 ? location.hash.slice(1) : null);
+  const match = location.pathname.match(/^\/join\/([0-9a-zA-Z]+)$/);
+  const raw = match ? match[1] : (location.hash.length > 1 ? location.hash.slice(1) : null);
+  const token = raw ? raw.toLowerCase() : null;
   if (token) { play(token); } else { createMode(); }
 
   // ---------------------------------------------------------- create

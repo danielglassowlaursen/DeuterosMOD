@@ -1,6 +1,6 @@
 # Hosting
 
-Serveren er én binærfil (`nullnet-server`), der holder spillene i én SQLite-fil og serverer web-klienten og konsollen selv. Den skal kun have en port, en mappe til databasen og helst HTTPS foran sig. Der er ingen konti: et spil oprettes på `/console`, og hver crew får et hemmeligt invitationslink.
+Serveren er én binærfil (`nullnet-server`), der holder spillene i én SQLite-fil og serverer web-klienten og konsollen selv. Den skal kun have en port, en mappe til databasen og helst HTTPS foran sig. Der er ingen konti: et spil oprettes på `/console`, og hver crew får et hemmeligt invitationslink med en kode på 8 tegn (tal og små bogstaver, uden 0/o og 1/i/l, så den er let at læse op), fx `/join/hermnav5`.
 
 ## Indstillinger
 

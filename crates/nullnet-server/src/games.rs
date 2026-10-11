@@ -129,8 +129,9 @@ impl Server {
     }
 
     fn crew(store: &Store, token: &str) -> Result<Crew, Error> {
+        // Codes are lower case; one typed in capitals still opens.
         let row = store
-            .crew_by_token(token)?
+            .crew_by_token(&token.to_ascii_lowercase())?
             .ok_or_else(|| Error::NotFound("no crew has that token".into()))?;
         let game = store
             .game(&row.game_id)?
@@ -204,6 +205,21 @@ impl Server {
         };
 
         let id = format!("g_{}", token(8));
+        // A short invite code for each person, one no crew has yet.
+        let mut codes: Vec<String> = Vec::new();
+        {
+            let store = self.store();
+            for _ in request.crews.iter().filter(|c| !c.bot) {
+                let code = loop {
+                    let code = invite_code();
+                    if !codes.contains(&code) && store.crew_by_token(&code)?.is_none() {
+                        break code;
+                    }
+                };
+                codes.push(code);
+            }
+        }
+        let mut codes = codes.into_iter();
         let crews: Vec<CrewRow> = request
             .crews
             .iter()
@@ -213,7 +229,7 @@ impl Server {
                 player: PlayerId(index as u8),
                 name: crew.name.trim().to_string(),
                 bot: crew.bot,
-                token: (!crew.bot).then(|| token(16)),
+                token: if crew.bot { None } else { codes.next() },
             })
             .collect();
         let named: Vec<(PlayerId, &str)> =
@@ -454,6 +470,19 @@ fn crew_turn(turn: &TurnRow, player: PlayerId) -> CrewTurn {
 }
 
 /// A random lower-case hex string of `bytes` bytes.
+/// The characters of an invite code: digits and lower-case letters, less
+/// those easy to mix up (0 and o, 1, i and l).
+const CODE_CHARS: &[u8] = b"23456789abcdefghjkmnpqrstuvwxyz";
+/// How long an invite code is: 31^8, about 850 billion codes.
+pub const CODE_LEN: usize = 8;
+
+/// A new invite code, the secret in a crew's link.
+fn invite_code() -> String {
+    (0..CODE_LEN)
+        .map(|_| char::from(CODE_CHARS[rand::random_range(0..CODE_CHARS.len())]))
+        .collect()
+}
+
 fn token(bytes: usize) -> String {
     let mut buf = vec![0u8; bytes];
     rand::fill(&mut buf[..]);

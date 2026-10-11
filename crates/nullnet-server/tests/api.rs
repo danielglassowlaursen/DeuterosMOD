@@ -118,6 +118,24 @@ async fn a_game_hands_out_one_invite_per_person_and_none_to_bots() {
 
     let (status, _) = client.get("/api/crew/not-a-token").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Invite codes are short and easy to read out: 8 characters, digits and
+    // lower-case letters with no 0/o or 1/i/l; capitals still open them.
+    for index in [0, 2] {
+        let code = token(&created, index);
+        assert_eq!(code.len(), 8, "{code}");
+        assert!(
+            code.chars()
+                .all(|c| "23456789abcdefghjkmnpqrstuvwxyz".contains(c)),
+            "{code}"
+        );
+    }
+    assert_ne!(token(&created, 0), token(&created, 2));
+    let (status, me) = client
+        .get(&format!("/api/crew/{}", token(&created, 0).to_uppercase()))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(me["name"], "Ghostline");
 }
 
 #[tokio::test]
