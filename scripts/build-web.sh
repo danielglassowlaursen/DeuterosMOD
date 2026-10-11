@@ -29,6 +29,12 @@ if command -v wasm-opt >/dev/null; then
     && mv dist/nullnet-client_bg.opt.wasm dist/nullnet-client_bg.wasm \
     || echo "wasm-opt failed; keeping the unoptimised module"
 fi
+# Compressed copies of the big files, which the server sends to browsers
+# that take them: the module shrinks to about a quarter.
+for file in dist/nullnet-client_bg.wasm dist/nullnet-client.js; do
+  gzip -9 -k -f "$file"
+  if command -v brotli >/dev/null; then brotli -q 11 -k -f "$file"; fi
+done
 cp web/index.html dist/
 # The narrator's clips, one per page of the story.
 cp -r web/voice dist/

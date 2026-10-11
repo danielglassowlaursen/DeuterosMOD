@@ -23,7 +23,7 @@ ARG WEB_PROFILE=web-lite
 WORKDIR /src
 
 RUN rustup target add wasm32-unknown-unknown \
-    && apt-get update && apt-get install -y --no-install-recommends binaryen \
+    && apt-get update && apt-get install -y --no-install-recommends binaryen brotli \
     && rm -rf /var/lib/apt/lists/*
 
 # The tool for the web build first: it changes only with Cargo.lock.

@@ -48,7 +48,11 @@ pub fn router(server: Arc<Server>, web_dir: Option<PathBuf>) -> Router {
 
     let app = Router::new().nest("/api", api).merge(pages);
     let app = match web_dir {
-        Some(dir) => app.fallback_service(ServeDir::new(dir)),
+        // The web build ships compressed copies of its big files (see
+        // scripts/build-web.sh): a third of the size or less to send.
+        Some(dir) => {
+            app.fallback_service(ServeDir::new(dir).precompressed_br().precompressed_gzip())
+        }
         None => app.route("/", get(|| async { Redirect::temporary("/console") })),
     };
     // The client's files keep the same names across builds, so tell the
