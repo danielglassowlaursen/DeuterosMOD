@@ -18,7 +18,7 @@ use nullnet_core::{
 use crate::Rules;
 use crate::guide;
 use crate::icons;
-use crate::map::{MapBlocked, MapInsets, Selected, TOUCH_SLOP};
+use crate::map::{HoveredHost, MapBlocked, MapInsets, Selected, TOUCH_SLOP};
 use crate::net::{Api, Inbox, Session, hand_in, withdraw};
 use crate::sound::{Cue, Play, Sounds};
 use crate::theme::{self, FG, MUTED, PanelMaterial};
@@ -577,7 +577,12 @@ fn build_crew(p: &mut ChildSpawnerCommands, session: &Session, _data: &GameData)
     let me = &view.me;
     for hacker in &me.hackers {
         let ready = hacker.out_until <= view.turn;
-        p.spawn(row()).with_children(|r| {
+        p.spawn((
+            row(),
+            Interaction::default(),
+            Tip(crate::text::hacker_tip(hacker, view.turn)),
+        ))
+        .with_children(|r| {
             r.spawn(theme::icon(
                 icons::weakness(hacker.specialty),
                 15.0,
@@ -603,10 +608,14 @@ fn build_crew(p: &mut ChildSpawnerCommands, session: &Session, _data: &GameData)
             // Let a hacker go to cut wages, as long as one is left.
             if me.hackers.len() > 1 {
                 r.spawn(spacer());
-                small(
+                small_tip(
                     r,
                     "Let go",
                     Action::Order(Command::Dismiss { hacker: hacker.id }),
+                    format!(
+                        "Let {} go when the turn runs: no more wages, and a free place for someone new.",
+                        hacker.handle
+                    ),
                 );
             }
         });
@@ -632,17 +641,19 @@ fn build_crew(p: &mut ChildSpawnerCommands, session: &Session, _data: &GameData)
     p.spawn(wrap()).with_children(|r| {
         for weakness in Weakness::ALL {
             if !me.kits.contains(&weakness) {
-                small(
+                small_tip(
                     r,
                     format!("{} {}", weakness.name(), rules::KIT_PRICE),
                     Action::Order(Command::BuyKit { weakness }),
+                    crate::text::kit_tip(weakness),
                 );
             }
         }
-        small(
+        small_tip(
             r,
             format!("0-day {}", rules::ZERO_DAY_PRICE),
             Action::Order(Command::BuyZeroDay),
+            crate::text::zero_day_tip(),
         );
     });
 
@@ -652,10 +663,11 @@ fn build_crew(p: &mut ChildSpawnerCommands, session: &Session, _data: &GameData)
             let level = me.upgrades.level(up);
             if level < up.max_level() {
                 let (c, _) = up.cost(level);
-                small(
+                small_tip(
                     r,
                     format!("{} {}", up.name(), c),
                     Action::Order(Command::Upgrade { upgrade: up }),
+                    crate::text::upgrade_tip(up, level),
                 );
             }
         }
@@ -674,7 +686,12 @@ fn build_market(p: &mut ChildSpawnerCommands, session: &Session) {
     let room = me.hackers.len() < me.slots();
     for offer in &me.market {
         let can = room && offer.price <= me.credits;
-        p.spawn(row()).with_children(|r| {
+        p.spawn((
+            row(),
+            Interaction::default(),
+            Tip(crate::text::offer_tip(offer, room)),
+        ))
+        .with_children(|r| {
             r.spawn(theme::icon(
                 icons::weakness(offer.hacker.specialty),
                 14.0,
@@ -733,6 +750,26 @@ fn build_selection(
             controller_name(session, hv)
         ),
     );
+    p.spawn(row()).with_children(|r| {
+        r.spawn(text("Pays each turn:", 12.5, MUTED));
+        let y = def.yields;
+        let mut any = false;
+        for (amount, glyph, color) in [
+            (y.credits, icons::CREDITS, ACCENT),
+            (y.compute, icons::COMPUTE, theme::GOOD),
+            (y.bandwidth, icons::BANDWIDTH, FG),
+            (y.data, icons::DATA, theme::GOOD),
+        ] {
+            if amount > 0 {
+                any = true;
+                r.spawn(theme::icon(glyph, 13.0, color));
+                r.spawn(text(amount.to_string(), 12.5, FG));
+            }
+        }
+        if !any {
+            r.spawn(text("nothing", 12.5, FG));
+        }
+    });
 
     if let Some(intel) = hv.intel {
         p.spawn(row()).with_children(|r| {
@@ -1134,7 +1171,68 @@ fn op_button(
         // A sub-net takes two hackers and has its own button.
         Operation::OpenSubnet => return,
     };
-    small(r, label, Action::Order(command));
+    small_tip(
+        r,
+        label,
+        Action::Order(command),
+        crate::text::operation_tip(op),
+    );
+
+    // A break-in can also spend compute for a better chance, or a zero-day.
+    if op != Operation::BreakIn {
+        return;
+    }
+    let intel = view.hosts[host.index()].intel;
+    let odds = |zero_day: bool, boost: u32| {
+        intel.map(|i| {
+            let a = attack_with(view, hacker, i.weakness, zero_day) + boost;
+            format!(" {}%", chance(a, i.defence))
+        })
+    };
+    let spent: u32 = draft
+        .iter()
+        .map(|c| match c {
+            Command::BreakIn { boost, .. } => *boost,
+            _ => 0,
+        })
+        .sum();
+    let boost = view.me.compute.saturating_sub(spent).min(rules::MAX_BOOST);
+    if boost > 0 {
+        small_tip(
+            r,
+            format!("+{boost} compute{}", odds(false, boost).unwrap_or_default()),
+            Action::Order(Command::BreakIn {
+                hacker,
+                host,
+                zero_day: false,
+                boost,
+            }),
+            format!(
+                "Break in with {boost} compute spent on it: +{boost} attack (at most {} a break-in).",
+                rules::MAX_BOOST
+            ),
+        );
+    }
+    let used = draft
+        .iter()
+        .filter(|c| matches!(c, Command::BreakIn { zero_day: true, .. }))
+        .count() as u32;
+    if view.me.zero_days > used {
+        small_tip(
+            r,
+            format!("0-day{}", odds(true, 0).unwrap_or_default()),
+            Action::Order(Command::BreakIn {
+                hacker,
+                host,
+                zero_day: true,
+                boost: 0,
+            }),
+            format!(
+                "Break in with a zero-day: +{} attack, and the zero-day is used up.",
+                rules::ZERO_DAY_BONUS
+            ),
+        );
+    }
 }
 
 /// The sealed sub-net behind a host, if the crew knows of one: its lock, and
@@ -1229,6 +1327,12 @@ fn subnet_section(p: &mut ChildSpawnerCommands, view: &CrewView, draft: &[Comman
 /// The attack a break-in would have, worked out from the view alone (the
 /// client has the crew, kits and the host's weakness).
 fn breakin_attack(view: &CrewView, hacker: HackerId, weakness: Weakness) -> u32 {
+    attack_with(view, hacker, weakness, false)
+}
+
+/// A hacker's attack on a host with this weakness, as the rules count it: a
+/// zero-day takes the place of a kit.
+fn attack_with(view: &CrewView, hacker: HackerId, weakness: Weakness, zero_day: bool) -> u32 {
     let Some(h) = view.me.hacker(hacker) else {
         return 0;
     };
@@ -1236,7 +1340,9 @@ fn breakin_attack(view: &CrewView, hacker: HackerId, weakness: Weakness) -> u32 
     if h.specialty == weakness {
         a += rules::SPECIALTY_BONUS;
     }
-    if view.me.kits.contains(&weakness) {
+    if zero_day {
+        a += rules::ZERO_DAY_BONUS;
+    } else if view.me.kits.contains(&weakness) {
         a += rules::KIT_BONUS;
     }
     a
@@ -1354,6 +1460,24 @@ fn looked(
         node,
         MaterialNode(rest),
     )
+}
+
+/// A small button with a tip that says what it does.
+fn small_tip(r: &mut ChildSpawnerCommands, label: impl Into<String>, action: Action, tip: String) {
+    r.spawn((
+        Tip(tip),
+        looked(
+            action,
+            theme::BUTTON,
+            theme::BUTTON_HOVER,
+            Node {
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+        ),
+        children![theme::bold(label.into(), 12.5, ACCENT)],
+    ));
 }
 
 fn small(r: &mut ChildSpawnerCommands, label: impl Into<String>, action: Action) {
@@ -1737,14 +1861,23 @@ fn show_tip(
     tips: Query<(&Interaction, &Tip)>,
     touches: Res<Touches>,
     time: Res<Time>,
+    host: Res<HoveredHost>,
+    rules: Res<Rules>,
+    session: Res<Session>,
     mut held: Local<f32>,
     mut tip_box: Single<&mut Node, With<TipBox>>,
     mut tip_text: Single<&mut Text, With<TipText>>,
 ) {
+    // A button or figure under the mouse, else a host on the map.
+    let host_tip = host.0.and_then(|id| {
+        let view = &session.status.as_ref()?.view;
+        Some(crate::text::host_tip(&rules.data, view, &session, id))
+    });
     let hovered = tips
         .iter()
         .find(|(interaction, _)| **interaction != Interaction::None)
-        .map(|(_, tip)| tip.0.as_str());
+        .map(|(_, tip)| tip.0.as_str())
+        .or(host_tip.as_deref());
     // A finger shows the tip once it has been held still for a moment.
     let finger = touches.iter().next().map(|t| t.position());
     *held = if finger.is_some() {

@@ -50,6 +50,7 @@ pub struct MapPlugin;
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Selected>()
+            .init_resource::<HoveredHost>()
             .init_resource::<MapInsets>()
             .init_resource::<MapView>()
             .init_resource::<MapBlocked>()
@@ -75,6 +76,10 @@ impl Plugin for MapPlugin {
 /// The host the player has clicked, if any.
 #[derive(Resource, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Selected(pub Option<HostId>);
+
+/// The host under the mouse, if any, for its tip.
+#[derive(Resource, Default, Clone, Copy, PartialEq, Eq)]
+pub struct HoveredHost(pub Option<HostId>);
 
 /// How much of the screen the panels cover: left, top, right, bottom, in
 /// logical pixels. The camera frames the graph in what is left.
@@ -444,6 +449,7 @@ fn navigate(
     nodes: Query<(&MapNode, &GlobalTransform)>,
     mut view: ResMut<MapView>,
     mut selected: ResMut<Selected>,
+    mut hovered: ResMut<HoveredHost>,
     mut drag: Local<Drag>,
     mut gesture: Local<Gesture>,
 ) {
@@ -580,6 +586,12 @@ fn navigate(
         }
         return;
     }
+
+    // The host under the mouse, while it is not dragging the map.
+    let under = cursor
+        .filter(|_| over_map && !drag.moved)
+        .and_then(|c| host_at(camera, camera_transform, &nodes, c, 0.0));
+    hovered.set_if_neq(HoveredHost(under));
 
     // Drag to move, click to select.
     if mouse.just_pressed(MouseButton::Left)

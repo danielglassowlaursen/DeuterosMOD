@@ -61,6 +61,35 @@ pub fn help() -> Vec<(&'static str, Vec<&'static str>)> {
             ],
         ),
         (
+            "Hackers",
+            vec![
+                "Each hacker has a specialty (Web, Database, Network or People) and a level from 1 to 5. A break-in's attack is 2 per level, +2 when the specialty matches the host's weakness.",
+                "Every break-in, backdoor, theft or sub-net that works gives the hacker 1 experience; levels come at 2, 5, 9 and 14. A higher level also means a higher wage: 1 credit a turn per level.",
+                "A bad failure gets a hacker caught: out for a turn or two. Hire more on the market (room for 4, more with a Safehouse) and let go of the ones you do not need.",
+            ],
+        ),
+        (
+            "Odds",
+            vec![
+                "A break-in pits attack against defence: 50% when they are even, 10% more or less for each point either way, from 5% to 95%.",
+                "Defence is 2 per security level plus the host's ICE, plus the owner's Firewall, plus 2 if it is defended this turn.",
+            ],
+        ),
+        (
+            "Tools and upgrades",
+            vec![
+                "A kit (25 credits) gives +2 attack on every break-in into hosts with its weakness, for good. A zero-day (35) gives +4 on one break-in into any host, then it is used up; use it with a host's 0-day button.",
+                "Compute boosts a break-in: the +compute button spends up to 3 for up to +3 attack.",
+                "Rigs: +2 compute a turn per level. Lines: +2 bandwidth a turn per level. Firewall: +1 defence on every host you hold per level. Safehouse: room for one more hacker per level. Each costs credits and compute, more for each level.",
+            ],
+        ),
+        (
+            "Hosts",
+            vec![
+                "Every host pays its holder each turn: credits, compute, bandwidth or data, and more the deeper it lies. Rest the mouse on a host, or pick it, to see what it pays.",
+            ],
+        ),
+        (
             "Operations",
             vec![
                 "Scan: learn a host's security, weakness and ICE. Reaches two links out.",
