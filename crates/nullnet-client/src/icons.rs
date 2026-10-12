@@ -5,7 +5,7 @@
 
 #![allow(dead_code)]
 
-use nullnet_core::{Operation, Upgrade, Weakness};
+use nullnet_core::{Operation, Relic, Upgrade, Weakness};
 
 pub const CPU: char = '\u{E0A9}';
 pub const HARD_DRIVE: char = '\u{E0ED}';
@@ -91,6 +91,16 @@ pub fn operation(op: Operation) -> char {
         Operation::StealData => HARD_DRIVE,
         Operation::Defend => SHIELD,
         Operation::OpenSubnet => KEY,
+    }
+}
+
+/// The icon for a relic.
+pub fn relic(relic: Relic) -> char {
+    match relic {
+        Relic::Key => KEY,
+        Relic::Shade => SKULL,
+        Relic::Lens => MICROSCOPE,
+        Relic::Surge => PLUG,
     }
 }
 

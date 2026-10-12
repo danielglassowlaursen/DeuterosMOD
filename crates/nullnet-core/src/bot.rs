@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use crate::command::{Command, Operation};
 use crate::data::{GameData, Upgrade, Weakness, rules};
 use crate::ids::{HackerId, HostId, PlayerId};
+use crate::legacy;
 use crate::turn::{attack, chance, defence};
 use crate::world::{Controller, World};
 
@@ -139,6 +140,25 @@ pub fn orders(data: &GameData, world: &World, player: PlayerId) -> Vec<Command> 
         bandwidth -= Operation::Defend.bandwidth();
     }
 
+    // 2b. When the Legacy Net strikes back this turn, guard the weakest
+    //     host we took from it that it can see.
+    if legacy::reclaims_on(world, turn)
+        && bandwidth >= Operation::Defend.bandwidth()
+        && let Some(host) = legacy::reclaim_targets(data, world)
+            .into_iter()
+            .filter(|&h| world.controller(h) == Some(Controller::Crew(player)))
+            .filter(|h| {
+                !out.iter()
+                    .any(|c| matches!(c, Command::Defend { host, .. } if host == h))
+            })
+            .min_by_key(|&h| (world.defence(h), h.0))
+        && let Some(hacker) = pick_hacker(world, player, &ready, &busy, None)
+    {
+        out.push(Command::Defend { hacker, host });
+        busy.insert(hacker);
+        bandwidth -= Operation::Defend.bandwidth();
+    }
+
     // 3. Break into the reachable, scanned hosts with the best odds, unless
     //    our trace is already high.
     if !loud {
@@ -159,10 +179,20 @@ pub fn orders(data: &GameData, world: &World, player: PlayerId) -> Vec<Command> 
                 targets.push((host, hacker, odds, zero_day, boost));
             }
         }
-        // Best odds first; a free host is worth more than a contested one.
+        // Best odds first, a relic piece counting for a good deal; a free
+        // host is worth more than a contested one.
         targets.sort_by_key(|&(host, _, odds, _, _)| {
             let free = world.controller(host).is_none();
-            (std::cmp::Reverse(odds), std::cmp::Reverse(free), host.0)
+            let piece = if world.host(host).piece.is_some() {
+                20
+            } else {
+                0
+            };
+            (
+                std::cmp::Reverse(odds + piece),
+                std::cmp::Reverse(free),
+                host.0,
+            )
         });
         for (host, hacker, odds, zero_day, boost) in targets {
             if bandwidth < Operation::BreakIn.bandwidth() {

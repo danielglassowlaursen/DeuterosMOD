@@ -161,6 +161,37 @@ pub fn describe(world: &World, event: &Event) -> String {
         }
         LegacySpread { .. } => "the Legacy Net spread to a free host".to_string(),
         SubnetOpened { player, .. } => format!("{} opened a sealed sub-net", crew(*player)),
+        PieceFound { player, piece, .. } => format!(
+            "{} found piece {} of the {}",
+            crew(*player),
+            piece.number,
+            piece.relic.name()
+        ),
+        PieceTaken {
+            player,
+            from,
+            piece,
+            ..
+        } => format!(
+            "{} took a piece of the {} from {}",
+            crew(*player),
+            piece.relic.name(),
+            crew(*from)
+        ),
+        PieceLost { .. } => String::new(),
+        RelicCompleted { player, relic, .. } => {
+            format!("{} completed the {}", crew(*player), relic.name())
+        }
+        Reclaimed { player, lost, .. } => {
+            if *lost {
+                format!("the Legacy Net won back a host from {}", crew(*player))
+            } else {
+                format!(
+                    "the Legacy Net struck at {} but the host held",
+                    crew(*player)
+                )
+            }
+        }
         GameEnded { winner, .. } => match winner {
             Some(p) => format!("game over: {} won", crew(*p)),
             None => "game over: a tie".to_string(),

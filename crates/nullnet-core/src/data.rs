@@ -305,6 +305,19 @@ pub mod rules {
     pub const SUBNET_CREDITS: u32 = 6;
     pub const TRACE_SUBNET: u32 = 2;
 
+    /// Relics: at most this many pieces each (fewer on a small map), and
+    /// what the powers give.
+    pub const RELIC_PIECES: usize = 3;
+    pub const KEY_BONUS: u32 = 1;
+    pub const SHADE_TRACE: u32 = 1;
+    pub const SURGE_BANDWIDTH: u32 = 2;
+
+    /// The Legacy Net's strength when it strikes a crew's host: grows over
+    /// the game.
+    pub fn legacy_strength(turn: u32) -> u32 {
+        4 + turn / 5
+    }
+
     /// Points at the end of the game.
     pub const POINTS_PER_HOST: u32 = 5;
     pub const POINTS_PER_FREED: u32 = 10;

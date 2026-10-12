@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +7,7 @@ use crate::data::{GameData, Yields, rules};
 use crate::ids::{HackerId, HostId, PlayerId};
 use crate::legacy;
 use crate::score;
-use crate::world::{Access, Controller, Hacker, World};
+use crate::world::{Access, Controller, Hacker, Piece, Relic, World};
 
 pub type Orders = BTreeMap<PlayerId, Vec<Command>>;
 
@@ -133,6 +133,40 @@ pub enum Event {
         player: PlayerId,
         host: HostId,
     },
+    /// The crew found a relic piece in a host.
+    PieceFound {
+        turn: u32,
+        player: PlayerId,
+        host: HostId,
+        piece: Piece,
+    },
+    /// The crew took a relic piece from a rival while stealing data.
+    PieceTaken {
+        turn: u32,
+        player: PlayerId,
+        from: PlayerId,
+        piece: Piece,
+    },
+    /// A rival took one of the crew's relic pieces.
+    PieceLost {
+        turn: u32,
+        player: PlayerId,
+        by: PlayerId,
+        piece: Piece,
+    },
+    /// A crew holds every piece of a relic now. Everyone hears of it.
+    RelicCompleted {
+        turn: u32,
+        player: PlayerId,
+        relic: Relic,
+    },
+    /// The Legacy Net struck back at a host the crew took from it.
+    Reclaimed {
+        turn: u32,
+        player: PlayerId,
+        host: HostId,
+        lost: bool,
+    },
     GameEnded {
         turn: u32,
         winner: Option<PlayerId>,
@@ -159,8 +193,14 @@ impl Event {
             | Event::LevelUp { player, .. }
             | Event::Bought { player, .. }
             | Event::Swept { player, .. }
-            | Event::SubnetOpened { player, .. } => Some(player),
-            Event::LegacySpread { .. } | Event::GameEnded { .. } => None,
+            | Event::SubnetOpened { player, .. }
+            | Event::PieceFound { player, .. }
+            | Event::PieceTaken { player, .. }
+            | Event::PieceLost { player, .. }
+            | Event::Reclaimed { player, .. } => Some(player),
+            Event::LegacySpread { .. } | Event::RelicCompleted { .. } | Event::GameEnded { .. } => {
+                None
+            }
         }
     }
 }
@@ -230,6 +270,9 @@ pub fn attack(
         .is_some_and(|c| c.kits.contains(&weakness))
     {
         attack += rules::KIT_BONUS;
+    }
+    if world.has_relic(player, Relic::Key) {
+        attack += rules::KEY_BONUS;
     }
     attack + boost.min(rules::MAX_BOOST)
 }
@@ -306,9 +349,9 @@ pub fn resolve_turn(data: &GameData, world: &mut World, orders: &Orders) -> Turn
         }
     }
 
-    run_operations(data, world, &mut report, ops);
+    let defended = run_operations(data, world, &mut report, ops);
     production(data, world, &mut report);
-    legacy::run(data, world, &mut report);
+    legacy::run(data, world, &mut report, &defended);
     decay(world);
 
     world.turn += 1;
@@ -699,17 +742,18 @@ fn check_host(data: &GameData, host: HostId) -> Result<(), CommandError> {
 
 /// Runs the accepted operations in order: defends and scans first, then the
 /// break-ins, backdoors and steals one crew at a time, rotated by the turn.
+/// Returns the hosts defended this turn.
 fn run_operations(
     data: &GameData,
     world: &mut World,
     report: &mut TurnReport,
     mut ops: BTreeMap<PlayerId, Vec<AcceptedOp>>,
-) {
+) -> BTreeSet<HostId> {
     let turn = world.turn;
     let order = player_order(world);
 
     // Defend: throw out intruders and mark the host defended this turn.
-    let mut defended: std::collections::BTreeSet<HostId> = Default::default();
+    let mut defended: BTreeSet<HostId> = BTreeSet::new();
     for player in &order {
         for op in ops.get(player).into_iter().flatten() {
             if op.operation != Operation::Defend {
@@ -773,6 +817,7 @@ fn run_operations(
             }
         }
     }
+    defended
 }
 
 fn hacker_of(world: &World, player: PlayerId, id: HackerId) -> Option<Hacker> {
@@ -810,8 +855,13 @@ fn break_in(world: &mut World, report: &mut TurnReport, op: &AcceptedOp, defende
         // The worst third of the fail band is a bad failure: caught.
         let fail_span = 100 - chance;
         let bad = roll >= chance + (fail_span * 2 / 3);
+        let hush = if world.has_relic(player, Relic::Shade) {
+            rules::SHADE_TRACE
+        } else {
+            0
+        };
         if bad {
-            add_trace(world, player, rules::TRACE_CAUGHT);
+            add_trace(world, player, rules::TRACE_CAUGHT - hush);
             let out = world.turn + 1 + world.rng.below(2); // 1 or 2 turns
             if let Some(h) = world
                 .crews
@@ -822,7 +872,7 @@ fn break_in(world: &mut World, report: &mut TurnReport, op: &AcceptedOp, defende
             }
             Outcome::Caught { until: out }
         } else {
-            add_trace(world, player, rules::TRACE_FAILURE);
+            add_trace(world, player, rules::TRACE_FAILURE - hush);
             Outcome::Failed
         }
     };
@@ -874,6 +924,7 @@ fn backdoor(data: &GameData, world: &mut World, report: &mut TurnReport, op: &Ac
         player,
         host: op.host,
     });
+    find_piece(world, report, player, op.host);
 }
 
 fn steal(data: &GameData, world: &mut World, report: &mut TurnReport, op: &AcceptedOp) {
@@ -905,8 +956,73 @@ fn steal(data: &GameData, world: &mut World, report: &mut TurnReport, op: &Accep
             host: op.host,
             amount: lost,
         });
+        take_piece(world, report, player, owner);
     }
+    find_piece(world, report, player, op.host);
     gain_xp(world, report, player, op.hacker, 1);
+}
+
+/// Picks up the relic piece hidden in a host, if there is one.
+fn find_piece(world: &mut World, report: &mut TurnReport, player: PlayerId, host: HostId) {
+    let Some(piece) = world.hosts[host.index()].piece.take() else {
+        return;
+    };
+    report.events.push(Event::PieceFound {
+        turn: world.turn,
+        player,
+        host,
+        piece,
+    });
+    gain_piece(world, report, player, piece);
+}
+
+/// Takes one loose piece from a rival: one of a relic the rival has not
+/// completed (a finished relic is safe), the relic the thief has most of
+/// first.
+fn take_piece(world: &mut World, report: &mut TurnReport, thief: PlayerId, owner: PlayerId) {
+    let (Some(rival), Some(mine)) = (world.crew(owner), world.crew(thief)) else {
+        return;
+    };
+    let piece = rival
+        .pieces
+        .iter()
+        .filter(|p| !world.has_relic(owner, p.relic))
+        .max_by_key(|p| (mine.pieces_of(p.relic), std::cmp::Reverse(**p)))
+        .copied();
+    let Some(piece) = piece else {
+        return;
+    };
+    if let Some(rival) = world.crews.get_mut(&owner) {
+        rival.pieces.remove(&piece);
+    }
+    let turn = world.turn;
+    report.events.push(Event::PieceLost {
+        turn,
+        player: owner,
+        by: thief,
+        piece,
+    });
+    report.events.push(Event::PieceTaken {
+        turn,
+        player: thief,
+        from: owner,
+        piece,
+    });
+    gain_piece(world, report, thief, piece);
+}
+
+fn gain_piece(world: &mut World, report: &mut TurnReport, player: PlayerId, piece: Piece) {
+    let had = world.has_relic(player, piece.relic);
+    if let Some(crew) = world.crews.get_mut(&player) {
+        crew.pieces.insert(piece);
+    }
+    if !had && world.has_relic(player, piece.relic) {
+        report.events.push(Event::RelicCompleted {
+            turn: world.turn,
+            player,
+            relic: piece.relic,
+        });
+    }
 }
 
 fn open_subnet(world: &mut World, report: &mut TurnReport, op: &AcceptedOp) {
@@ -1175,6 +1291,104 @@ mod tests {
         // It cannot be opened twice.
         let again = check_orders(&data, &world, me, &open);
         assert_eq!(again[0].error, CommandError::SubnetOpen);
+    }
+
+    #[test]
+    fn pieces_are_found_completed_and_stolen() {
+        let (data, mut world) = game();
+        let me = PlayerId(0);
+        let rival = PlayerId(1);
+        world.turn = rules::PEACE_TURNS + 1;
+        let size = world.relic_size;
+        assert!(size >= 2);
+        // The last piece of the Key lies in a host next door that we have
+        // a way into; we already hold the others.
+        let hideout = world.crew(me).unwrap().hideout;
+        let host = data.neighbours(hideout)[0];
+        for state in &mut world.hosts {
+            if state.piece.is_some_and(|p| p.relic == Relic::Key) {
+                state.piece = None;
+            }
+        }
+        let last = Piece {
+            relic: Relic::Key,
+            number: size,
+        };
+        world.hosts[host.index()].piece = Some(last);
+        world.hosts[host.index()].access.push(Access {
+            crew: me,
+            until: world.turn,
+        });
+        for number in 1..size {
+            world.crews.get_mut(&me).unwrap().pieces.insert(Piece {
+                relic: Relic::Key,
+                number,
+            });
+        }
+        let hacker = world.crew(me).unwrap().hackers[0].clone();
+        let before = attack(&world, me, &hacker, host, false, 0);
+        let report = resolve_turn(
+            &data,
+            &mut world,
+            &only(
+                me,
+                vec![Command::Backdoor {
+                    hacker: hacker.id,
+                    host,
+                }],
+            ),
+        );
+        assert!(report.rejected.is_empty(), "{:?}", report.rejected);
+        assert!(world.host(host).piece.is_none());
+        assert!(report.events.iter().any(|e| matches!(
+            e,
+            Event::PieceFound { piece, .. } if *piece == last
+        )));
+        // Everyone hears that the Key is complete.
+        let done = report
+            .events
+            .iter()
+            .find(|e| matches!(e, Event::RelicCompleted { .. }))
+            .unwrap();
+        assert_eq!(done.player(), None);
+        assert_eq!(world.relic_holder(Relic::Key), Some(me));
+        let hacker = world.crew(me).unwrap().hackers[0].clone();
+        assert_eq!(
+            attack(&world, me, &hacker, host, false, 0),
+            before + rules::KEY_BONUS
+        );
+
+        // The rival steals data from us and takes a loose piece, but never
+        // one of the finished Key.
+        let lens = Piece {
+            relic: Relic::Lens,
+            number: 1,
+        };
+        world.crews.get_mut(&me).unwrap().pieces.insert(lens);
+        world.hosts[host.index()].access.push(Access {
+            crew: rival,
+            until: world.turn,
+        });
+        let thief = world.crew(rival).unwrap().hackers[0].id;
+        let report = resolve_turn(
+            &data,
+            &mut world,
+            &only(
+                rival,
+                vec![Command::StealData {
+                    hacker: thief,
+                    host,
+                }],
+            ),
+        );
+        assert!(report.rejected.is_empty(), "{:?}", report.rejected);
+        assert!(world.crew(rival).unwrap().pieces.contains(&lens));
+        assert!(!world.crew(me).unwrap().pieces.contains(&lens));
+        assert!(world.has_relic(me, Relic::Key));
+        assert!(report.events.iter().any(|e| matches!(
+            e,
+            Event::PieceLost { player, by, .. } if *player == me && *by == rival
+        )));
     }
 
     #[test]

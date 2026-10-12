@@ -227,7 +227,11 @@ fn cue_for(events: &[Event]) -> Cue {
     let threatened = events.iter().any(|e| {
         matches!(
             e,
-            Event::Swept { .. } | Event::Intrusion { .. } | Event::HostLost { .. }
+            Event::Swept { .. }
+                | Event::Reclaimed { .. }
+                | Event::Intrusion { .. }
+                | Event::HostLost { .. }
+                | Event::PieceLost { .. }
         )
     });
     if threatened { Cue::Alarm } else { Cue::TurnRan }

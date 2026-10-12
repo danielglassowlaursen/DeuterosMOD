@@ -4,7 +4,7 @@
 
 use nullnet_core::{
     Command, Controller, CrewView, Event, GameData, Hacker, HostId, Offer, Operation, Outcome,
-    PlayerId, Upgrade, Weakness, Yields, rules,
+    PlayerId, Relic, Upgrade, Weakness, Yields, rules,
 };
 
 use crate::net::Session;
@@ -105,6 +105,36 @@ pub fn event(ev: &Event, data: &GameData, session: &Session) -> String {
         ),
         Event::LegacySpread { host, .. } => {
             format!("The Legacy Net spread to {}", h(*host))
+        }
+        Event::PieceFound { host, piece, .. } => format!(
+            "Found piece {} of the {} on {}",
+            piece.number,
+            piece.relic.name(),
+            h(*host)
+        ),
+        Event::PieceTaken { from, piece, .. } => format!(
+            "Took a piece of the {} from {}",
+            piece.relic.name(),
+            crew(*from)
+        ),
+        Event::PieceLost { by, piece, .. } => format!(
+            "{} stole your piece of the {}",
+            crew(*by),
+            piece.relic.name()
+        ),
+        Event::RelicCompleted { player, relic, .. } => {
+            if Some(*player) == session.status.as_ref().map(|s| s.view.player) {
+                format!("You completed the {}: {}", relic.name(), relic.power())
+            } else {
+                format!("{} completed the {}", crew(*player), relic.name())
+            }
+        }
+        Event::Reclaimed { host, lost, .. } => {
+            if *lost {
+                format!("The Legacy Net won back {}", h(*host))
+            } else {
+                format!("The Legacy Net struck at {}, but it held", h(*host))
+            }
         }
         Event::GameEnded { winner, .. } => match winner {
             Some(p) => format!("Game over: {} wins", crew(*p)),
@@ -304,6 +334,14 @@ pub fn host_tip(data: &GameData, view: &CrewView, session: &Session, id: HostId)
                 intel.ice,
                 intel.defence
             ));
+            if let Some(piece) = intel.piece {
+                lines.push(format!(
+                    "Hides piece {} of the {} ({}). Plant a backdoor or steal data here to take it.",
+                    piece.number,
+                    piece.relic.name(),
+                    piece.relic.power()
+                ));
+            }
             if let Some(subnet) = intel.subnet {
                 lines.push(if subnet.open {
                     format!("Open sub-net: +{} credits a turn.", rules::SUBNET_CREDITS)
@@ -318,6 +356,37 @@ pub fn host_tip(data: &GameData, view: &CrewView, session: &Session, id: HostId)
             }
         }
         None => lines.push("Not scanned: its defence is unknown.".to_string()),
+    }
+    if hv.reclaim {
+        lines.push(
+            "You took this from the Legacy Net, and it can see it: it may strike to win it back. A hacker defending it helps."
+                .to_string(),
+        );
+    }
+    lines.join("\n")
+}
+
+/// A relic: its power, how far the crew has got, and who else is close.
+pub fn relic_tip(view: &CrewView, session: &Session, relic: Relic) -> String {
+    let size = usize::from(view.relic_size);
+    let mine = view.me.pieces_of(relic);
+    let mut lines = vec![
+        format!("{}: {}.", relic.name(), relic.power()),
+        format!(
+            "You hold {mine} of its {size} pieces. Scan hosts to find the rest, then plant a backdoor or steal data there to take them."
+        ),
+    ];
+    for rival in &view.crews {
+        let theirs = rival.pieces.iter().filter(|p| p.relic == relic).count();
+        if theirs > 0 {
+            lines.push(format!("{} holds {theirs}.", crew(session, rival.player)));
+        }
+    }
+    if mine < size {
+        lines.push(
+            "Steal data from a rival's host to take one of their loose pieces; a finished relic is safe."
+                .to_string(),
+        );
     }
     lines.join("\n")
 }

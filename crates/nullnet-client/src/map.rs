@@ -40,6 +40,7 @@ const LABEL_SIZE: f32 = 17.0;
 const LABEL: Color = Color::srgba(0.82, 0.88, 0.94, 0.9);
 const LABEL_SUBNET: Color = Color::srgb(0.5, 0.85, 0.93);
 const LABEL_SUBNET_OPEN: Color = Color::srgb(0.93, 0.67, 0.25);
+const LABEL_PIECE: Color = Color::srgb(0.78, 0.62, 0.98);
 
 const CREW_COLORS: [&str; 4] = ["4fd08a", "e0a441", "6fb8e0", "c874d8"];
 const LEGACY_RING: &str = "e06a5a";
@@ -330,8 +331,8 @@ fn recolor(
     }
 }
 
-/// Marks the hosts the crew knows to hide a sealed sub-net, and the ones
-/// whose sub-net is open.
+/// Marks the hosts the crew knows to hide a sealed sub-net or a relic
+/// piece, and the ones whose sub-net is open.
 fn relabel(
     session: Res<Session>,
     rules: Res<Rules>,
@@ -343,15 +344,18 @@ fn relabel(
             continue;
         };
         let name = def.name.to_uppercase();
-        let subnet = view
+        let intel = view
             .and_then(|v| v.hosts.get(label.0.index()))
-            .and_then(|h| h.intel)
-            .and_then(|i| i.subnet);
-        let (line, tint) = match subnet {
+            .and_then(|h| h.intel);
+        let (mut line, mut tint) = match intel.and_then(|i| i.subnet) {
             Some(s) if s.open => (format!("{name} · SUB-NET +"), LABEL_SUBNET_OPEN),
             Some(_) => (format!("{name} · SUB-NET"), LABEL_SUBNET),
             None => (name, LABEL),
         };
+        if intel.and_then(|i| i.piece).is_some() {
+            line.push_str(" · RELIC");
+            tint = LABEL_PIECE;
+        }
         if text.0 != line {
             text.0 = line;
         }

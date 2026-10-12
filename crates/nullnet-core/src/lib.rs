@@ -27,7 +27,7 @@ pub use bot::orders as bot_orders;
 pub use command::{Command, CommandError, Operation};
 pub use data::{District, GameData, HostDef, Role, Upgrade, Weakness, Yields, rules};
 pub use ids::{EPOCH, HackerId, HostId, PlayerId};
-pub use legacy::spread_front;
+pub use legacy::{reclaim_targets, reclaims_on, spread_front};
 pub use mapgen::MapSpec;
 pub use rng::Rng;
 pub use score::{GameEnd, Score, score, scores};
@@ -37,6 +37,6 @@ pub use turn::{
 };
 pub use view::{CrewSummary, CrewView, HostView, Intel, crew_view};
 pub use world::{
-    Access, Controller, Crew, Difficulty, Hacker, HostState, Offer, Settings, Subnet, Upgrades,
-    World,
+    Access, Controller, Crew, Difficulty, Hacker, HostState, Offer, Piece, Relic, Settings, Subnet,
+    Upgrades, World,
 };

@@ -13,7 +13,7 @@ use bevy::window::PrimaryWindow;
 
 use nullnet_core::{
     Command, Controller, CrewView, Event, GameData, HackerId, HostId, HostView, Operation, Outcome,
-    Upgrade, Weakness, chance, rules,
+    Relic, Upgrade, Weakness, chance, rules,
 };
 
 use crate::Rules;
@@ -669,6 +669,47 @@ fn build_crew(p: &mut ChildSpawnerCommands, session: &Session, _data: &GameData)
         muted(p, format!("Zero-days: {}", me.zero_days));
     }
 
+    if view.relic_size > 0 {
+        heading(p, "Relics");
+        let size = usize::from(view.relic_size);
+        for relic in Relic::ALL {
+            let mine = me.pieces_of(relic);
+            let rival = view
+                .crews
+                .iter()
+                .find(|c| c.pieces.iter().filter(|p| p.relic == relic).count() >= size);
+            let (line, color) = if mine >= size {
+                (
+                    format!("{}  ·  yours: {}", relic.name(), relic.power()),
+                    ACCENT,
+                )
+            } else if let Some(rival) = rival {
+                (format!("{}  ·  {}'s", relic.name(), rival.name), MUTED)
+            } else {
+                (
+                    format!("{}  ·  {mine}/{size}", relic.name()),
+                    if mine > 0 { FG } else { MUTED },
+                )
+            };
+            p.spawn((
+                row(),
+                Interaction::default(),
+                Tip(crate::text::relic_tip(view, session, relic)),
+            ))
+            .with_children(|r| {
+                r.spawn(theme::icon(icons::relic(relic), 14.0, color));
+                r.spawn(text(line, 12.5, color));
+            });
+        }
+    }
+    if view.reclaim_now && view.hosts.iter().any(|h| h.reclaim) {
+        p.spawn(text(
+            "The Legacy Net strikes back this turn at a host you took from it: defend it.",
+            12.0,
+            theme::WARN,
+        ));
+    }
+
     heading(p, "Buy");
     p.spawn(wrap()).with_children(|r| {
         for weakness in Weakness::ALL {
@@ -1093,7 +1134,12 @@ fn classify(event: &Event) -> (char, Color) {
         | LevelUp { .. }
         | HackerHired { .. }
         | Bought { .. } => (icons::CHECK, theme::GOOD),
-        Swept { lost, .. } => {
+        PieceFound { piece, .. } | PieceTaken { piece, .. } => {
+            (icons::relic(piece.relic), theme::GOOD)
+        }
+        RelicCompleted { relic, .. } => (icons::relic(*relic), theme::GOLD),
+        PieceLost { piece, .. } => (icons::relic(piece.relic), theme::WARN),
+        Swept { lost, .. } | Reclaimed { lost, .. } => {
             if *lost {
                 (icons::ALERT, theme::WARN)
             } else {

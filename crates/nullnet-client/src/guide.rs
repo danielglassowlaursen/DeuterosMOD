@@ -101,12 +101,21 @@ pub fn help() -> Vec<(&'static str, Vec<&'static str>)> {
             ],
         ),
         (
+            "Relics",
+            vec![
+                "Four relics lie broken in pieces across the net, three pieces each (fewer on a small map). A scan shows if a host hides one; those hosts are marked RELIC on the map.",
+                "Plant a backdoor on the host or steal data from it to take its piece. Hold every piece of a relic and its power is yours for the rest of the game.",
+                "Skeleton Key: +1 attack on every break-in. Shade: a failed break-in leaves 1 trace less. Far Lens: scans reach one link further. Surge: +2 bandwidth every turn.",
+                "There is only one of each, so the crews race for them. Stealing data from a rival's host also takes one of their loose pieces; a finished relic is safe. The Relics list on the left shows who holds what.",
+            ],
+        ),
+        (
             "The map",
             vec![
                 "Scroll to zoom in towards the cursor, drag to move the map, and press 0 to see the whole net again. + and - and the arrow keys work too.",
                 "On a touch screen, tap a host to pick it, drag with one finger to move the map and pinch with two to zoom. Drag the panels on the left to scroll them.",
                 "Rest the mouse on an icon or figure in the top bar to see what it is; on a touch screen, hold a finger on it.",
-                "Hosts marked SUB-NET hide a sealed sub-net; SUB-NET + means it is open.",
+                "Hosts marked SUB-NET hide a sealed sub-net; SUB-NET + means it is open. RELIC marks a host hiding a relic piece.",
             ],
         ),
         (
@@ -114,6 +123,7 @@ pub fn help() -> Vec<(&'static str, Vec<&'static str>)> {
             vec![
                 "Every noisy operation raises your trace; it falls by one each turn.",
                 "When your trace runs high the Legacy Net sweeps you and strikes your weakest host. Keep it down, and defend what matters.",
+                "The Legacy Net also searches out from its own hosts, two to four links by difficulty, for the hosts crews took from it, and every few turns strikes the weakest one to win it back. The crew panel warns you on the turn it strikes; a hacker defending the host helps hold it.",
             ],
         ),
     ]

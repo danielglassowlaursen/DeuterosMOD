@@ -9,7 +9,7 @@ use crate::ids::{HackerId, HostId, PlayerId};
 use crate::legacy;
 use crate::mapgen::MapSpec;
 use crate::score::{Score, scores};
-use crate::world::{Controller, Crew, Difficulty, Subnet, World};
+use crate::world::{Controller, Crew, Difficulty, Piece, Subnet, World};
 
 /// A host as a crew sees it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,6 +25,10 @@ pub struct HostView {
     pub can_break_in: bool,
     /// The crew may scan it this turn.
     pub can_scan: bool,
+    /// The crew took this host from the Legacy Net, which can see it and may
+    /// strike to win it back.
+    #[serde(default)]
+    pub reclaim: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +41,9 @@ pub struct Intel {
     /// A sealed sub-net behind the host, which a scan reveals.
     #[serde(default)]
     pub subnet: Option<Subnet>,
+    /// A relic piece hidden in the host, which a scan reveals.
+    #[serde(default)]
+    pub piece: Option<Piece>,
 }
 
 /// What a crew knows about a rival.
@@ -47,6 +54,9 @@ pub struct CrewSummary {
     pub hosts: u32,
     pub trace: u32,
     pub hackers: usize,
+    /// The relic pieces the rival holds; everyone knows who is close.
+    #[serde(default)]
+    pub pieces: Vec<Piece>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,6 +76,12 @@ pub struct CrewView {
     pub income: Yields,
     /// The trace at which the Legacy Net sweeps.
     pub sweep_at: u32,
+    /// How many pieces each relic has; 0 in games without relics.
+    #[serde(default)]
+    pub relic_size: u8,
+    /// The Legacy Net strikes back at a freed host when this turn runs.
+    #[serde(default)]
+    pub reclaim_now: bool,
     pub hosts: Vec<HostView>,
     pub crews: Vec<CrewSummary>,
     pub scores: Vec<Score>,
@@ -86,8 +102,7 @@ impl CrewView {
 pub fn crew_view(data: &GameData, world: &World, player: PlayerId) -> Option<CrewView> {
     let me = world.crew(player)?.clone();
     let scan_range = world.scan_range(data, player);
-    let front = legacy::spread_front(data, world);
-    let _ = front;
+    let reclaim = legacy::reclaim_targets(data, world);
 
     let hosts = data
         .host_ids()
@@ -100,6 +115,7 @@ pub fn crew_view(data: &GameData, world: &World, player: PlayerId) -> Option<Cre
                 ice: state.ice,
                 defence: world.defence(host),
                 subnet: state.subnet,
+                piece: state.piece,
             });
             HostView {
                 host,
@@ -108,6 +124,8 @@ pub fn crew_view(data: &GameData, world: &World, player: PlayerId) -> Option<Cre
                 access: state.has_access(player, world.turn),
                 can_break_in: world.can_break_in(data, player, host),
                 can_scan: !knows && scan_range.contains(&host),
+                reclaim: state.controller == Some(Controller::Crew(player))
+                    && reclaim.contains(&host),
             }
         })
         .collect();
@@ -122,6 +140,7 @@ pub fn crew_view(data: &GameData, world: &World, player: PlayerId) -> Option<Cre
             hosts: world.held_by(p).filter(|&h| h != crew.hideout).count() as u32,
             trace: crew.trace,
             hackers: crew.hackers.len(),
+            pieces: crew.pieces.iter().copied().collect(),
         })
         .collect();
 
@@ -134,6 +153,8 @@ pub fn crew_view(data: &GameData, world: &World, player: PlayerId) -> Option<Cre
         bandwidth: world.bandwidth(data, player),
         income: world.income(data, player),
         sweep_at: world.settings.difficulty.sweep_at(),
+        relic_size: world.relic_size,
+        reclaim_now: legacy::reclaims_on(world, world.turn),
         me,
         hosts,
         crews,

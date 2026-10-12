@@ -72,15 +72,29 @@ Hvert crew starter i sit eget hjørne. Man kan kun bryde ind i værter, der er f
 
 **Sub-net:** 2-4 tilfældige værter pr. spil (aldrig skjulestederne eller værterne lige omkring dem) gemmer et forseglet sub-net, som en scanning afslører. Låsen er to bestemte specialer: to hackere, der har netop de to specialer, åbner det sammen fra en vært, crewet ejer. Der er ingen terning — det rigtige crew er nøglen — men det koster 2 båndbredde og giver 2 trace. Et åbent sub-net giver 6 ekstra credits hver tur til den, der ejer værten, også hvis værten skifter ejer.
 
+## Relikvier
+
+Fire relikvier ligger i stykker rundt om i nettet, hver som et puslespil med tre brikker (to på et lille tilfældigt kort). Brikkerne lægges på samme slags værter som sub-net — aldrig på skjulestederne eller lige omkring dem, men gerne i The Legacy Nets højborge — og en scanning afslører, om en vært gemmer en brik. Man tager brikken ved at plante en bagdør eller stjæle data fra værten. Det crew, der holder alle brikker til et relikvie, har dets kraft resten af spillet:
+
+| Relikvie | Kraft |
+|---|---|
+| Skeleton Key | +1 angreb på alle indbrud |
+| Shade | et mislykket indbrud giver 1 trace mindre |
+| Far Lens | scanning rækker et led længere |
+| Surge | +2 båndbredde hver tur |
+
+Der er kun ét af hvert relikvie, så crewene kappes om brikkerne. Stjæler man data fra en rivals vært, tager man også én af rivalens løse brikker (helst til det relikvie, man selv har flest af); et færdigt relikvie kan ikke stjæles. Alle kan se, hvem der holder hvilke brikker, og alle får besked, når et relikvie er samlet. Brikkerne har deres egen tilfældighedsstrøm, så resten af spillet slås som før.
+
 ## The Legacy Net
 
 The Legacy Net holder Lattice og nogle få højborge fra start, med høj sikkerhed, stærk ICE og meget data.
 
 - **Udrensning:** når turen er kørt, får det crew, der har mest trace over en tærskel, en udrensning — The Legacy Net angriber crewets dårligst forsvarede vært. Holder forsvaret ikke, bliver værten en Legacy-vært, og crewets trace falder.
 - **Spredning:** fra et bestemt tur-tal tager den med jævne mellemrum en fri vært, der grænser op til dens egne.
+- **Modangreb:** den søger ud fra sine egne værter — 2, 3 eller 4 led efter sværhedsgrad — efter værter, crews har taget fra den, og slår med få turs mellemrum (hver 6., 4. eller 3. tur, midt mellem spredningerne) til mod den svageste af dem. Holder forsvaret ikke, er værten Legacy-vært igen og tæller ikke længere som befriet. En hacker, der forsvarer værten, gør den sværere at tage, og crew-panelet advarer på den tur, modangrebet kommer.
 - En tabt vært skal tages tilbage med indbrud og bagdør, og tæller så også som befriet.
 
-Tærskel, spredning og værternes sikkerhed afhænger af sværhedsgraden.
+Tærskel, spredning, modangrebets rækkevidde og værternes sikkerhed afhænger af sværhedsgraden.
 
 ## Point ved sidste tur
 

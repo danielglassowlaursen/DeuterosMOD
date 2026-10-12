@@ -46,6 +46,16 @@ impl Difficulty {
         }
     }
 
+    /// How many links out from its own hosts the Legacy Net looks for the
+    /// hosts crews took from it, and how many turns apart it strikes one.
+    pub fn reclaim(self) -> (u32, u32) {
+        match self {
+            Difficulty::Easy => (2, 6),
+            Difficulty::Normal => (3, 4),
+            Difficulty::Hard => (4, 3),
+        }
+    }
+
     /// Added to every host's rolled security, which stays within 1 to 5.
     pub fn security_shift(self) -> i8 {
         match self {
@@ -115,6 +125,51 @@ impl Subnet {
     }
 }
 
+/// The four relics. Each is a puzzle whose pieces lie hidden in hosts
+/// around the map; the crew that holds every piece of one has its power for
+/// the rest of the game. There is one of each, so the crews race for them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum Relic {
+    /// +1 attack on every break-in.
+    Key,
+    /// A failed break-in leaves 1 trace less.
+    Shade,
+    /// Scans reach one link further.
+    Lens,
+    /// +2 bandwidth every turn.
+    Surge,
+}
+
+impl Relic {
+    pub const ALL: [Relic; 4] = [Relic::Key, Relic::Shade, Relic::Lens, Relic::Surge];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Relic::Key => "Skeleton Key",
+            Relic::Shade => "Shade",
+            Relic::Lens => "Far Lens",
+            Relic::Surge => "Surge",
+        }
+    }
+
+    /// What the relic does for the crew that completes it.
+    pub fn power(self) -> &'static str {
+        match self {
+            Relic::Key => "+1 attack on every break-in",
+            Relic::Shade => "a failed break-in leaves 1 trace less",
+            Relic::Lens => "scans reach one link further",
+            Relic::Surge => "+2 bandwidth every turn",
+        }
+    }
+}
+
+/// One piece of a relic, numbered from 1.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct Piece {
+    pub relic: Relic,
+    pub number: u8,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostState {
     pub controller: Option<Controller>,
@@ -128,6 +183,9 @@ pub struct HostState {
     /// sub-nets existed, which then simply have none.
     #[serde(default)]
     pub subnet: Option<Subnet>,
+    /// A relic piece hidden in the host, until a crew takes it.
+    #[serde(default)]
+    pub piece: Option<Piece>,
 }
 
 impl HostState {
@@ -216,6 +274,9 @@ pub struct Crew {
     pub market: Vec<Offer>,
     /// Hosts the crew has taken from the Legacy Net, each counted once.
     pub freed: BTreeSet<HostId>,
+    /// Relic pieces the crew has found or taken.
+    #[serde(default)]
+    pub pieces: BTreeSet<Piece>,
 }
 
 impl Crew {
@@ -230,6 +291,11 @@ impl Crew {
     pub fn wages(&self) -> u32 {
         self.hackers.iter().map(Hacker::wage).sum()
     }
+
+    /// How many pieces of a relic the crew holds.
+    pub fn pieces_of(&self, relic: Relic) -> usize {
+        self.pieces.iter().filter(|p| p.relic == relic).count()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -243,6 +309,9 @@ pub struct World {
     pub crews: BTreeMap<PlayerId, Crew>,
     pub next_hacker: u32,
     pub ended: Option<GameEnd>,
+    /// How many pieces each relic has; 0 in games saved before relics.
+    #[serde(default)]
+    pub relic_size: u8,
 }
 
 /// Handles for hackers, in the order they are dealt out.
@@ -285,6 +354,7 @@ impl World {
                     access: Vec::new(),
                     scanned: BTreeSet::new(),
                     subnet: None,
+                    piece: None,
                 }
             })
             .collect();
@@ -304,6 +374,21 @@ impl World {
             lock.sort();
             hosts[host].subnet = Some(Subnet { lock, open: false });
         }
+
+        // The relic pieces, scattered over the same kind of hosts. They have
+        // their own random stream, so the rest of the game rolls as before.
+        let mut scatter = Rng::new(seed, 0x0052_656c_6963);
+        let mut candidates: Vec<usize> = (0..data.hosts.len())
+            .filter(|&i| data.hosts[i].role.can_hold_subnet())
+            .collect();
+        let relic_size = (candidates.len() / Relic::ALL.len()).min(rules::RELIC_PIECES) as u8;
+        for number in 1..=relic_size {
+            for relic in Relic::ALL {
+                let host = candidates.swap_remove(scatter.below(candidates.len() as u32) as usize);
+                hosts[host].piece = Some(Piece { relic, number });
+            }
+        }
+
         let mut world = World {
             seed,
             rng,
@@ -313,6 +398,7 @@ impl World {
             crews: BTreeMap::new(),
             next_hacker: 0,
             ended: None,
+            relic_size,
         };
 
         for (place, &(player, name)) in crews.iter().enumerate() {
@@ -331,6 +417,7 @@ impl World {
                 upgrades: Upgrades::default(),
                 market: Vec::new(),
                 freed: BTreeSet::new(),
+                pieces: BTreeSet::new(),
             };
             // One hacker for each host next door, the better one for the
             // first, so the first break-in has a good chance.
@@ -393,6 +480,22 @@ impl World {
             .map(|(i, _)| HostId(i as u16))
     }
 
+    /// Whether a crew holds every piece of a relic, and so has its power.
+    pub fn has_relic(&self, player: PlayerId, relic: Relic) -> bool {
+        self.relic_size > 0
+            && self
+                .crew(player)
+                .is_some_and(|c| c.pieces_of(relic) >= usize::from(self.relic_size))
+    }
+
+    /// The crew that has completed a relic, if one has.
+    pub fn relic_holder(&self, relic: Relic) -> Option<PlayerId> {
+        self.crews
+            .keys()
+            .copied()
+            .find(|&p| self.has_relic(p, relic))
+    }
+
     /// What a crew's hosts and rigs give it each turn.
     pub fn income(&self, data: &GameData, player: PlayerId) -> Yields {
         let mut total = Yields::default();
@@ -405,6 +508,9 @@ impl World {
         if let Some(crew) = self.crew(player) {
             total.compute += 2 * u32::from(crew.upgrades.rigs);
             total.bandwidth += 2 * u32::from(crew.upgrades.lines);
+        }
+        if self.has_relic(player, Relic::Surge) {
+            total.bandwidth += rules::SURGE_BANDWIDTH;
         }
         total
     }
@@ -454,7 +560,8 @@ impl World {
 
     /// Hosts a crew can scan this turn.
     pub fn scan_range(&self, data: &GameData, player: PlayerId) -> BTreeSet<HostId> {
-        data.within(self.held_by(player), rules::SCAN_LINKS)
+        let links = rules::SCAN_LINKS + u32::from(self.has_relic(player, Relic::Lens));
+        data.within(self.held_by(player), links)
     }
 
     /// Whether a crew knows a host's security, weakness and ICE.
@@ -607,6 +714,93 @@ mod tests {
                 assert!(!subnet.open);
             }
         }
+    }
+
+    #[test]
+    fn every_relic_is_scattered_over_the_map() {
+        let maps = [
+            MapSpec::Standard,
+            MapSpec::random(1, 20),
+            MapSpec::random(2, 40),
+            MapSpec::random(3, 100),
+        ];
+        for map in maps {
+            let data = GameData::for_map(map);
+            for seed in 0..10 {
+                let settings = Settings {
+                    map,
+                    ..Settings::default()
+                };
+                let world = World::new_game(&data, seed, &[(PlayerId(0), "A")], settings);
+                assert!(
+                    world.relic_size >= 2,
+                    "{map:?}: {} pieces",
+                    world.relic_size
+                );
+                let pieces: Vec<(HostId, Piece)> = data
+                    .host_ids()
+                    .filter_map(|h| world.host(h).piece.map(|p| (h, p)))
+                    .collect();
+                assert_eq!(pieces.len(), 4 * usize::from(world.relic_size));
+                for (host, _) in &pieces {
+                    assert!(data.host(*host).role.can_hold_subnet());
+                }
+                for relic in Relic::ALL {
+                    let numbers: BTreeSet<u8> = pieces
+                        .iter()
+                        .filter(|(_, p)| p.relic == relic)
+                        .map(|(_, p)| p.number)
+                        .collect();
+                    assert_eq!(numbers, (1..=world.relic_size).collect());
+                }
+            }
+        }
+        // The standard map has room for three pieces of each.
+        let (_, world) = game(2);
+        assert_eq!(usize::from(world.relic_size), rules::RELIC_PIECES);
+    }
+
+    #[test]
+    fn relic_powers() {
+        let (data, mut world) = game(2);
+        let me = PlayerId(0);
+        let bandwidth = world.bandwidth(&data, me);
+        let reach = world.scan_range(&data, me).len();
+        for relic in [Relic::Surge, Relic::Lens] {
+            for number in 1..=world.relic_size {
+                assert!(!world.has_relic(me, relic));
+                world
+                    .crews
+                    .get_mut(&me)
+                    .unwrap()
+                    .pieces
+                    .insert(Piece { relic, number });
+            }
+            assert!(world.has_relic(me, relic));
+            assert_eq!(world.relic_holder(relic), Some(me));
+        }
+        assert_eq!(
+            world.bandwidth(&data, me),
+            bandwidth + rules::SURGE_BANDWIDTH
+        );
+        assert!(world.scan_range(&data, me).len() > reach);
+    }
+
+    #[test]
+    fn games_saved_before_relics_have_none() {
+        let (_, world) = game(2);
+        let mut json = serde_json::to_value(&world).unwrap();
+        json.as_object_mut().unwrap().remove("relic_size");
+        for host in json["hosts"].as_array_mut().unwrap() {
+            host.as_object_mut().unwrap().remove("piece");
+        }
+        for crew in json["crews"].as_object_mut().unwrap().values_mut() {
+            crew.as_object_mut().unwrap().remove("pieces");
+        }
+        let old: World = serde_json::from_value(json).unwrap();
+        assert_eq!(old.relic_size, 0);
+        // With no pieces at all, nobody holds a relic.
+        assert!(Relic::ALL.iter().all(|&r| old.relic_holder(r).is_none()));
     }
 
     #[test]
